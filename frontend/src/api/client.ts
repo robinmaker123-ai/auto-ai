@@ -12,7 +12,7 @@ import type {
   UserMemory
 } from "../types";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "https://auto-ai-production-c510.up.railway.app/api/v1";
 
 type FetchOptions = RequestInit & {
   token?: string | null;
