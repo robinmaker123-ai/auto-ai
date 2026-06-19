@@ -1,0 +1,60 @@
+- generic [ref=e44]:
+  - complementary [ref=e45]:
+    - generic [ref=e46]:
+      - img [ref=e48]
+      - link "Auto-AI" [ref=e51] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e53] [cursor=pointer]:
+      - img [ref=e54]
+      - text: New chat
+    - navigation [ref=e56]:
+      - generic [ref=e108]:
+        - button "Hello Auto-AI, reply with one short line." [ref=e109] [cursor=pointer]
+        - button "Rename chat" [ref=e110] [cursor=pointer]:
+          - img [ref=e111]
+        - button "Delete chat" [ref=e114] [cursor=pointer]:
+          - img [ref=e115]
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e60]
+        - paragraph [ref=e61]: demo-079ccc35@example.com
+      - generic [ref=e62]:
+        - button "Toggle theme" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+    - generic [ref=e75]:
+      - generic [ref=e76]:
+        - article [ref=e118]:
+          - img [ref=e120]
+          - generic [ref=e123]:
+            - paragraph [ref=e125]: Hello Auto-AI, reply with one short line.
+            - button "Copy message" [ref=e127] [cursor=pointer]:
+              - img [ref=e128]
+        - article [ref=e131]:
+          - img [ref=e133]
+          - generic [ref=e136]:
+            - paragraph [ref=e138]: "AI request failed: Groq API key is invalid."
+            - generic [ref=e139]:
+              - button "Copy message" [ref=e140] [cursor=pointer]:
+                - img [ref=e141]
+              - button "Read aloud" [ref=e144] [cursor=pointer]:
+                - img [ref=e145]
+      - generic [ref=e86]:
+        - textbox "Message Auto-AI" [ref=e87]
+        - generic [ref=e88]:
+          - generic [ref=e89]:
+            - button "Search" [ref=e90] [cursor=pointer]:
+              - img [ref=e91]
+              - text: Search
+            - button "Reason" [ref=e96] [cursor=pointer]:
+              - img [ref=e97]
+              - text: Reason
+            - textbox [ref=e99]: llama-3.1-8b-instant
+          - generic [ref=e100]:
+            - button "Record voice" [ref=e101] [cursor=pointer]:
+              - img [ref=e102]
+            - button "Send" [disabled] [ref=e105]:
+              - img [ref=e106]
+              - text: Send

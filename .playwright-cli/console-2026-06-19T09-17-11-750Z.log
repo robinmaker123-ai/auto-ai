@@ -1,0 +1,20 @@
+[     414ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-KDCVS43I.js?v=bd6d144d:21608
+[     678ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:5173/login:0
+[  287380ms] [ERROR] Warning: Cannot update a component (`%s`) while rendering a different component (`%s`). To locate the bad setState() call inside `%s`, follow the stack trace as described in https://reactjs.org/link/setstate-in-render%s ChatProvider ChatPage ChatPage 
+    at ChatPage (http://127.0.0.1:5173/src/components/chat/ChatPage.tsx?t=1781860520988:29:21)
+    at RenderedRoute (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:6626:26)
+    at Outlet (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:7491:26)
+    at main
+    at div
+    at ChatProvider (http://127.0.0.1:5173/src/contexts/ChatContext.tsx:22:32)
+    at AppShell
+    at RenderedRoute (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:6626:26)
+    at Outlet (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:7491:26)
+    at ProtectedRoute (http://127.0.0.1:5173/src/App.tsx?t=1781860520988:31:29)
+    at RenderedRoute (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:6626:26)
+    at Routes (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:7561:3)
+    at Router (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:7500:13)
+    at BrowserRouter (http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=bd6d144d:10787:3)
+    at AuthProvider (http://127.0.0.1:5173/src/contexts/AuthContext.tsx:21:32)
+    at ThemeProvider (http://127.0.0.1:5173/src/contexts/ThemeContext.tsx:20:33)
+    at App @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-KDCVS43I.js?v=bd6d144d:520

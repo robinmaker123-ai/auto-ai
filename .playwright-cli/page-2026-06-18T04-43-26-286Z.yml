@@ -1,0 +1,87 @@
+- generic [ref=e44]:
+  - complementary [ref=e45]:
+    - generic [ref=e46]:
+      - img [ref=e48]
+      - link "Auto-AI" [ref=e51] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e53] [cursor=pointer]:
+      - img [ref=e54]
+      - text: New chat
+    - navigation [ref=e56]:
+      - generic [ref=e126]:
+        - button "final browser check" [ref=e127] [cursor=pointer]
+        - button "Rename chat" [ref=e128] [cursor=pointer]:
+          - img [ref=e129]
+        - button "Delete chat" [ref=e132] [cursor=pointer]:
+          - img [ref=e133]
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e60]
+        - paragraph [ref=e61]: final-ui-26b741a0@example.com
+      - generic [ref=e62]:
+        - button "Toggle theme" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]:
+          - article [ref=e136]:
+            - img [ref=e138]
+            - generic [ref=e141]:
+              - paragraph [ref=e143]: final browser check
+              - button "Copy message" [ref=e145] [cursor=pointer]:
+                - img [ref=e146]
+          - article [ref=e149]:
+            - img [ref=e151]
+            - generic [ref=e154]:
+              - paragraph [ref=e156]: "AI request failed: Groq API key is invalid."
+              - generic [ref=e157]:
+                - button "Copy message" [ref=e158] [cursor=pointer]:
+                  - img [ref=e159]
+                - button "Read aloud" [ref=e162] [cursor=pointer]:
+                  - img [ref=e163]
+          - article [ref=e167]:
+            - img [ref=e169]
+            - generic [ref=e172]:
+              - paragraph [ref=e174]: second final browser check
+              - button "Copy message" [ref=e176] [cursor=pointer]:
+                - img [ref=e177]
+          - article [ref=e180]:
+            - img [ref=e182]
+            - generic [ref=e185]:
+              - paragraph [ref=e187]: "AI request failed: Groq API key is invalid."
+              - generic [ref=e188]:
+                - button "Copy message" [ref=e189] [cursor=pointer]:
+                  - img [ref=e190]
+                - button "Read aloud" [ref=e193] [cursor=pointer]:
+                  - img [ref=e194]
+        - generic [ref=e86]:
+          - textbox "Message Auto-AI" [ref=e87]
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - button "Search" [ref=e90] [cursor=pointer]:
+                - img [ref=e91]
+                - text: Search
+              - button "Reason" [ref=e96] [cursor=pointer]:
+                - img [ref=e97]
+                - text: Reason
+              - textbox [ref=e99]: llama-3.1-8b-instant
+            - generic [ref=e100]:
+              - button "Record voice" [ref=e101] [cursor=pointer]:
+                - img [ref=e102]
+              - button "Send" [disabled] [ref=e105]:
+                - img [ref=e106]
+                - text: Send
+      - complementary [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - heading "Documents" [level=3] [ref=e111]
+            - paragraph [ref=e112]: PDF, TXT, DOCX
+          - generic [ref=e113]:
+            - button "Refresh documents" [ref=e114] [cursor=pointer]:
+              - img [ref=e115]
+            - button "Upload document" [ref=e120] [cursor=pointer]:
+              - img [ref=e121]
+        - paragraph [ref=e125]: No documents uploaded.

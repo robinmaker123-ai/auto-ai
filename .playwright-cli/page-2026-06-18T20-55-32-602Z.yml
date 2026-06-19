@@ -1,0 +1,52 @@
+- generic [ref=e44]:
+  - complementary [ref=e45]:
+    - generic [ref=e46]:
+      - img [ref=e48]
+      - link "Auto-AI" [ref=e51] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e53] [cursor=pointer]:
+      - img [ref=e54]
+      - text: New chat
+    - navigation [ref=e56]
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e60]
+        - paragraph [ref=e61]: codex-test-20260619@example.com
+      - generic [ref=e62]:
+        - button "Toggle theme" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+    - generic [ref=e75]:
+      - generic [ref=e78]:
+        - img [ref=e80]
+        - heading "Auto-AI" [level=1] [ref=e83]
+        - paragraph [ref=e84]: Ask a question, upload a document, use voice input, or switch on search for current information.
+      - generic [ref=e86]:
+        - textbox "Message Auto-AI" [ref=e87]
+        - generic [ref=e88]:
+          - generic [ref=e89]:
+            - button "Search" [disabled] [ref=e90]:
+              - img [ref=e91]
+              - text: Search
+            - button "Reason" [ref=e96] [cursor=pointer]:
+              - img [ref=e97]
+              - text: Reason
+            - combobox "AI provider" [ref=e99]:
+              - option "OpenAI"
+              - option "Groq"
+              - option "Bedrock" [selected]
+            - combobox "AI model" [ref=e100]:
+              - option "Ministral 3 3B" [selected]
+              - option "Ministral 3 8B"
+              - option "Nova 2 Lite"
+              - option "Nova 2 Lite profile"
+              - option "Claude Sonnet 4.6"
+              - option "Claude Haiku 4.5"
+          - generic [ref=e101]:
+            - button "Record voice" [ref=e102] [cursor=pointer]:
+              - img [ref=e103]
+            - button "Send" [disabled] [ref=e106]:
+              - img [ref=e107]
+              - text: Send

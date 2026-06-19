@@ -1,0 +1,81 @@
+- generic [ref=e44]:
+  - complementary [ref=e45]:
+    - generic [ref=e46]:
+      - img [ref=e48]
+      - link "Auto-AI" [ref=e51] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e53] [cursor=pointer]:
+      - img [ref=e54]
+      - text: New chat
+    - navigation [ref=e56]:
+      - generic [ref=e127]:
+        - button "sent with groq llama model" [ref=e128] [cursor=pointer]
+        - button "Rename chat" [ref=e129] [cursor=pointer]:
+          - img [ref=e130]
+        - button "Delete chat" [ref=e133] [cursor=pointer]:
+          - img [ref=e134]
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e60]
+        - paragraph [ref=e61]: selector-ui-338a42fe@example.com
+      - generic [ref=e62]:
+        - button "Toggle theme" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]:
+          - article [ref=e137]:
+            - img [ref=e139]
+            - generic [ref=e142]:
+              - paragraph [ref=e144]: sent with groq llama model
+              - button "Copy message" [ref=e146] [cursor=pointer]:
+                - img [ref=e147]
+          - article [ref=e150]:
+            - img [ref=e152]
+            - generic [ref=e155]:
+              - paragraph [ref=e157]: "AI request failed: Groq request failed: Connection error."
+              - generic [ref=e158]:
+                - button "Copy message" [ref=e159] [cursor=pointer]:
+                  - img [ref=e160]
+                - button "Read aloud" [ref=e163] [cursor=pointer]:
+                  - img [ref=e164]
+        - generic [ref=e86]:
+          - textbox "Message Auto-AI" [ref=e87]
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - button "Search" [ref=e90] [cursor=pointer]:
+                - img [ref=e91]
+                - text: Search
+              - button "Reason" [ref=e96] [cursor=pointer]:
+                - img [ref=e97]
+                - text: Reason
+              - combobox "AI provider" [ref=e99]:
+                - option "OpenAI"
+                - option "Groq" [selected]
+              - combobox "AI model" [ref=e100]:
+                - option "GPT-OSS 120B"
+                - option "GPT-OSS 20B"
+                - option "Llama 3.3 70B"
+                - option "Llama 3.1 8B" [selected]
+                - option "Qwen 3 32B"
+                - option "Llama 4 Scout"
+            - generic [ref=e101]:
+              - button "Record voice" [ref=e102] [cursor=pointer]:
+                - img [ref=e103]
+              - button "Send" [disabled] [ref=e106]:
+                - img [ref=e107]
+                - text: Send
+      - complementary [ref=e109]:
+        - generic [ref=e110]:
+          - generic [ref=e111]:
+            - heading "Documents" [level=3] [ref=e112]
+            - paragraph [ref=e113]: PDF, TXT, DOCX
+          - generic [ref=e114]:
+            - button "Refresh documents" [ref=e115] [cursor=pointer]:
+              - img [ref=e116]
+            - button "Upload document" [ref=e121] [cursor=pointer]:
+              - img [ref=e122]
+        - paragraph [ref=e126]: No documents uploaded.

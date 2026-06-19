@@ -1,0 +1,75 @@
+- generic [ref=e44]:
+  - complementary [ref=e45]:
+    - generic [ref=e46]:
+      - img [ref=e48]
+      - link "Auto-AI" [ref=e51] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e53] [cursor=pointer]:
+      - img [ref=e54]
+      - text: New chat
+    - navigation [ref=e56]:
+      - generic [ref=e198]:
+        - button "New chat" [ref=e199] [cursor=pointer]
+        - button "Rename chat" [ref=e200] [cursor=pointer]:
+          - img [ref=e201]
+        - button "Delete chat" [ref=e204] [cursor=pointer]:
+          - img [ref=e205]
+      - generic [ref=e126]:
+        - button "first message visible test" [active] [ref=e127] [cursor=pointer]
+        - button "Rename chat" [ref=e128] [cursor=pointer]:
+          - img [ref=e129]
+        - button "Delete chat" [ref=e132] [cursor=pointer]:
+          - img [ref=e133]
+  - main [ref=e57]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e60]
+        - paragraph [ref=e61]: ui-fix-3532193a@example.com
+      - generic [ref=e62]:
+        - button "Toggle theme" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+        - button "Logout" [ref=e70] [cursor=pointer]:
+          - img [ref=e71]
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]:
+          - article [ref=e216]:
+            - img [ref=e218]
+            - generic [ref=e221]:
+              - paragraph [ref=e223]: first message visible test
+              - button "Copy message" [ref=e225] [cursor=pointer]:
+                - img [ref=e226]
+          - article [ref=e229]:
+            - img [ref=e231]
+            - generic [ref=e234]:
+              - paragraph [ref=e236]: second message should also send
+              - button "Copy message" [ref=e238] [cursor=pointer]:
+                - img [ref=e239]
+        - generic [ref=e86]:
+          - textbox "Message Auto-AI" [ref=e87]
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - button "Search" [ref=e90] [cursor=pointer]:
+                - img [ref=e91]
+                - text: Search
+              - button "Reason" [ref=e96] [cursor=pointer]:
+                - img [ref=e97]
+                - text: Reason
+              - textbox [ref=e99]: llama-3.1-8b-instant
+            - generic [ref=e100]:
+              - button "Record voice" [ref=e101] [cursor=pointer]:
+                - img [ref=e102]
+              - button "Send" [disabled] [ref=e105]:
+                - img [ref=e106]
+                - text: Send
+      - complementary [ref=e108]:
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - heading "Documents" [level=3] [ref=e111]
+            - paragraph [ref=e112]: PDF, TXT, DOCX
+          - generic [ref=e113]:
+            - button "Refresh documents" [ref=e114] [cursor=pointer]:
+              - img [ref=e115]
+            - button "Upload document" [ref=e120] [cursor=pointer]:
+              - img [ref=e121]
+        - paragraph [ref=e125]: No documents uploaded.

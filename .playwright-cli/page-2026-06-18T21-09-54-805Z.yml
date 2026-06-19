@@ -1,0 +1,58 @@
+- generic [ref=e22]:
+  - complementary [ref=e23]:
+    - generic [ref=e24]:
+      - img [ref=e26]
+      - link "Auto-AI" [ref=e29] [cursor=pointer]:
+        - /url: /
+    - button "New chat" [ref=e31] [cursor=pointer]:
+      - img [ref=e32]
+      - text: New chat
+    - navigation [ref=e34]:
+      - generic [ref=e35]:
+        - button "hi from bedrock test" [ref=e36] [cursor=pointer]
+        - button "Rename chat" [ref=e37] [cursor=pointer]:
+          - img [ref=e38]
+        - button "Delete chat" [ref=e41] [cursor=pointer]:
+          - img [ref=e42]
+  - main [ref=e45]:
+    - generic [ref=e46]:
+      - generic [ref=e47]:
+        - heading "Auto-AI Assistant" [level=2] [ref=e48]
+        - paragraph [ref=e49]: codex-test-20260619@example.com
+      - generic [ref=e50]:
+        - button "Toggle theme" [ref=e51] [cursor=pointer]:
+          - img [ref=e52]
+        - button "Logout" [ref=e58] [cursor=pointer]:
+          - img [ref=e59]
+    - generic [ref=e63]:
+      - generic [ref=e66]:
+        - img [ref=e68]
+        - heading "Auto-AI" [level=1] [ref=e71]
+        - paragraph [ref=e72]: Ask a question, upload a document, use voice input, or switch on search for current information.
+      - generic [ref=e74]:
+        - textbox "Message Auto-AI" [ref=e75]
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - button "Search" [ref=e78] [cursor=pointer]:
+              - img [ref=e79]
+              - text: Search
+            - button "Reason" [ref=e84] [cursor=pointer]:
+              - img [ref=e85]
+              - text: Reason
+            - combobox "AI provider" [ref=e87]:
+              - option "OpenAI"
+              - option "Groq" [selected]
+              - option "Bedrock"
+            - combobox "AI model" [ref=e88]:
+              - option "GPT-OSS 120B" [selected]
+              - option "GPT-OSS 20B"
+              - option "Llama 3.3 70B"
+              - option "Llama 3.1 8B"
+              - option "Qwen 3 32B"
+              - option "Llama 4 Scout"
+          - generic [ref=e89]:
+            - button "Record voice" [ref=e90] [cursor=pointer]:
+              - img [ref=e91]
+            - button "Send" [disabled] [ref=e94]:
+              - img [ref=e95]
+              - text: Send
