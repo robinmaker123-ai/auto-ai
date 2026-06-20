@@ -12,9 +12,35 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const TOKEN_STORAGE_KEY = "auto-ai-token";
+
+function readStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch (error) {
+    console.warn("[Auto-AI Auth] Unable to read saved session from localStorage.", error);
+    return null;
+  }
+}
+
+function writeStoredToken(token: string) {
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch (error) {
+    console.warn("[Auto-AI Auth] Login succeeded, but the session could not be saved to localStorage.", error);
+  }
+}
+
+function removeStoredToken() {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch (error) {
+    console.warn("[Auto-AI Auth] Unable to remove saved session from localStorage.", error);
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("auto-ai-token"));
+  const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,8 +54,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await api.me(token);
         if (active) setUser(me);
-      } catch {
-        localStorage.removeItem("auto-ai-token");
+      } catch (error) {
+        console.warn("[Auto-AI Auth] Stored session could not be restored.", error);
+        removeStoredToken();
         if (active) {
           setToken(null);
           setUser(null);
@@ -45,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const persistSession = useCallback((accessToken: string, account: User) => {
-    localStorage.setItem("auto-ai-token", accessToken);
+    writeStoredToken(accessToken);
     setToken(accessToken);
     setUser(account);
   }, []);
@@ -64,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         persistSession(session.access_token, session.user);
       },
       logout: () => {
-        localStorage.removeItem("auto-ai-token");
+        removeStoredToken();
         setToken(null);
         setUser(null);
       }
@@ -80,4 +107,3 @@ export function useAuth() {
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
-

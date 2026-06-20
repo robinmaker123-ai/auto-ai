@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://autoai.site.je",
+        "https://www.autoai.site.je",
     ]
+    BACKEND_CORS_ORIGIN_REGEX: str | None = None
 
     DATABASE_URL: str | None = None
     SQLITE_PATH: str = str(PROJECT_ROOT / "database" / "auto_ai.db")

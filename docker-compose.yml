@@ -16,9 +16,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
     depends_on:
       - backend
     ports:
       - "5173:80"
     restart: unless-stopped
-

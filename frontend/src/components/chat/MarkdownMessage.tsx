@@ -1,27 +1,72 @@
+import { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { coerceTextContent } from "../../utils/text";
 import { CodeBlock } from "./CodeBlock";
 
-export function MarkdownMessage({ content }: { content: string }) {
+function textFromMarkdownNode(node: any): string {
+  if (!node) return "";
+  if (typeof node.value === "string") return node.value;
+  if (Array.isArray(node.children)) {
+    return node.children.map(textFromMarkdownNode).join("");
+  }
+  return "";
+}
+
+function languageFromClassName(className?: string) {
+  return className?.match(/language-([^\s]+)/)?.[1];
+}
+
+function classNameFromNode(node: any) {
+  const className = node?.properties?.className;
+  if (Array.isArray(className)) return className.join(" ");
+  return typeof className === "string" ? className : undefined;
+}
+
+function findCodeNode(node: any): any {
+  if (!node) return undefined;
+  if (node.tagName === "code") return node;
+  if (!Array.isArray(node.children)) return undefined;
+  return node.children.map(findCodeNode).find(Boolean);
+}
+
+function highlightedCodeFromChildren(children: ReactNode): ReactNode {
+  const child = Children.toArray(children).find(isValidElement);
+  if (isValidElement(child)) {
+    return (child.props as { children?: ReactNode }).children;
+  }
+  return children;
+}
+
+export function MarkdownMessage({ content }: { content: unknown }) {
+  const markdown = coerceTextContent(content);
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeHighlight]}
+      rehypePlugins={[[rehypeHighlight, { detect: true }]]}
       components={{
-        code(props: any) {
-          const { className, children } = props;
-          const match = /language-(\w+)/.exec(className || "");
-          const code = String(children).replace(/\n$/, "");
-          if (match) {
-            return <CodeBlock code={code} language={match[1]} />;
-          }
-          return <code className="rounded bg-slate-200 px-1 py-0.5 text-sm dark:bg-neutral-800">{children}</code>;
+        pre({ node, children }: any) {
+          const codeNode = findCodeNode(node);
+          const className = classNameFromNode(codeNode);
+          const rawCode = textFromMarkdownNode(codeNode) || coerceTextContent(children);
+          const language = languageFromClassName(className);
+          return (
+            <CodeBlock
+              code={rawCode.replace(/\n$/, "")}
+              language={language}
+              highlightedCode={highlightedCodeFromChildren(children)}
+              className={className}
+            />
+          );
+        },
+        code({ className, children }: any) {
+          return <code className={className}>{children}</code>;
         }
       }}
     >
-      {content}
+      {markdown}
     </ReactMarkdown>
   );
 }
-

@@ -892,6 +892,81 @@ button:disabled {
   color: #f8fafc;
 }
 
+.code-block {
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: #050814;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.code-block-header {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(15, 23, 42, 0.92);
+  padding: 8px 10px 8px 12px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.code-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.code-block-action {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 0 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.code-block-action:hover:not(:disabled) {
+  border-color: rgba(103, 232, 249, 0.34);
+  background: rgba(103, 232, 249, 0.12);
+  color: #ffffff;
+}
+
+.code-block-action:disabled {
+  opacity: 0.45;
+}
+
+.code-block pre {
+  margin: 0;
+  overflow-x: auto;
+  background: transparent;
+  padding: 14px;
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.code-block code {
+  display: block;
+  min-width: max-content;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
 .line-clamp-4 {
   display: -webkit-box;
   -webkit-line-clamp: 4;

@@ -11,9 +11,87 @@ import type {
   User,
   UserMemory
 } from "../types";
+import { coerceTextContent } from "../utils/text";
+
+declare global {
+  interface Window {
+    __AUTO_AI_API_URL__?: string;
+  }
+}
 
 const PUBLIC_API_BASE_URL = "https://auto-ai-production-c510.up.railway.app/api/v1";
 const LOCAL_API_BASE_URL = "http://localhost:8000/api/v1";
+
+export type ApiErrorKind =
+  | "network_unavailable"
+  | "cors_blocked"
+  | "server_unreachable"
+  | "ssl_certificate_issue"
+  | "authentication_failed"
+  | "configuration_error"
+  | "http_error";
+
+type FetchOptions = Omit<RequestInit, "headers"> & {
+  headers?: HeadersInit;
+  token?: string | null;
+  operation?: string;
+};
+
+type RequestMeta = {
+  path?: string;
+  method?: string;
+  operation?: string;
+};
+
+type ApiContext = {
+  apiUrl: string;
+  apiOrigin: string;
+  apiProtocol: string;
+  apiHostname: string;
+  pageOrigin: string;
+  pageProtocol: string;
+  crossOrigin: boolean;
+  localPage: boolean;
+  localApi: boolean;
+  localApiFromPublicPage: boolean;
+  mixedContent: boolean;
+  online: boolean | "unknown";
+  secureContext: boolean | "unknown";
+  userAgent: string;
+};
+
+type ApiClientErrorOptions = {
+  kind: ApiErrorKind;
+  status?: number;
+  url?: string;
+  requestId?: string | null;
+  details?: unknown;
+  originalError?: unknown;
+};
+
+export class ApiClientError extends Error {
+  readonly kind: ApiErrorKind;
+  readonly status?: number;
+  readonly url?: string;
+  readonly requestId?: string | null;
+  readonly details?: unknown;
+  readonly originalError?: unknown;
+
+  constructor(message: string, options: ApiClientErrorOptions) {
+    super(message);
+    this.name = "ApiClientError";
+    this.kind = options.kind;
+    this.status = options.status;
+    this.url = options.url;
+    this.requestId = options.requestId;
+    this.details = options.details;
+    this.originalError = options.originalError;
+  }
+}
+
+function isBrowser() {
+  return typeof window !== "undefined";
+}
 
 function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
@@ -28,9 +106,14 @@ function normalizeApiUrl(value?: string) {
   return trimmed ? stripTrailingSlash(trimmed) : "";
 }
 
+function configuredApiUrl() {
+  const runtimeUrl = isBrowser() ? normalizeApiUrl(window.__AUTO_AI_API_URL__) : "";
+  return runtimeUrl || normalizeApiUrl(import.meta.env.VITE_API_URL);
+}
+
 function resolveApiBaseUrl() {
-  const configured = normalizeApiUrl(import.meta.env.VITE_API_URL);
-  if (typeof window === "undefined") return configured || PUBLIC_API_BASE_URL;
+  const configured = configuredApiUrl();
+  if (!isBrowser()) return configured || PUBLIC_API_BASE_URL;
 
   const pageUrl = window.location;
   const localPage = isLocalHostname(pageUrl.hostname);
@@ -49,10 +132,6 @@ function resolveApiBaseUrl() {
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
-
-type FetchOptions = RequestInit & {
-  token?: string | null;
-};
 
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "detail" in payload) {
@@ -74,23 +153,240 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function getApiContext(url: string): ApiContext {
+  if (!isBrowser()) {
+    return {
+      apiUrl: url,
+      apiOrigin: "unknown",
+      apiProtocol: "unknown",
+      apiHostname: "unknown",
+      pageOrigin: "unknown",
+      pageProtocol: "unknown",
+      crossOrigin: false,
+      localPage: false,
+      localApi: false,
+      localApiFromPublicPage: false,
+      mixedContent: false,
+      online: "unknown",
+      secureContext: "unknown",
+      userAgent: "unknown"
+    };
+  }
+
+  try {
+    const apiUrl = new URL(url, window.location.origin);
+    const localPage = isLocalHostname(window.location.hostname);
+    const localApi = isLocalHostname(apiUrl.hostname);
+    return {
+      apiUrl: apiUrl.toString(),
+      apiOrigin: apiUrl.origin,
+      apiProtocol: apiUrl.protocol,
+      apiHostname: apiUrl.hostname,
+      pageOrigin: window.location.origin,
+      pageProtocol: window.location.protocol,
+      crossOrigin: apiUrl.origin !== window.location.origin,
+      localPage,
+      localApi,
+      localApiFromPublicPage: !localPage && localApi,
+      mixedContent: window.location.protocol === "https:" && apiUrl.protocol === "http:",
+      online: navigator.onLine,
+      secureContext: window.isSecureContext,
+      userAgent: navigator.userAgent
+    };
+  } catch {
+    return {
+      apiUrl: url,
+      apiOrigin: "invalid",
+      apiProtocol: "invalid",
+      apiHostname: "invalid",
+      pageOrigin: window.location.origin,
+      pageProtocol: window.location.protocol,
+      crossOrigin: false,
+      localPage: isLocalHostname(window.location.hostname),
+      localApi: false,
+      localApiFromPublicPage: false,
+      mixedContent: false,
+      online: navigator.onLine,
+      secureContext: window.isSecureContext,
+      userAgent: navigator.userAgent
+    };
+  }
+}
+
+function isCertificateLikeError(error: unknown) {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+  return /ssl|tls|certificate|cert_|err_cert/i.test(text);
+}
+
+function healthProbeUrl() {
+  return `${API_BASE_URL}/health`;
+}
+
+async function canReachApiHostWithoutCors() {
+  if (!isBrowser()) return false;
+  try {
+    await fetch(healthProbeUrl(), {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store",
+      credentials: "omit"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function logApiIssue(error: ApiClientError, context: ApiContext, meta: RequestMeta = {}) {
+  if (!isBrowser()) return;
+
+  const buildTimeApiUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
+  const runtimeApiUrl = normalizeApiUrl(window.__AUTO_AI_API_URL__);
+  const request = {
+    operation: meta.operation,
+    method: meta.method,
+    path: meta.path,
+    url: error.url ?? context.apiUrl,
+    status: error.status,
+    requestId: error.requestId,
+    apiBaseUrl: API_BASE_URL
+  };
+  const browser = {
+    pageOrigin: context.pageOrigin,
+    apiOrigin: context.apiOrigin,
+    crossOrigin: context.crossOrigin,
+    localApiFromPublicPage: context.localApiFromPublicPage,
+    mixedContent: context.mixedContent,
+    online: context.online,
+    secureContext: context.secureContext,
+    userAgent: context.userAgent
+  };
+  const configuration = {
+    buildTimeApiUrl: buildTimeApiUrl ? "set" : "empty",
+    runtimeApiUrl: runtimeApiUrl ? "set" : "empty"
+  };
+
+  console.groupCollapsed(`[Auto-AI API] ${error.kind}: ${error.message}`);
+  console.info("request", request);
+  console.info("browser", browser);
+  console.info("configuration", configuration);
+  if (error.details) console.info("details", error.details);
+  if (error.originalError) console.error("originalError", error.originalError);
+  console.groupEnd();
+}
+
+async function createConnectionError(input: string, originalError: unknown, meta: RequestMeta = {}) {
+  const context = getApiContext(input);
+  let kind: ApiErrorKind = "server_unreachable";
+  let message = `Server unreachable: Auto-AI API did not respond at ${context.apiOrigin}.`;
+
+  if (context.online === false) {
+    kind = "network_unavailable";
+    message = "Network unavailable: your browser is offline or mobile data/Wi-Fi is not connected.";
+  } else if (context.localApiFromPublicPage) {
+    kind = "server_unreachable";
+    message = "Server unreachable: this public build is trying to call localhost, which only works on the laptop running the backend.";
+  } else if (context.mixedContent) {
+    kind = "ssl_certificate_issue";
+    message = "SSL / mixed-content issue: the site is HTTPS but the API URL is HTTP. Use a public HTTPS API URL.";
+  } else if (isCertificateLikeError(originalError)) {
+    kind = "ssl_certificate_issue";
+    message = "SSL certificate issue: the browser rejected the API connection certificate.";
+  } else if (context.crossOrigin && (await canReachApiHostWithoutCors())) {
+    kind = "cors_blocked";
+    message = `CORS blocked: ${context.apiOrigin} is reachable, but it is not allowing requests from ${context.pageOrigin}.`;
+  }
+
+  const error = new ApiClientError(message, {
+    kind,
+    url: context.apiUrl,
+    originalError
+  });
+  logApiIssue(error, context, meta);
+  return error;
+}
+
+function createHttpError(
+  status: number,
+  statusText: string,
+  payload: unknown,
+  url: string,
+  requestId: string | null,
+  meta: RequestMeta = {}
+) {
+  const detail = getErrorMessage(payload, statusText || "Request failed");
+  const authFailed = status === 401 || status === 403;
+  const message = authFailed
+    ? `Authentication failed: ${detail}`
+    : `Request failed (${status}): ${detail}`;
+  const error = new ApiClientError(message, {
+    kind: authFailed ? "authentication_failed" : "http_error",
+    status,
+    url,
+    requestId,
+    details: payload
+  });
+  logApiIssue(error, getApiContext(url), meta);
+  return error;
+}
+
+async function readErrorPayload(response: Response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return { detail: response.statusText };
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { detail: text };
+  }
+}
+
+async function fetchWithNetworkMessage(input: string, init: RequestInit = {}, meta: RequestMeta = {}) {
+  const method = meta.method ?? init.method ?? "GET";
+  try {
+    return await fetch(input, {
+      credentials: "omit",
+      ...init
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw await createConnectionError(input, error, { ...meta, method });
+    }
+    throw error;
+  }
+}
+
 async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  if (!(options.body instanceof FormData)) {
+  const { token, operation, ...requestOptions } = options;
+  const headers = new Headers(requestOptions.headers);
+  const method = requestOptions.method ?? "GET";
+  const url = `${API_BASE_URL}${path}`;
+
+  if (!(requestOptions.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (options.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetchWithNetworkMessage(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers
-  });
+  const response = await fetchWithNetworkMessage(
+    url,
+    {
+      ...requestOptions,
+      headers
+    },
+    { path, method, operation }
+  );
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(getErrorMessage(payload, "Request failed"));
+    const payload = await readErrorPayload(response);
+    throw createHttpError(
+      response.status,
+      response.statusText,
+      payload,
+      url,
+      response.headers.get("x-railway-request-id") ?? response.headers.get("x-request-id"),
+      { path, method, operation }
+    );
   }
 
   if (response.status === 204) {
@@ -99,66 +395,43 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   return response.json() as Promise<T>;
 }
 
-function getApiConnectionMessage(url: string): string {
-  if (typeof window === "undefined") return "Unable to reach Auto-AI API";
-
-  try {
-    const apiUrl = new URL(url, window.location.origin);
-    if (!isLocalHostname(window.location.hostname) && isLocalHostname(apiUrl.hostname)) {
-      return "Unable to reach Auto-AI API. This build is pointing to localhost, which only works on the same laptop.";
-    }
-    if (window.location.protocol === "https:" && apiUrl.protocol === "http:") {
-      return "Unable to reach Auto-AI API. The site is HTTPS but the API URL is HTTP; use a public HTTPS API URL.";
-    }
-    return `Unable to reach Auto-AI API at ${apiUrl.origin}. Check that the backend is live and CORS allows ${window.location.origin}.`;
-  } catch {
-    return "Unable to reach Auto-AI API. Check the frontend API URL configuration.";
-  }
-}
-
-async function fetchWithNetworkMessage(input: string, init?: RequestInit) {
-  try {
-    return await fetch(input, init);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(getApiConnectionMessage(input));
-    }
-    throw error;
-  }
-}
-
 export const api = {
   register: (payload: { email: string; name: string; password: string }) =>
     apiFetch<{ access_token: string; token_type: string; user: User }>("/auth/register", {
       method: "POST",
+      operation: "auth.register",
       body: JSON.stringify(payload)
     }),
   login: (payload: { email: string; password: string }) =>
     apiFetch<{ access_token: string; token_type: string; user: User }>("/auth/login", {
       method: "POST",
+      operation: "auth.login",
       body: JSON.stringify(payload)
     }),
-  me: (token: string) => apiFetch<User>("/auth/me", { token }),
+  me: (token: string) => apiFetch<User>("/auth/me", { token, operation: "auth.me" }),
 
-  listChats: (token: string) => apiFetch<ChatListItem[]>("/chats", { token }),
+  listChats: (token: string) => apiFetch<ChatListItem[]>("/chats", { token, operation: "chats.list" }),
   createChat: (token: string, payload: { title?: string; system_prompt?: string; model?: string }) =>
-    apiFetch<Chat>("/chats", { method: "POST", token, body: JSON.stringify(payload) }),
-  getChat: (token: string, id: string) => apiFetch<Chat>(`/chats/${id}`, { token }),
+    apiFetch<Chat>("/chats", { method: "POST", token, operation: "chats.create", body: JSON.stringify(payload) }),
+  getChat: (token: string, id: string) => apiFetch<Chat>(`/chats/${id}`, { token, operation: "chats.get" }),
   updateChat: (token: string, id: string, payload: { title?: string; system_prompt?: string; model?: string }) =>
-    apiFetch<Chat>(`/chats/${id}`, { method: "PATCH", token, body: JSON.stringify(payload) }),
-  deleteChat: (token: string, id: string) => apiFetch<void>(`/chats/${id}`, { method: "DELETE", token }),
+    apiFetch<Chat>(`/chats/${id}`, { method: "PATCH", token, operation: "chats.update", body: JSON.stringify(payload) }),
+  deleteChat: (token: string, id: string) => apiFetch<void>(`/chats/${id}`, { method: "DELETE", token, operation: "chats.delete" }),
 
-  listDocuments: (token: string) => apiFetch<DocumentItem[]>("/documents", { token }),
+  listDocuments: (token: string) => apiFetch<DocumentItem[]>("/documents", { token, operation: "documents.list" }),
   uploadDocument: (token: string, formData: FormData) =>
-    apiFetch<DocumentItem>("/documents/upload", { method: "POST", token, body: formData }),
+    apiFetch<DocumentItem>("/documents/upload", { method: "POST", token, operation: "documents.upload", body: formData }),
   uploadDocumentWithProgress: (
     token: string,
     formData: FormData,
     onProgress: (progress: number) => void
   ) =>
     new Promise<DocumentItem>((resolve, reject) => {
+      const url = `${API_BASE_URL}/documents/upload`;
+      const meta = { path: "/documents/upload", method: "POST", operation: "documents.uploadWithProgress" };
       const request = new XMLHttpRequest();
-      request.open("POST", `${API_BASE_URL}/documents/upload`);
+      request.open("POST", url);
+      request.timeout = 5 * 60 * 1000;
       request.setRequestHeader("Authorization", `Bearer ${token}`);
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
@@ -168,7 +441,7 @@ export const api = {
         const payload = request.responseText
           ? (() => {
               try {
-                return JSON.parse(request.responseText);
+                return JSON.parse(request.responseText) as unknown;
               } catch {
                 return { detail: request.statusText };
               }
@@ -178,12 +451,26 @@ export const api = {
           resolve(payload as DocumentItem);
           return;
         }
-        reject(new Error(getErrorMessage(payload, "Document upload failed")));
+        reject(
+          createHttpError(
+            request.status,
+            request.statusText,
+            payload,
+            url,
+            request.getResponseHeader("x-railway-request-id") ?? request.getResponseHeader("x-request-id"),
+            meta
+          )
+        );
       };
-      request.onerror = () => reject(new Error(getApiConnectionMessage(`${API_BASE_URL}/documents/upload`)));
+      request.onerror = () => {
+        void createConnectionError(url, new Error("XMLHttpRequest network error"), meta).then(reject);
+      };
+      request.ontimeout = () => {
+        void createConnectionError(url, new Error("XMLHttpRequest upload timeout"), meta).then(reject);
+      };
       request.send(formData);
     }),
-  deleteDocument: (token: string, id: string) => apiFetch<void>(`/documents/${id}`, { method: "DELETE", token }),
+  deleteDocument: (token: string, id: string) => apiFetch<void>(`/documents/${id}`, { method: "DELETE", token, operation: "documents.delete" }),
   analyzeImage: (token: string, file: File, prompt: string) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -191,33 +478,35 @@ export const api = {
     return apiFetch<{ content: string; model: string }>("/ai/image-analysis", {
       method: "POST",
       token,
+      operation: "ai.imageAnalysis",
       body: formData
     });
   },
 
-  humanProfile: (token: string) => apiFetch<InteractionProfile>("/human/profile", { token }),
-  humanState: (token: string) => apiFetch<HumanState>("/human/state", { token }),
+  humanProfile: (token: string) => apiFetch<InteractionProfile>("/human/profile", { token, operation: "human.profile" }),
+  humanState: (token: string) => apiFetch<HumanState>("/human/state", { token, operation: "human.state" }),
   listMemories: (token: string, category?: string) =>
     apiFetch<UserMemory[]>(`/human/memories${category ? `?category=${encodeURIComponent(category)}` : ""}`, {
-      token
+      token,
+      operation: "human.memories.list"
     }),
   createMemory: (
     token: string,
     payload: { category: string; key: string; value: string; confidence?: number; source?: string }
-  ) => apiFetch<UserMemory>("/human/memories", { method: "POST", token, body: JSON.stringify(payload) }),
+  ) => apiFetch<UserMemory>("/human/memories", { method: "POST", token, operation: "human.memories.create", body: JSON.stringify(payload) }),
   updateMemory: (
     token: string,
     id: string,
     payload: { category?: string; key?: string; value?: string; confidence?: number; source?: string }
-  ) => apiFetch<UserMemory>(`/human/memories/${id}`, { method: "PATCH", token, body: JSON.stringify(payload) }),
+  ) => apiFetch<UserMemory>(`/human/memories/${id}`, { method: "PATCH", token, operation: "human.memories.update", body: JSON.stringify(payload) }),
   deleteMemory: (token: string, id: string) =>
-    apiFetch<void>(`/human/memories/${id}`, { method: "DELETE", token }),
+    apiFetch<void>(`/human/memories/${id}`, { method: "DELETE", token, operation: "human.memories.delete" }),
   listTurnAnalyses: (token: string, params: { chat_id?: string; limit?: number } = {}) => {
     const search = new URLSearchParams();
     if (params.chat_id) search.set("chat_id", params.chat_id);
     if (params.limit) search.set("limit", String(params.limit));
     const suffix = search.toString() ? `?${search.toString()}` : "";
-    return apiFetch<TurnAnalysis[]>(`/human/turns${suffix}`, { token });
+    return apiFetch<TurnAnalysis[]>(`/human/turns${suffix}`, { token, operation: "human.turns.list" });
   },
 
   transcribeAudio: (token: string, blob: Blob) => {
@@ -226,11 +515,12 @@ export const api = {
     return apiFetch<{ text: string; model: string }>("/voice/transcribe", {
       method: "POST",
       token,
+      operation: "voice.transcribe",
       body: formData
     });
   },
 
-  adminStats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token })
+  adminStats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token, operation: "admin.stats" })
 };
 
 export async function streamChat(
@@ -238,18 +528,31 @@ export async function streamChat(
   payload: ChatRequest,
   onEvent: (event: StreamEvent) => void
 ) {
-  const response = await fetchWithNetworkMessage(`${API_BASE_URL}/ai/chat/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+  const path = "/ai/chat/stream";
+  const url = `${API_BASE_URL}${path}`;
+  const response = await fetchWithNetworkMessage(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
     },
-    body: JSON.stringify(payload)
-  });
+    { path, method: "POST", operation: "ai.chat.stream" }
+  );
 
   if (!response.ok || !response.body) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(getErrorMessage(error, "Unable to stream response"));
+    const errorPayload = await readErrorPayload(response);
+    throw createHttpError(
+      response.status,
+      response.statusText,
+      errorPayload,
+      url,
+      response.headers.get("x-railway-request-id") ?? response.headers.get("x-request-id"),
+      { path, method: "POST", operation: "ai.chat.stream" }
+    );
   }
 
   const reader = response.body.getReader();
@@ -268,7 +571,26 @@ export async function streamChat(
         .split("\n")
         .find((line) => line.startsWith("data:"));
       if (!dataLine) continue;
-      onEvent(JSON.parse(dataLine.replace(/^data:\s*/, "")) as StreamEvent);
+      const parsedEvent = normalizeStreamEvent(JSON.parse(dataLine.replace(/^data:\s*/, "")));
+      if (parsedEvent) onEvent(parsedEvent);
     }
   }
+}
+
+function normalizeStreamEvent(payload: unknown): StreamEvent | null {
+  if (!payload || typeof payload !== "object" || !("type" in payload)) return null;
+  const event = payload as Record<string, unknown>;
+  if (event.type === "meta") {
+    return { type: "meta", chat_id: coerceTextContent(event.chat_id) };
+  }
+  if (event.type === "delta") {
+    return { type: "delta", delta: coerceTextContent(event.delta) };
+  }
+  if (event.type === "done") {
+    return { type: "done", message_id: coerceTextContent(event.message_id) };
+  }
+  if (event.type === "error") {
+    return { type: "error", detail: coerceTextContent(event.detail) || "Streaming failed" };
+  }
+  return null;
 }

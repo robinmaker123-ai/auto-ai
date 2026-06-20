@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
 import type { DocumentItem, Message } from "../../types";
+import { coerceTextContent } from "../../utils/text";
 import { Composer, type ComposerOptions, type UploadTask } from "./Composer";
 import { ContextPanel } from "./ContextPanel";
 import { MessageBubble, type MessageReaction } from "./MessageBubble";
@@ -17,8 +18,9 @@ const DEFAULT_OPTIONS: ComposerOptions = {
   model: "openai/gpt-oss-120b"
 };
 
-function splitDelta(delta: string) {
-  return delta.match(/\S+\s*/g) ?? [delta];
+function splitDelta(delta: unknown) {
+  const text = coerceTextContent(delta);
+  return text ? text.match(/\S+\s*/g) ?? [text] : [];
 }
 
 export function ChatPage() {
@@ -100,7 +102,7 @@ export function ChatPage() {
     resolvers.forEach((resolve) => resolve());
   }
 
-  function enqueueDelta(chatId: string, messageId: string, delta: string) {
+  function enqueueDelta(chatId: string, messageId: string, delta: unknown) {
     deltaTargetRef.current = { chatId, messageId };
     deltaQueueRef.current.push(...splitDelta(delta));
     if (deltaTimerRef.current) return;
@@ -112,7 +114,7 @@ export function ChatPage() {
         updateMessagesForChat(target.chatId, (current) =>
           current.map((message) =>
             message.id === target.messageId
-              ? { ...message, content: message.content + piece }
+              ? { ...message, content: coerceTextContent(message.content) + piece }
               : message
           )
         );
@@ -312,7 +314,7 @@ export function ChatPage() {
   async function handleShare(messageId: string) {
     const message = messages.find((item) => item.id === messageId);
     if (!message) return;
-    const text = `${activeTitle}\n\n${message.content}`;
+    const text = `${activeTitle}\n\n${coerceTextContent(message.content)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: "Auto-AI", text });
@@ -329,7 +331,7 @@ export function ChatPage() {
     const index = messages.findIndex((message) => message.id === messageId);
     const previousUser = [...messages.slice(0, index)].reverse().find((message) => message.role === "user");
     if (!previousUser) return;
-    await handleSend(previousUser.content, lastOptionsRef.current, []);
+    await handleSend(coerceTextContent(previousUser.content), lastOptionsRef.current, []);
   }
 
   async function handleEdit(messageId: string) {
@@ -337,7 +339,7 @@ export function ChatPage() {
     const index = messages.findIndex((message) => message.id === messageId);
     const message = messages[index];
     if (!message || message.role !== "user") return;
-    const nextPrompt = window.prompt("Edit prompt", message.content);
+    const nextPrompt = window.prompt("Edit prompt", coerceTextContent(message.content));
     if (!nextPrompt?.trim()) return;
     if (activeChat?.id) {
       const trimmedMessages = messages.slice(0, index);

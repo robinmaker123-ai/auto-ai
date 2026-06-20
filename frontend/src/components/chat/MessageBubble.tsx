@@ -15,6 +15,7 @@ import {
 import { motion } from "framer-motion";
 import clsx from "clsx";
 import type { Message } from "../../types";
+import { coerceTextContent } from "../../utils/text";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -44,15 +45,16 @@ export function MessageBubble({
   onShare: (messageId: string) => void;
 }) {
   const isAssistant = message.role === "assistant";
-  const isEmptyStreaming = isAssistant && isStreaming && !message.content;
+  const content = coerceTextContent(message.content);
+  const isEmptyStreaming = isAssistant && isStreaming && !content;
 
   function copyMessage() {
-    navigator.clipboard.writeText(message.content);
+    navigator.clipboard.writeText(content);
   }
 
   function speakMessage() {
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(message.content);
+    const utterance = new SpeechSynthesisUtterance(content);
     utterance.rate = 1;
     window.speechSynthesis.speak(utterance);
   }
@@ -73,7 +75,7 @@ export function MessageBubble({
           <ThinkingIndicator />
         ) : (
           <div className="prose prose-slate max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent">
-            <MarkdownMessage content={message.content} />
+            <MarkdownMessage content={content} />
             {isAssistant && isStreaming && <span className="typing-cursor" aria-hidden="true" />}
           </div>
         )}

@@ -88,8 +88,13 @@ Important environment variables:
 - `SECRET_KEY`: JWT signing secret
 - `SQLITE_PATH`: SQLite database path
 - `BACKEND_CORS_ORIGINS`: frontend origins allowed by FastAPI
+- `BACKEND_CORS_ORIGIN_REGEX`: optional regex for preview/custom frontend origins
 - `MAX_UPLOAD_MB`: max upload size for documents, images, and voice
 - `VITE_API_URL`: frontend API base URL. For mobile/public deployments, use a public HTTPS URL, not `localhost`.
+
+Authentication uses `Authorization: Bearer <jwt>` stored in browser localStorage. It does not require cookies, so SameSite/Secure cookie settings are not part of the login path.
+
+For Docker/Nginx same-origin deployments, build the frontend with `VITE_API_URL=/api/v1`; Nginx proxies `/api` to the backend service. For static hosting on `autoai.site.je`, leave `VITE_API_URL` blank or set it to the public HTTPS backend URL.
 
 ## Notes
 

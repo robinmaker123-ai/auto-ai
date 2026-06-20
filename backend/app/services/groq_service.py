@@ -62,6 +62,31 @@ class GroqService:
     def _groq_model_for_fallback(self, *, web_search: bool) -> str:
         return settings.GROQ_SEARCH_MODEL if web_search else settings.GROQ_MODEL
 
+    @classmethod
+    def _content_to_text(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.replace("[object Object]", "")
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            return "".join(cls._content_to_text(item) for item in value)
+        if isinstance(value, dict):
+            for key in ("text", "content", "delta", "message", "value", "output"):
+                if key in value:
+                    text = cls._content_to_text(value.get(key))
+                    if text:
+                        return text
+            return ""
+
+        for attr in ("text", "content", "delta", "message", "value", "output"):
+            if hasattr(value, attr):
+                text = cls._content_to_text(getattr(value, attr))
+                if text:
+                    return text
+        return ""
+
     def _client(self) -> Groq:
         api_key = settings.groq_api_key
         if not api_key:
@@ -215,13 +240,13 @@ class GroqService:
         )
         return headers
 
-    @staticmethod
-    def _bedrock_messages(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    @classmethod
+    def _bedrock_messages(cls, messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
         system_prompts: list[dict[str, str]] = []
         bedrock_messages: list[dict[str, Any]] = []
 
         for message in messages:
-            content = str(message.get("content") or "")
+            content = cls._content_to_text(message.get("content"))
             if not content:
                 continue
 
@@ -350,7 +375,7 @@ class GroqService:
             self._raise_openai_error(response.status_code, response.text)
 
         completion = response.json()
-        content = completion.get("choices", [{}])[0].get("message", {}).get("content") or ""
+        content = self._content_to_text(completion.get("choices", [{}])[0].get("message", {}).get("content"))
         return content, self.extract_usage(completion), model
 
     def _complete_bedrock_mantle(
@@ -376,7 +401,7 @@ class GroqService:
             self._raise_bedrock_error(response.status_code, response.text, auth_label="mantle_api_key")
 
         completion = response.json()
-        content = completion.get("choices", [{}])[0].get("message", {}).get("content") or ""
+        content = self._content_to_text(completion.get("choices", [{}])[0].get("message", {}).get("content"))
         return content, self.extract_usage(completion), model
 
     def _complete_bedrock_runtime(
@@ -408,7 +433,7 @@ class GroqService:
             if response.status_code < 400:
                 completion = response.json()
                 content_parts = completion.get("output", {}).get("message", {}).get("content", [])
-                content = "".join(part.get("text", "") for part in content_parts if isinstance(part, dict))
+                content = self._content_to_text(content_parts)
                 return content, self.extract_usage(completion), model
 
             last_error = (response.status_code, response.text, auth_label)
@@ -629,7 +654,7 @@ class GroqService:
             )
         except GroqError as exc:
             self._handle_groq_error(exc)
-        content = completion.choices[0].message.content or ""
+        content = self._content_to_text(completion.choices[0].message.content)
         return content, self.extract_usage(completion), model
 
     def _stream_groq(
@@ -727,7 +752,7 @@ class GroqService:
             )
         except GroqError as exc:
             self._handle_groq_error(exc)
-        return completion.choices[0].message.content or ""
+        return self._content_to_text(completion.choices[0].message.content)
 
     def transcribe_audio(self, audio_bytes: bytes, filename: str) -> str:
         suffix = Path(filename).suffix or ".webm"
@@ -755,17 +780,17 @@ class GroqService:
     def extract_stream_delta(chunk: Any) -> str:
         if isinstance(chunk, dict):
             if "bedrock_delta" in chunk:
-                return str(chunk.get("bedrock_delta") or "")
+                return GroqService._content_to_text(chunk.get("bedrock_delta"))
             choices = chunk.get("choices") or []
             if not choices:
                 return ""
             delta = choices[0].get("delta") or {}
-            return delta.get("content") or ""
+            return GroqService._content_to_text(delta.get("content"))
 
         if not getattr(chunk, "choices", None):
             return ""
         delta = getattr(chunk.choices[0], "delta", None)
-        return getattr(delta, "content", None) or ""
+        return GroqService._content_to_text(getattr(delta, "content", None))
 
     @staticmethod
     def _normalize_usage(usage: Any) -> dict[str, int]:
