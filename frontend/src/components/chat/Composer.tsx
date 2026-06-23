@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { FileText, Globe2, Image, Lightbulb, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
+import { FileText, Globe2, Lightbulb, Plus, SendHorizonal, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import type { DocumentItem, SearchMode } from "../../types";
@@ -260,43 +260,50 @@ export function Composer({
           )}
         </AnimatePresence>
 
-        <textarea
-          className="composer-textarea"
-          placeholder={
-            selectedDocuments.length
-              ? `Ask about ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? "s" : ""}`
-              : "Message Auto-AI"
-          }
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
+        <input
+          ref={fileInputRef}
+          className="hidden"
+          type="file"
+          multiple
+          accept=".pdf,.docx,.txt,image/png,image/jpeg,image/webp,image/gif"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            if (files.length) addFiles(files);
+            event.target.value = "";
           }}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              className="hidden"
-              type="file"
-              multiple
-              accept=".pdf,.docx,.txt,image/png,image/jpeg,image/webp,image/gif"
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                if (files.length) addFiles(files);
-                event.target.value = "";
-              }}
-            />
-            <button className="icon-button-dark" type="button" onClick={() => fileInputRef.current?.click()} title="Attach files">
-              <Paperclip size={17} />
+        <div className="composer-main-row">
+          <button className="composer-plus-button" type="button" onClick={() => fileInputRef.current?.click()} title="Attach files">
+            <Plus size={19} />
+          </button>
+          <textarea
+            className="composer-textarea"
+            placeholder={
+              selectedDocuments.length
+                ? `Ask about ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? "s" : ""}`
+                : "Ask anything"
+            }
+            rows={1}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <div className="composer-inline-actions">
+            <VoiceButton onTranscript={(text) => setDraft((current) => [current, text].filter(Boolean).join(" "))} />
+            <button className="send-button composer-send-round" disabled={!canSend} type="submit" title="Send message">
+              <SendHorizonal size={18} />
             </button>
-            <button className="icon-button-dark" type="button" onClick={() => fileInputRef.current?.click()} title="Attach image">
-              <Image size={17} />
-            </button>
+          </div>
+        </div>
+
+        <div className="composer-controls-row">
+          <div className="composer-tools">
             <label className={clsx("chip-dark", searchMode !== "off" && "chip-dark-active")} title="Search mode">
               <Globe2 size={15} />
               <select
@@ -346,13 +353,6 @@ export function Composer({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <VoiceButton onTranscript={(text) => setDraft((current) => [current, text].filter(Boolean).join(" "))} />
-            <button className="send-button" disabled={!canSend} type="submit" title="Send message">
-              <SendHorizonal size={18} />
-              <span>{sending ? "Sending" : "Send"}</span>
-            </button>
           </div>
         </div>
       </div>

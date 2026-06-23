@@ -200,21 +200,72 @@ button:disabled {
   box-shadow: 0 26px 80px rgba(8, 145, 178, 0.2);
 }
 
+.composer-main-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-plus-button {
+  display: grid;
+  height: 36px;
+  width: 36px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.composer-plus-button:hover {
+  border-color: rgba(103, 232, 249, 0.3);
+  background: rgba(103, 232, 249, 0.12);
+}
+
 .composer-textarea {
-  min-height: 96px;
+  min-height: 42px;
+  max-height: 140px;
   width: 100%;
   resize: none;
   border: 0;
   background: transparent;
   color: white;
   outline: none;
-  padding: 10px 8px 14px;
+  padding: 10px 4px;
   font-size: 15px;
-  line-height: 1.65;
+  line-height: 1.45;
 }
 
 .composer-textarea::placeholder {
   color: rgba(203, 213, 225, 0.55);
+}
+
+.composer-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-send-round {
+  height: 38px;
+  width: 38px;
+  border-radius: 999px;
+  padding: 0;
+}
+
+.composer-controls-row {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.composer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
 }
 
 .attachment-chip,
