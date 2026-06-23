@@ -1,18 +1,28 @@
+<<<<<<< HEAD
 # Auto-AI
 
-Auto-AI is a premium AI workspace built with React, TypeScript, Tailwind CSS, Framer Motion, GSAP, FastAPI, SQLite-ready persistence, JWT authentication, and selectable OpenAI, Groq, or Amazon Bedrock chat providers.
+Auto-AI is a ChatGPT-style AI assistant built with React, TypeScript, Tailwind CSS, FastAPI, SQLite, JWT authentication, and selectable OpenAI, Groq, or Amazon Bedrock chat providers.
 
 ## Features
 
-- Commercial landing page with animated product preview, feature sections, testimonials, pricing, FAQ, and footer
-- Glassmorphism chat workspace with streaming output, thinking animation, typing cursor, and smooth message transitions
-- Unified composer for text, PDF, DOCX, TXT, image upload, voice input, model selection, web search, reasoning, and send
-- Upload progress, drag and drop, previews, readable errors, document metadata, and selected-document context
-- Message actions: copy, reactions, regenerate, edit prompt, continue response, bookmark, share, and read aloud
-- Personal memory panel for saved preferences, project notes, adaptive profile scores, and memory deletion
-- Ultra Human Mode adaptive conversation layer with emotion, tone, memory, personality, relationship, and style engines
-- JWT login/register/logout, persistent chats and messages, admin dashboard, and Docker support
-- Web search through Groq Compound, image analysis through Groq vision, and speech-to-text through Groq audio
+- ChatGPT-style chat interface with sidebar history
+- Per-message OpenAI/Groq/Bedrock provider and model selection
+- Light and dark modes
+- Streaming OpenAI or Groq responses, with Bedrock responses returned through the same chat stream flow
+- Markdown rendering, syntax highlighting, and copyable code blocks
+- JWT login/register/logout
+- Persistent chats and messages
+- PDF, TXT, and DOCX upload with AI summaries
+- Chat with selected uploaded documents
+- Browser voice input with Groq speech-to-text
+- Browser text-to-speech for assistant messages
+- Ultra Human Mode adaptive conversation layer with emotion, tone, memory, personality, and relationship engines
+- User-owned memory APIs for inspectable, editable long-term personalization
+- Web search mode through Groq Compound
+- Image analysis through a configurable Groq vision model
+- Code generation, debugging, and explanation endpoint
+- Admin dashboard with usage and system stats
+- Docker support
 
 ## Requirements
 
@@ -28,7 +38,7 @@ Auto-AI is a premium AI workspace built with React, TypeScript, Tailwind CSS, Fr
 cp .env.example .env
 ```
 
-2. Set `AI_PROVIDER=groq` and `GROQ_API_KEY` in `.env`, or select OpenAI/Bedrock and configure `AUTO_AI_OPENAI_API_KEY` or `BEDROCK_API_KEY`.
+2. Set `AI_PROVIDER=bedrock` and `BEDROCK_API_KEY` in `.env`, or select OpenAI/Groq and configure `AUTO_AI_OPENAI_API_KEY` or `GROQ_API_KEY`.
 
 3. Start the backend:
 
@@ -65,6 +75,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Or from the `docker` folder:
+
+```bash
+cd docker
+docker compose up --build
+```
+
 Frontend: `http://localhost:5173`
 
 Backend health: `http://localhost:8000/api/v1/health`
@@ -82,22 +99,31 @@ Important environment variables:
 - `GROQ_VISION_MODEL`: Groq image analysis model
 - `GROQ_AUDIO_MODEL`: Groq transcription model
 - `BEDROCK_API_KEY`: Amazon Bedrock API key
-- `BEDROCK_REGION`: Amazon Bedrock runtime region, default `us-east-1`
+- `BEDROCK_REGION`: Amazon Bedrock runtime region, default `us-south-1`
 - `BEDROCK_MODEL`: Bedrock chat model, default `openai.gpt-oss-120b`
 - `BEDROCK_ENDPOINT_MODE`: Bedrock endpoint mode, `mantle`, `runtime`, or `auto`; default `mantle`
+- `BEDROCK_MANTLE_BASE_URL`: optional Bedrock Mantle base URL override
+- `BEDROCK_AUTH_MODE`: Bedrock auth mode, `auto`, `api_key`, or `aws`; default `auto`
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`: optional SigV4 fallback credentials for Bedrock
 - `SECRET_KEY`: JWT signing secret
 - `SQLITE_PATH`: SQLite database path
 - `BACKEND_CORS_ORIGINS`: frontend origins allowed by FastAPI
-- `BACKEND_CORS_ORIGIN_REGEX`: optional regex for preview/custom frontend origins
-- `MAX_UPLOAD_MB`: max upload size for documents, images, and voice
-- `VITE_API_URL`: frontend API base URL. For mobile/public deployments, use a public HTTPS URL, not `localhost`.
-
-Authentication uses `Authorization: Bearer <jwt>` stored in browser localStorage. It does not require cookies, so SameSite/Secure cookie settings are not part of the login path.
-
-For Docker/Nginx same-origin deployments, build the frontend with `VITE_API_URL=/api/v1`; Nginx proxies `/api` to the backend service. For static hosting on `autoai.site.je`, leave `VITE_API_URL` blank or set it to the public HTTPS backend URL.
 
 ## Notes
 
-SQLite is the active database for this build. Repository boundaries keep the persistence layer isolated so a MongoDB adapter can be added without changing route contracts.
+SQLite is the active database for the initial build. The backend keeps persistence isolated in repository classes so a MongoDB adapter can be added without changing route contracts.
 
 See `docs/human-mode.md` for the adaptive conversation architecture, database schema, APIs, prompts, and memory design.
+
+Provider endpoints used by this build:
+
+- OpenAI Chat Completions endpoint: `https://api.openai.com/v1/chat/completions`
+- Chat completions endpoint: `https://api.groq.com/openai/v1/chat/completions`
+- OpenAI-compatible Groq API base URL: `https://api.groq.com/openai/v1`
+- Amazon Bedrock Mantle Chat Completions endpoint: `https://bedrock-mantle.{region}.api.aws/v1/chat/completions`
+- Amazon Bedrock Converse endpoint: `https://bedrock-runtime.{region}.amazonaws.com/model/{modelId}/converse`
+
+Bedrock uses the Mantle Chat Completions endpoint by default because AWS recommends it for OpenAI-compatible chat. If the native runtime endpoint returns `Operation not allowed`, the key/role can read account model metadata but cannot invoke runtime models; enable Bedrock model invocation permissions such as `bedrock:InvokeModel`/Converse for the selected model and region or keep `BEDROCK_ENDPOINT_MODE=mantle`.
+=======
+# auto-ai
+>>>>>>> 63e51fc3686d62716b33dbfbaaf083425978e3fa

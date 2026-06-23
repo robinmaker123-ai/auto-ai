@@ -48,6 +48,15 @@ def create_app() -> FastAPI:
         with SessionLocal() as db:
             apk_service.sync_filesystem_release(db)
 
+    @app.get("/api/debug/apk")
+    def debug_apk():
+
+        files = [str(x) for x in Path(".").rglob("*.apk")]
+
+        return {
+            "apk_files": files
+        }        
+
     app.include_router(health.router)
     app.include_router(health.router, prefix=settings.API_V1_STR)
     app.include_router(auth.router, prefix=settings.API_V1_STR)
