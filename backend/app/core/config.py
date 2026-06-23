@@ -27,8 +27,6 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "https://autoai.site.je",
         "http://autoai.site.je",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
     ]
 
 
@@ -71,7 +69,19 @@ class Settings(BaseSettings):
     MAX_CONTEXT_MESSAGES: int = 24
     MAX_DOCUMENT_CONTEXT_CHARS: int = 24000
 
+    TAVILY_API_KEY: str | None = None
+    SERPER_API_KEY: str | None = None
+    SEARCH_CACHE_TTL_SECONDS: int = 60 * 30
+    SEARCH_MAX_RESULTS: int = 6
+    SEARCH_DEEP_MAX_RESULTS: int = 10
+    SEARCH_COUNTRY: str = "us"
+    SEARCH_LANGUAGE: str = "en"
+
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
+    APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
+    APK_FILENAME: str = "auto-ai.apk"
+    APK_DEFAULT_VERSION: str = "1.0.0"
+    APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
     ALLOWED_IMAGE_EXTENSIONS: set[str] = {".png", ".jpg", ".jpeg", ".webp", ".gif"}

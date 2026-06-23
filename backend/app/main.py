@@ -3,18 +3,17 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, ai, auth, chats, documents, health, human, voice
+from app.api.routes import admin, ai, auth, chats, documents, download, health, human, search, voice
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
-from app.db.session import init_db
+from app.db.session import SessionLocal, init_db
+from app.services.apk_service import apk_service
 
 
 def get_cors_origins() -> list[str]:
     default_origins = {
         "https://autoai.site.je",
         "http://autoai.site.je",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
     }
     configured_origins = {str(origin).rstrip("/") for origin in settings.BACKEND_CORS_ORIGINS}
     return sorted(default_origins | configured_origins)
@@ -42,7 +41,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def on_startup() -> None:
         Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+        Path(settings.APK_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
         init_db()
+        with SessionLocal() as db:
+            apk_service.sync_filesystem_release(db)
 
     app.include_router(health.router)
     app.include_router(health.router, prefix=settings.API_V1_STR)
@@ -52,6 +54,9 @@ def create_app() -> FastAPI:
     app.include_router(documents.router, prefix=settings.API_V1_STR)
     app.include_router(voice.router, prefix=settings.API_V1_STR)
     app.include_router(human.router, prefix=settings.API_V1_STR)
+    app.include_router(search.router, prefix=settings.API_V1_STR)
+    app.include_router(download.router, prefix="/api")
+    app.include_router(download.router, prefix=settings.API_V1_STR)
     app.include_router(admin.router, prefix=settings.API_V1_STR)
 
     return app

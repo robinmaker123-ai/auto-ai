@@ -1,11 +1,16 @@
 import type {
   AdminStats,
+  ApkRelease,
+  ApkStats,
   Chat,
   ChatListItem,
   ChatRequest,
   DocumentItem,
   HumanState,
   InteractionProfile,
+  SearchHistoryItem,
+  SearchMode,
+  SearchResultBundle,
   StreamEvent,
   TurnAnalysis,
   User,
@@ -20,7 +25,6 @@ declare global {
 }
 
 const PUBLIC_API_BASE_URL = "https://auto-ai-production-c510.up.railway.app/api/v1";
-const LOCAL_API_BASE_URL = "http://localhost:8000/api/v1";
 
 export type ApiErrorKind =
   | "network_unavailable"
@@ -97,10 +101,6 @@ function stripTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
-function isLocalHostname(hostname: string) {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
-}
-
 function normalizeApiUrl(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? stripTrailingSlash(trimmed) : "";
@@ -116,22 +116,20 @@ function resolveApiBaseUrl() {
   if (!isBrowser()) return configured || PUBLIC_API_BASE_URL;
 
   const pageUrl = window.location;
-  const localPage = isLocalHostname(pageUrl.hostname);
-  const fallbackUrl = localPage ? LOCAL_API_BASE_URL : PUBLIC_API_BASE_URL;
-  if (!configured) return fallbackUrl;
+  if (!configured) return PUBLIC_API_BASE_URL;
 
   try {
     const configuredUrl = new URL(configured, pageUrl.origin);
-    if (!localPage && isLocalHostname(configuredUrl.hostname)) return PUBLIC_API_BASE_URL;
-    if (!localPage && pageUrl.protocol === "https:" && configuredUrl.protocol === "http:") return PUBLIC_API_BASE_URL;
+    if (pageUrl.protocol === "https:" && configuredUrl.protocol === "http:") return PUBLIC_API_BASE_URL;
   } catch {
-    return fallbackUrl;
+    return PUBLIC_API_BASE_URL;
   }
 
   return configured;
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
+export const APK_DOWNLOAD_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, "/api").replace(/\/+$/, "") + "/download/apk";
 
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "detail" in payload) {
@@ -175,8 +173,6 @@ function getApiContext(url: string): ApiContext {
 
   try {
     const apiUrl = new URL(url, window.location.origin);
-    const localPage = isLocalHostname(window.location.hostname);
-    const localApi = isLocalHostname(apiUrl.hostname);
     return {
       apiUrl: apiUrl.toString(),
       apiOrigin: apiUrl.origin,
@@ -185,9 +181,9 @@ function getApiContext(url: string): ApiContext {
       pageOrigin: window.location.origin,
       pageProtocol: window.location.protocol,
       crossOrigin: apiUrl.origin !== window.location.origin,
-      localPage,
-      localApi,
-      localApiFromPublicPage: !localPage && localApi,
+      localPage: false,
+      localApi: false,
+      localApiFromPublicPage: false,
       mixedContent: window.location.protocol === "https:" && apiUrl.protocol === "http:",
       online: navigator.onLine,
       secureContext: window.isSecureContext,
@@ -202,7 +198,7 @@ function getApiContext(url: string): ApiContext {
       pageOrigin: window.location.origin,
       pageProtocol: window.location.protocol,
       crossOrigin: false,
-      localPage: isLocalHostname(window.location.hostname),
+      localPage: false,
       localApi: false,
       localApiFromPublicPage: false,
       mixedContent: false,
@@ -283,9 +279,6 @@ async function createConnectionError(input: string, originalError: unknown, meta
   if (context.online === false) {
     kind = "network_unavailable";
     message = "Network unavailable: your browser is offline or mobile data/Wi-Fi is not connected.";
-  } else if (context.localApiFromPublicPage) {
-    kind = "server_unreachable";
-    message = "Server unreachable: this public build is trying to call localhost, which only works on the laptop running the backend.";
   } else if (context.mixedContent) {
     kind = "ssl_certificate_issue";
     message = "SSL / mixed-content issue: the site is HTTPS but the API URL is HTTP. Use a public HTTPS API URL.";
@@ -520,6 +513,19 @@ export const api = {
     });
   },
 
+  runSearch: (token: string, payload: { query: string; mode?: ChatRequest["search_mode"] }) =>
+    apiFetch<SearchResultBundle>("/search", {
+      method: "POST",
+      token,
+      operation: "search.run",
+      body: JSON.stringify(payload)
+    }),
+  searchHistory: (token: string) => apiFetch<SearchHistoryItem[]>("/search/history", { token, operation: "search.history" }),
+
+  latestApk: () => apiFetch<ApkRelease>("/download/apk/latest", { operation: "download.apk.latest" }),
+  apkVersions: () => apiFetch<ApkRelease[]>("/download/apk/versions", { operation: "download.apk.versions" }),
+  apkStats: () => apiFetch<ApkStats>("/download/apk/stats", { operation: "download.apk.stats" }),
+
   adminStats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token, operation: "admin.stats" })
 };
 
@@ -582,6 +588,20 @@ function normalizeStreamEvent(payload: unknown): StreamEvent | null {
   const event = payload as Record<string, unknown>;
   if (event.type === "meta") {
     return { type: "meta", chat_id: coerceTextContent(event.chat_id) };
+  }
+  if (event.type === "searching") {
+    const rawMode = coerceTextContent(event.mode);
+    const mode: SearchMode = ["off", "auto", "web", "news", "research", "deep"].includes(rawMode)
+      ? (rawMode as SearchMode)
+      : "auto";
+    return {
+      type: "searching",
+      mode,
+      message: coerceTextContent(event.message) || "Searching the web..."
+    };
+  }
+  if (event.type === "sources" && event.search && typeof event.search === "object") {
+    return { type: "sources", search: event.search as SearchResultBundle };
   }
   if (event.type === "delta") {
     return { type: "delta", delta: coerceTextContent(event.delta) };

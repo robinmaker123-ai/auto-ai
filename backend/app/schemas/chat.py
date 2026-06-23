@@ -2,11 +2,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.search import SearchMode
+
 
 class MessageRead(BaseModel):
     id: str
     role: str
     content: str
+    message_metadata: dict | None = Field(default_factory=dict)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -47,6 +50,7 @@ class ChatRequest(BaseModel):
     provider: str | None = Field(default=None, pattern="^(openai|groq|bedrock)$")
     model: str | None = Field(default=None, max_length=120)
     web_search: bool = False
+    search_mode: SearchMode = "auto"
     reasoning: bool = False
     document_ids: list[str] = Field(default_factory=list)
 

@@ -12,7 +12,7 @@ import { ContextPanel } from "./ContextPanel";
 import { MessageBubble, type MessageReaction } from "./MessageBubble";
 
 const DEFAULT_OPTIONS: ComposerOptions = {
-  webSearch: false,
+  searchMode: "auto",
   reasoning: false,
   provider: "groq",
   model: "openai/gpt-oss-120b"
@@ -33,6 +33,7 @@ export function ChatPage() {
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [searchingMessageId, setSearchingMessageId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<string, MessageReaction>>({});
   const [bookmarks, setBookmarks] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -230,6 +231,7 @@ export function ChatPage() {
       id: crypto.randomUUID(),
       role: "assistant",
       content: "",
+      message_metadata: {},
       created_at: new Date().toISOString()
     };
     const optimisticMessages = [...messages, userMessage, assistantMessage];
@@ -252,19 +254,36 @@ export function ChatPage() {
           chat_id: chat.id,
           provider: options.provider,
           model: options.model,
-          web_search: options.webSearch,
+          web_search: options.searchMode !== "off" && options.searchMode !== "auto",
+          search_mode: options.searchMode,
           reasoning: options.reasoning,
           document_ids: selectedDocumentIds
         },
         (event) => {
+          if (event.type === "searching") {
+            setSearchingMessageId(assistantMessage.id);
+          }
+          if (event.type === "sources") {
+            setSearchingMessageId(null);
+            updateMessagesForChat(chat.id, (current) =>
+              current.map((message) =>
+                message.id === assistantMessage.id
+                  ? { ...message, message_metadata: { ...(message.message_metadata ?? {}), search: event.search } }
+                  : message
+              )
+            );
+          }
           if (event.type === "delta") {
+            setSearchingMessageId(null);
             enqueueDelta(chat.id, assistantMessage.id, event.delta);
           }
           if (event.type === "done") {
+            setSearchingMessageId(null);
             persistedAssistantId = event.message_id;
           }
           if (event.type === "error") {
             streamFailed = true;
+            setSearchingMessageId(null);
             updateMessagesForChat(chat.id, (current) =>
               current.map((message) =>
                 message.id === assistantMessage.id ? { ...message, content: event.detail } : message
@@ -300,6 +319,7 @@ export function ChatPage() {
     } finally {
       setStreaming(false);
       setStreamingMessageId(null);
+      setSearchingMessageId(null);
     }
   }
 
@@ -384,6 +404,7 @@ export function ChatPage() {
                   key={message.id}
                   message={message}
                   isStreaming={message.id === streamingMessageId}
+                  isSearchingWeb={message.id === searchingMessageId}
                   reaction={reactions[message.id]}
                   bookmarked={bookmarks[message.id]}
                   onReact={handleReact}

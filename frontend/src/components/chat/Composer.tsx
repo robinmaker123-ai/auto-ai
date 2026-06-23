@@ -2,13 +2,13 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { FileText, Globe2, Image, Lightbulb, Paperclip, SendHorizonal, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import type { DocumentItem } from "../../types";
+import type { DocumentItem, SearchMode } from "../../types";
 import { VoiceButton } from "./VoiceButton";
 
 type Provider = keyof typeof PROVIDER_MODELS;
 
 export type ComposerOptions = {
-  webSearch: boolean;
+  searchMode: SearchMode;
   reasoning: boolean;
   provider: Provider;
   model: string;
@@ -57,6 +57,14 @@ const PROVIDER_MODELS = {
 
 const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".txt"]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const SEARCH_MODES: Array<{ value: SearchMode; label: string }> = [
+  { value: "auto", label: "Auto search" },
+  { value: "off", label: "Search off" },
+  { value: "web", label: "Web" },
+  { value: "news", label: "News" },
+  { value: "research", label: "Research" },
+  { value: "deep", label: "Deep" }
+];
 
 function fileExtension(file: File) {
   const name = file.name.toLowerCase();
@@ -92,7 +100,7 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
   const [draft, setDraft] = useState("");
-  const [webSearch, setWebSearch] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [reasoning, setReasoning] = useState(false);
   const [provider, setProvider] = useState<Provider>("groq");
   const [model, setModel] = useState<string>(PROVIDER_MODELS.groq[0].value);
@@ -162,7 +170,7 @@ export function Composer({
     setImageAttachments([]);
     setSending(true);
     try {
-      await onSend(text, { webSearch, reasoning, provider, model }, files);
+      await onSend(text, { searchMode, reasoning, provider, model }, files);
     } finally {
       setSending(false);
     }
@@ -289,16 +297,21 @@ export function Composer({
             <button className="icon-button-dark" type="button" onClick={() => fileInputRef.current?.click()} title="Attach image">
               <Image size={17} />
             </button>
-            <button
-              type="button"
-              className={clsx("chip-dark", webSearch && "chip-dark-active")}
-              disabled={provider !== "groq"}
-              onClick={() => setWebSearch((value) => !value)}
-              title={provider === "groq" ? "Toggle web search" : "Web search requires Groq"}
-            >
+            <label className={clsx("chip-dark", searchMode !== "off" && "chip-dark-active")} title="Search mode">
               <Globe2 size={15} />
-              Search
-            </button>
+              <select
+                aria-label="Search mode"
+                className="search-mode-select"
+                value={searchMode}
+                onChange={(event) => setSearchMode(event.target.value as SearchMode)}
+              >
+                {SEARCH_MODES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               className={clsx("chip-dark", reasoning && "chip-dark-active")}
@@ -315,7 +328,6 @@ export function Composer({
                 const nextProvider = event.target.value as Provider;
                 setProvider(nextProvider);
                 setModel(PROVIDER_MODELS[nextProvider][0].value);
-                if (nextProvider !== "groq") setWebSearch(false);
               }}
             >
               <option value="openai">OpenAI</option>

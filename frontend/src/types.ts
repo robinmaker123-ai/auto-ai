@@ -6,10 +6,56 @@ export type User = {
   created_at: string;
 };
 
+export type SearchMode = "off" | "auto" | "web" | "news" | "research" | "deep";
+
+export type SearchSource = {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  source: string;
+  provider: string;
+  published_at?: string | null;
+  credibility_score: number;
+  credibility_label: string;
+};
+
+export type SearchResultBundle = {
+  run_id?: string | null;
+  query: string;
+  mode: SearchMode;
+  provider: string;
+  status: string;
+  cache_hit: boolean;
+  searched: boolean;
+  reason: string;
+  confidence_score: number;
+  summary: string;
+  sources: SearchSource[];
+  created_at?: string | null;
+};
+
+export type SearchHistoryItem = {
+  id: string;
+  query: string;
+  mode: SearchMode;
+  provider: string;
+  status: string;
+  cache_hit: boolean;
+  confidence_score: number;
+  summary: string;
+  results: SearchResultBundle;
+  created_at: string;
+};
+
 export type Message = {
   id: string;
   role: "system" | "user" | "assistant";
   content: string;
+  message_metadata?: {
+    search?: SearchResultBundle;
+    [key: string]: unknown;
+  };
   created_at: string;
 };
 
@@ -45,15 +91,39 @@ export type ChatRequest = {
   provider?: "openai" | "groq" | "bedrock";
   model?: string | null;
   web_search?: boolean;
+  search_mode?: SearchMode;
   reasoning?: boolean;
   document_ids?: string[];
 };
 
 export type StreamEvent =
   | { type: "meta"; chat_id: string }
+  | { type: "searching"; mode: SearchMode; message: string }
+  | { type: "sources"; search: SearchResultBundle }
   | { type: "delta"; delta: string }
   | { type: "done"; message_id: string }
   | { type: "error"; detail: string };
+
+export type ApkRelease = {
+  id: string;
+  version: string;
+  version_code: number;
+  filename: string;
+  file_size: number;
+  sha256: string;
+  min_android_version: string;
+  release_notes: string[];
+  changelog: string;
+  is_active: boolean;
+  created_at: string;
+  download_url: string;
+};
+
+export type ApkStats = {
+  latest: ApkRelease | null;
+  total_downloads: number;
+  downloads_by_version: Record<string, number>;
+};
 
 export type AdminStats = {
   user_count: number;

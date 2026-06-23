@@ -11,6 +11,7 @@ import { ChatProvider } from "./contexts/ChatContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const ChatPage = lazy(() => import("./components/chat/ChatPage").then((module) => ({ default: module.ChatPage })));
+const DownloadPage = lazy(() => import("./components/download/DownloadPage").then((module) => ({ default: module.DownloadPage })));
 const LandingPage = lazy(() => import("./components/landing/LandingPage").then((module) => ({ default: module.LandingPage })));
 
 function ProtectedRoute() {
@@ -43,6 +44,7 @@ export default function App() {
           <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/download" element={<DownloadPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route element={<ProtectedRoute />}>

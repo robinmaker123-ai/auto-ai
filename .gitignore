@@ -7,6 +7,8 @@ __pycache__/
 .mypy_cache/
 .venv/
 venv/
+.jdk/
+.android-signing/
 node_modules/
 dist/
 build/

@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "build:frontend": "npm --prefix frontend run build",
+    "android:sync": "npx cap sync android",
+    "android:release": "powershell -ExecutionPolicy Bypass -File scripts/build_android_apk.ps1"
+  },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
     "@capacitor/cli": "^8.4.1",

@@ -14,11 +14,14 @@ from app.models.api_usage import APIUsage
 from app.models.chat import Chat
 from app.models.document import Document
 from app.models.message import Message
+from app.models.search import SearchRun
 from app.models.user import User
 from app.schemas.chat import ChatRead, ChatRequest, ChatResponse, CodeAssistRequest, CodeAssistResponse
+from app.schemas.search import SearchResultBundle
 from app.services.document_service import document_service
 from app.services.groq_service import groq_service
 from app.services.human import AUTO_AI_HUMAN_MODE_PROMPT, meta_cognition_layer
+from app.services.web_search import SearchAgent, web_search_service
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -77,6 +80,7 @@ def build_messages(
     system_prompt: str | None,
     reasoning: bool,
     adaptive_context: str | None = None,
+    search_context: str | None = None,
 ) -> list[dict[str, str]]:
     base_prompt = (
         system_prompt
@@ -107,11 +111,47 @@ def build_messages(
                 ),
             }
         )
+    if search_context:
+        messages.append({"role": "system", "content": search_context})
 
     history = chat.messages[-settings.MAX_CONTEXT_MESSAGES :] if chat.messages else []
     messages.extend({"role": msg.role, "content": msg.content} for msg in history)
     messages.append({"role": "user", "content": user_message})
     return messages
+
+
+def search_payload(bundle: SearchResultBundle | None) -> dict:
+    if not bundle or not bundle.searched:
+        return {}
+    return {"search": bundle.model_dump(mode="json")}
+
+
+def attach_search_run_to_message(db: Session, bundle: SearchResultBundle | None, message_id: str) -> None:
+    if not bundle or not bundle.run_id:
+        return
+    run = db.get(SearchRun, bundle.run_id)
+    if run:
+        run.message_id = message_id
+
+
+def run_search_for_chat(
+    db: Session,
+    *,
+    current_user: User,
+    chat_id: str,
+    payload: ChatRequest,
+    message_id: str | None = None,
+) -> SearchResultBundle | None:
+    mode = SearchAgent.effective_mode(payload.search_mode, payload.web_search)
+    result = web_search_service.execute(
+        db,
+        user_id=current_user.id,
+        query=payload.message,
+        mode=mode,
+        chat_id=chat_id,
+        message_id=message_id,
+    )
+    return result if result.searched else None
 
 
 def record_usage(
@@ -149,6 +189,12 @@ def chat(
         user_message=payload.message,
         history=history,
     )
+    search_bundle = run_search_for_chat(
+        db,
+        current_user=current_user,
+        chat_id=chat_row.id,
+        payload=payload,
+    )
     messages = build_messages(
         chat_row,
         payload.message,
@@ -156,6 +202,7 @@ def chat(
         system_prompt=payload.system_prompt,
         reasoning=payload.reasoning,
         adaptive_context=prepared_context["prompt_context"],
+        search_context=web_search_service.build_model_context(search_bundle),
     )
 
     user_message = Message(chat_id=chat_row.id, role="user", content=payload.message)
@@ -165,18 +212,21 @@ def chat(
         messages,
         model=payload.model or chat_row.model,
         provider=payload.provider,
-        web_search=payload.web_search,
+        web_search=False,
     )
+    content = web_search_service.ensure_citations(content, search_bundle)
     assistant_message = Message(
         chat_id=chat_row.id,
         role="assistant",
         content=content,
         token_count=usage.get("completion_tokens", 0),
+        message_metadata=search_payload(search_bundle),
     )
     chat_row.model = payload.model or chat_row.model
     chat_row.updated_at = datetime.utcnow()
     db.add(assistant_message)
     db.flush()
+    attach_search_run_to_message(db, search_bundle, assistant_message.id)
     meta_cognition_layer.complete_turn(
         db,
         user_id=current_user.id,
@@ -219,25 +269,21 @@ def stream_chat(
     )
     user_message = Message(chat_id=chat_row.id, role="user", content=payload.message)
     db.add(user_message)
-    chat_row.model = payload.model or chat_row.model
+    model_name = payload.model or chat_row.model
+    chat_row.model = model_name
     chat_row.updated_at = datetime.utcnow()
     db.flush()
     user_message_id = user_message.id
     db.commit()
 
-    stream = groq_service.stream(
-        messages,
-        model=payload.model or chat_row.model,
-        provider=payload.provider,
-        web_search=payload.web_search,
-    )
     selected_model = groq_service.selected_model(
-        payload.model or chat_row.model,
+        model_name,
         provider=payload.provider,
-        web_search=payload.web_search,
+        web_search=False,
     )
     chat_id = chat_row.id
     user_id = current_user.id
+    search_mode = SearchAgent.effective_mode(payload.search_mode, payload.web_search)
 
     def event_generator():
         assistant_content: list[str] = []
@@ -245,6 +291,36 @@ def stream_chat(
         yield f"data: {json.dumps({'type': 'meta', 'chat_id': chat_id})}\n\n"
 
         try:
+            search_bundle: SearchResultBundle | None = None
+            should_search, _ = SearchAgent.should_search(payload.message, search_mode)
+            model_messages = messages
+            if should_search:
+                yield f"data: {json.dumps({'type': 'searching', 'mode': search_mode, 'message': 'Searching the web...'})}\n\n"
+                with SessionLocal() as search_db:
+                    search_bundle = web_search_service.execute(
+                        search_db,
+                        user_id=user_id,
+                        query=payload.message,
+                        mode=search_mode,
+                        chat_id=chat_id,
+                        message_id=user_message_id,
+                    )
+                    search_db.commit()
+                search_context = web_search_service.build_model_context(search_bundle)
+                if search_context:
+                    model_messages = [
+                        *messages[:-1],
+                        {"role": "system", "content": search_context},
+                        messages[-1],
+                    ]
+                yield f"data: {json.dumps({'type': 'sources', 'search': search_bundle.model_dump(mode='json')})}\n\n"
+
+            stream = groq_service.stream(
+                model_messages,
+                model=model_name,
+                provider=payload.provider,
+                web_search=False,
+            )
             for chunk in stream:
                 delta = groq_service.extract_stream_delta(chunk)
                 chunk_usage = groq_service.extract_usage(chunk)
@@ -254,18 +330,27 @@ def stream_chat(
                     assistant_content.append(delta)
                     yield f"data: {json.dumps({'type': 'delta', 'delta': delta})}\n\n"
 
+            final_content = web_search_service.ensure_citations("".join(assistant_content), search_bundle)
+            existing_content = "".join(assistant_content)
+            citation_delta = final_content[len(existing_content) :]
+            if citation_delta:
+                assistant_content.append(citation_delta)
+                yield f"data: {json.dumps({'type': 'delta', 'delta': citation_delta})}\n\n"
+
             with SessionLocal() as stream_db:
                 message = Message(
                     chat_id=chat_id,
                     role="assistant",
                     content="".join(assistant_content),
                     token_count=usage.get("completion_tokens", 0),
+                    message_metadata=search_payload(search_bundle),
                 )
                 chat_record = stream_db.get(Chat, chat_id)
                 if chat_record:
                     chat_record.updated_at = datetime.utcnow()
                 stream_db.add(message)
                 stream_db.flush()
+                attach_search_run_to_message(stream_db, search_bundle, message.id)
                 meta_cognition_layer.complete_turn(
                     stream_db,
                     user_id=user_id,

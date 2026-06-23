@@ -31,15 +31,18 @@ def ensure_runtime_schema() -> None:
 
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
-    if "documents" not in table_names:
-        return
-
-    document_columns = {column["name"] for column in inspector.get_columns("documents")}
     statements: list[str] = []
-    if "file_size" not in document_columns:
-        statements.append("ALTER TABLE documents ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0")
-    if "metadata" not in document_columns:
-        statements.append("ALTER TABLE documents ADD COLUMN metadata JSON")
+    if "documents" in table_names:
+        document_columns = {column["name"] for column in inspector.get_columns("documents")}
+        if "file_size" not in document_columns:
+            statements.append("ALTER TABLE documents ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0")
+        if "metadata" not in document_columns:
+            statements.append("ALTER TABLE documents ADD COLUMN metadata JSON")
+
+    if "messages" in table_names:
+        message_columns = {column["name"] for column in inspector.get_columns("messages")}
+        if "metadata" not in message_columns:
+            statements.append("ALTER TABLE messages ADD COLUMN metadata JSON")
 
     if not statements:
         return

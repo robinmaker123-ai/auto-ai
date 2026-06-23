@@ -1,18 +1,22 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
 import gsap from "gsap";
 import {
   ArrowRight,
   Brain,
   Check,
+  Download,
   FileText,
   Lock,
   MessageSquare,
   Mic,
+  Smartphone,
   Sparkles,
   Zap
 } from "lucide-react";
+import { APK_DOWNLOAD_URL } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 
 const features = [
@@ -38,6 +42,7 @@ const faqs = [
 export function LandingPage() {
   const { user } = useAuth();
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const qrUrl = typeof window === "undefined" ? APK_DOWNLOAD_URL : new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
 
   useEffect(() => {
     if (!stageRef.current) return;
@@ -71,6 +76,7 @@ export function LandingPage() {
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
           <a href="#features">Features</a>
+          <Link to="/download">Android</Link>
           <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
         </nav>
@@ -151,6 +157,41 @@ export function LandingPage() {
                 <p>{feature.body}</p>
               </motion.article>
             ))}
+          </div>
+        </section>
+
+        <section className="landing-section">
+          <div className="android-promo">
+            <div>
+              <p className="hero-kicker"><Smartphone size={14} /> Android App</p>
+              <h2>Install Auto-AI on Android</h2>
+              <p>
+                Use the same account, backend, memory, chat history, uploads, settings, and source-grounded answers from your phone.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <a className="btn-primary h-11 px-5" href={APK_DOWNLOAD_URL}>
+                  <Download size={17} />
+                  Download APK
+                </a>
+                <Link className="btn-secondary h-11 px-5" to="/download">
+                  App details
+                </Link>
+              </div>
+            </div>
+            <div className="android-preview-wrap">
+              <div className="mini-phone">
+                <div className="mini-phone-screen">
+                  <span className="mini-phone-top"><Sparkles size={14} /> Auto-AI</span>
+                  <span className="mini-bubble user">Find current sources.</span>
+                  <span className="mini-bubble ai">Searching the web...</span>
+                  <span className="mini-sources">S1 S2 S3 | 86%</span>
+                </div>
+              </div>
+              <div className="promo-qr">
+                <QRCodeSVG value={qrUrl} size={104} bgColor="transparent" fgColor="#e0f2fe" />
+                <span>Scan APK</span>
+              </div>
+            </div>
           </div>
         </section>
 

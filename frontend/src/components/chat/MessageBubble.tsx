@@ -7,6 +7,7 @@ import {
   Pencil,
   RefreshCw,
   Share2,
+  Search,
   ThumbsDown,
   ThumbsUp,
   User,
@@ -17,6 +18,7 @@ import clsx from "clsx";
 import type { Message } from "../../types";
 import { coerceTextContent } from "../../utils/text";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { SourceCards } from "./SourceCards";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export type MessageReaction = "up" | "down" | null;
@@ -24,6 +26,7 @@ export type MessageReaction = "up" | "down" | null;
 export function MessageBubble({
   message,
   isStreaming,
+  isSearchingWeb,
   reaction,
   bookmarked,
   onReact,
@@ -35,6 +38,7 @@ export function MessageBubble({
 }: {
   message: Message;
   isStreaming?: boolean;
+  isSearchingWeb?: boolean;
   reaction?: MessageReaction;
   bookmarked?: boolean;
   onReact: (messageId: string, reaction: MessageReaction) => void;
@@ -46,7 +50,8 @@ export function MessageBubble({
 }) {
   const isAssistant = message.role === "assistant";
   const content = coerceTextContent(message.content);
-  const isEmptyStreaming = isAssistant && isStreaming && !content;
+  const isEmptyStreaming = isAssistant && isStreaming && !content && !isSearchingWeb;
+  const search = message.message_metadata?.search;
 
   function copyMessage() {
     navigator.clipboard.writeText(content);
@@ -75,10 +80,17 @@ export function MessageBubble({
           <ThinkingIndicator />
         ) : (
           <div className="prose prose-slate max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent">
+            {isSearchingWeb && (
+              <div className="searching-web-indicator not-prose">
+                <Search size={15} className="animate-spin" />
+                Searching the web...
+              </div>
+            )}
             <MarkdownMessage content={content} />
             {isAssistant && isStreaming && <span className="typing-cursor" aria-hidden="true" />}
           </div>
         )}
+        {isAssistant && <SourceCards search={search} />}
 
         {!isEmptyStreaming && (
           <div className="message-actions">

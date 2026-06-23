@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream ->
+        localProperties.load(stream)
+    }
+}
+
+def signingValue = { String name ->
+    return System.getenv(name) ?: localProperties.getProperty(name) ?: project.findProperty(name)
+}
+def releaseKeystorePath = signingValue('AUTO_AI_ANDROID_KEYSTORE')
+def releaseKeystorePassword = signingValue('AUTO_AI_ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyAlias = signingValue('AUTO_AI_ANDROID_KEY_ALIAS')
+def releaseKeyPassword = signingValue('AUTO_AI_ANDROID_KEY_PASSWORD')
+def releaseSigningReady = releaseKeystorePath && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
+
 android {
     namespace = "com.autoai.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,9 +33,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseSigningReady) {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            if (releaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
