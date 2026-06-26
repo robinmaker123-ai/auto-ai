@@ -10,11 +10,11 @@ import {
   Lock,
   MessageSquare,
   Smartphone,
-  Sparkles,
   Zap
 } from "lucide-react";
 import { api, APK_DOWNLOAD_URL } from "../../api/client";
 import type { ApkRelease, ApkStats } from "../../types";
+import { LogoIcon } from "../brand/LogoIcon";
 
 const screenshots = [
   { title: "Memory chat", lines: ["Project context loaded", "Tone profile active", "Sources ready"] },
@@ -80,7 +80,7 @@ export function DownloadPage() {
     <div className="download-page">
       <header className="download-nav">
         <Link className="brand-mark" to="/">
-          <span className="brand-icon"><Sparkles size={18} /></span>
+          <span className="brand-icon"><LogoIcon /></span>
           Auto-AI
         </Link>
         <Link className="btn-secondary" to="/">
@@ -112,7 +112,7 @@ export function DownloadPage() {
             <div className="device-phone device-phone-main">
               <div className="device-speaker" />
               <div className="device-screen">
-                <div className="device-topline"><Bot size={15} /> Auto-AI</div>
+                <div className="device-topline"><LogoIcon className="app-logo app-logo-inline" /> Auto-AI</div>
                 <div className="device-message user">Search the latest model news.</div>
                 <div className="device-message ai">Searching the web...</div>
                 <div className="device-sources">

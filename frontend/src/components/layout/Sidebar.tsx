@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { Bot, MessageSquarePlus, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { Bot, MessageSquarePlus, Pencil, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { useChat } from "../../contexts/ChatContext";
+import { LogoIcon } from "../brand/LogoIcon";
 
 export function Sidebar() {
   const { chats, activeChat, createChat, deleteChat, loadingChats, openChat, updateChat } = useChat();
@@ -24,7 +25,7 @@ export function Sidebar() {
     <aside className="hidden w-72 shrink-0 border-r border-white/10 bg-slate-950/90 text-white backdrop-blur-xl md:flex md:flex-col">
       <div className="flex h-14 items-center gap-3 border-b border-white/10 px-4">
         <span className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-200/30 bg-cyan-200/15 text-cyan-100">
-          <Sparkles size={19} />
+          <LogoIcon />
         </span>
         <Link className="font-semibold" to="/chat">Auto-AI</Link>
       </div>

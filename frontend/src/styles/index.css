@@ -788,10 +788,24 @@ button:disabled {
   height: 34px;
   width: 34px;
   place-items: center;
-  border: 1px solid rgba(103, 232, 249, 0.28);
+  overflow: hidden;
+  border: 1px solid rgba(103, 232, 249, 0.32);
   border-radius: 8px;
-  background: rgba(103, 232, 249, 0.12);
-  color: #a5f3fc;
+  background: #070b0f;
+  box-shadow: 0 0 18px rgba(34, 245, 255, 0.18), 0 0 20px rgba(255, 178, 30, 0.12);
+}
+
+.app-logo {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.app-logo-inline {
+  height: 18px;
+  width: 18px;
+  border-radius: 5px;
 }
 
 .landing-hero {

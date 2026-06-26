@@ -1,7 +1,8 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { ArrowRight, Brain, Sparkles } from "lucide-react";
+import { ArrowRight, Brain } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { LogoIcon } from "../brand/LogoIcon";
 
 export function RegisterPage() {
   const { register, user } = useAuth();
@@ -29,7 +30,7 @@ export function RegisterPage() {
   return (
     <div className="auth-page">
       <Link className="brand-mark absolute left-5 top-5" to="/">
-        <span className="brand-icon"><Sparkles size={18} /></span>
+        <span className="brand-icon"><LogoIcon /></span>
         Auto-AI
       </Link>
       <section className="auth-visual">

@@ -9,15 +9,14 @@ import {
   Check,
   Download,
   FileText,
-  Lock,
   MessageSquare,
   Mic,
   Smartphone,
-  Sparkles,
   Zap
 } from "lucide-react";
 import { APK_DOWNLOAD_URL } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
+import { LogoIcon } from "../brand/LogoIcon";
 
 const features = [
   { icon: <Brain size={18} />, title: "Adaptive memory", body: "Preference, project, and style signals shape future replies without making the assistant feel scripted." },
@@ -71,7 +70,7 @@ export function LandingPage() {
     <div ref={stageRef} className="landing-page">
       <header className="landing-nav">
         <Link className="brand-mark" to="/">
-          <span className="brand-icon"><Sparkles size={18} /></span>
+          <span className="brand-icon"><LogoIcon /></span>
           Auto-AI
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
@@ -181,7 +180,7 @@ export function LandingPage() {
             <div className="android-preview-wrap">
               <div className="mini-phone">
                 <div className="mini-phone-screen">
-                  <span className="mini-phone-top"><Sparkles size={14} /> Auto-AI</span>
+                  <span className="mini-phone-top"><LogoIcon className="app-logo app-logo-inline" /> Auto-AI</span>
                   <span className="mini-bubble user">Find current sources.</span>
                   <span className="mini-bubble ai">Searching the web...</span>
                   <span className="mini-sources">S1 S2 S3 | 86%</span>
@@ -248,7 +247,7 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <span className="brand-mark"><span className="brand-icon"><Lock size={16} /></span> Auto-AI</span>
+        <span className="brand-mark"><span className="brand-icon"><LogoIcon /></span> Auto-AI</span>
         <p>Premium AI workspace for contextual, human-feeling conversations.</p>
       </footer>
     </div>
