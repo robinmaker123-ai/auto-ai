@@ -1,11 +1,18 @@
-import { Link } from "react-router-dom";
-import { LogOut, Moon, Shield, Sun, Zap } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { LogOut, Moon, Shield, Sun, Zap, Brain } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 
 export function Header() {
   const { logout, user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
+
+  const isChatWorkspace = location.pathname === "/chat" || location.pathname === "/";
+
+  const triggerToggleContext = () => {
+    window.dispatchEvent(new CustomEvent("toggle-context-panel"));
+  };
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-slate-950/70 px-4 text-white backdrop-blur-xl">
@@ -17,6 +24,16 @@ export function Header() {
         <p className="truncate text-xs text-slate-400">{user?.email}</p>
       </div>
       <div className="flex items-center gap-2">
+        {isChatWorkspace && (
+          <button
+            className="icon-button-dark xl:hidden"
+            onClick={triggerToggleContext}
+            title="Context & Memory"
+            type="button"
+          >
+            <Brain size={18} className="text-cyan-200" />
+          </button>
+        )}
         {user?.is_admin && (
           <Link className="icon-button-dark" to="/admin" title="Admin dashboard">
             <Shield size={18} />

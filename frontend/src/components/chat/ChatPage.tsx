@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Menu, MessageSquarePlus, Sparkles } from "lucide-react";
+import { Bot, Brain, Menu, MessageSquarePlus, Sparkles } from "lucide-react";
 import { api, streamChat } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -36,6 +36,7 @@ export function ChatPage() {
   const [searchingMessageId, setSearchingMessageId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<string, MessageReaction>>({});
   const [bookmarks, setBookmarks] = useState<Record<string, boolean>>({});
+  const [isContextOpen, setIsContextOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const deltaQueueRef = useRef<string[]>([]);
   const deltaTimerRef = useRef<number | null>(null);
@@ -46,6 +47,12 @@ export function ChatPage() {
   useEffect(() => {
     setMessages(activeChat?.messages ?? []);
   }, [activeChat]);
+
+  useEffect(() => {
+    const handleToggle = () => setIsContextOpen((prev) => !prev);
+    window.addEventListener("toggle-context-panel", handleToggle);
+    return () => window.removeEventListener("toggle-context-panel", handleToggle);
+  }, []);
 
   const refreshDocuments = useCallback(async () => {
     if (!token) return;
@@ -386,9 +393,14 @@ export function ChatPage() {
             <Menu size={18} />
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
-          <button className="icon-button-dark" onClick={() => setActiveChat(null)} title="New chat">
-            <MessageSquarePlus size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button className="icon-button-dark" onClick={() => setIsContextOpen(true)} title="Context & Memory">
+              <Brain size={18} className="text-cyan-200" />
+            </button>
+            <button className="icon-button-dark" onClick={() => setActiveChat(null)} title="New chat">
+              <MessageSquarePlus size={18} />
+            </button>
+          </div>
         </div>
 
         <div ref={scrollRef} className="chat-scroll">
@@ -468,6 +480,8 @@ export function ChatPage() {
         onDeleteDocument={handleDeleteDocument}
         loadingDocuments={documentsLoading}
         onRefreshDocuments={refreshDocuments}
+        isOpen={isContextOpen}
+        onClose={() => setIsContextOpen(false)}
       />
     </div>
   );
