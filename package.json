@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "build": "npm --prefix frontend run build",
     "build:frontend": "npm --prefix frontend run build",
     "android:sync": "npx cap sync android",
     "android:release": "powershell -ExecutionPolicy Bypass -File scripts/build_android_apk.ps1"

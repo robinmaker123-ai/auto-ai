@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Brain, LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
+import { LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useShell } from "../../contexts/ShellContext";
@@ -12,10 +12,6 @@ export function Header() {
   const location = useLocation();
 
   const isChatWorkspace = location.pathname === "/chat" || location.pathname === "/";
-
-  const triggerToggleContext = () => {
-    window.dispatchEvent(new CustomEvent("toggle-context-panel"));
-  };
 
   return (
     <header
@@ -32,19 +28,11 @@ export function Header() {
         <p className="truncate text-xs text-slate-400">{user?.email}</p>
       </div>
       <div className="flex items-center gap-2">
-        {isChatWorkspace && (
-          <button
-            className="icon-button-dark xl:hidden"
-            onClick={triggerToggleContext}
-            title="Context & Memory"
-            type="button"
-          >
-            <Brain size={18} className="text-cyan-200" />
+        {!isChatWorkspace && (
+          <button className="icon-button-dark" onClick={openSettings} title="Settings" aria-label="Open settings" type="button">
+            <Settings size={18} />
           </button>
         )}
-        <button className="icon-button-dark" onClick={openSettings} title="Settings" aria-label="Open settings" type="button">
-          <Settings size={18} />
-        </button>
         {user?.is_admin && (
           <Link className="icon-button-dark" to="/admin" title="Admin dashboard">
             <Shield size={18} />
