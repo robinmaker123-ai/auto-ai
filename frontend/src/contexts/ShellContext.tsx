@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 type ShellContextValue = {
   isSidebarOpen: boolean;
@@ -16,17 +16,31 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const openSidebar = useCallback(() => setIsSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
+  const toggleSidebar = useCallback(() => setIsSidebarOpen((current) => !current), []);
+  const openSettings = useCallback(() => setIsSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
+
   const value = useMemo<ShellContextValue>(
     () => ({
       isSidebarOpen,
       isSettingsOpen,
-      openSidebar: () => setIsSidebarOpen(true),
-      closeSidebar: () => setIsSidebarOpen(false),
-      toggleSidebar: () => setIsSidebarOpen((current) => !current),
-      openSettings: () => setIsSettingsOpen(true),
-      closeSettings: () => setIsSettingsOpen(false)
+      openSidebar,
+      closeSidebar,
+      toggleSidebar,
+      openSettings,
+      closeSettings
     }),
-    [isSettingsOpen, isSidebarOpen]
+    [
+      closeSettings,
+      closeSidebar,
+      isSettingsOpen,
+      isSidebarOpen,
+      openSettings,
+      openSidebar,
+      toggleSidebar
+    ]
   );
 
   return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
