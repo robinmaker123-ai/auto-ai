@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Box, FileText, Plus, SendHorizonal, Sparkles, Trash2, X } from "lucide-react";
+import { Box, FileImage, FileText, Image, Plus, SendHorizonal, Sparkles, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import type { DocumentItem, SearchMode } from "../../types";
@@ -104,6 +104,7 @@ export function Composer({
   onSend: (text: string, options: ComposerOptions, imageFiles: File[]) => Promise<void>;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
   const [draft, setDraft] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
@@ -189,6 +190,9 @@ export function Composer({
       return current.filter((attachment) => attachment.id !== id);
     });
   }
+
+  const openFilePicker = () => fileInputRef.current?.click();
+  const openImagePicker = () => imageInputRef.current?.click();
 
   return (
     <form
@@ -278,10 +282,25 @@ export function Composer({
             event.target.value = "";
           }}
         />
+        <input
+          ref={imageInputRef}
+          className="hidden"
+          type="file"
+          multiple
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            if (files.length) addFiles(files);
+            event.target.value = "";
+          }}
+        />
 
         <div className="composer-top-row">
-          <button className="composer-plus-button" type="button" onClick={() => fileInputRef.current?.click()} title="Attach files">
+          <button className="composer-plus-button" type="button" onClick={openFilePicker} title="Attach files">
             <Plus size={19} />
+          </button>
+          <button className="composer-plus-button hidden sm:grid" type="button" onClick={openImagePicker} title="Attach images">
+            <Image size={18} />
           </button>
           <div className={clsx("composer-pill", searchMode !== "off" && "composer-pill-active")} title="Search mode">
               <Sparkles size={18} />
@@ -317,6 +336,16 @@ export function Composer({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="composer-quick-actions sm:hidden">
+            <button className="composer-quick-chip" type="button" onClick={openImagePicker}>
+              <FileImage size={14} />
+              Image
+            </button>
+            <button className="composer-quick-chip" type="button" onClick={openFilePicker}>
+              <FileText size={14} />
+              File
+            </button>
           </div>
         </div>
 

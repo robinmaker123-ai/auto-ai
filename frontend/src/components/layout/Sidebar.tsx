@@ -2,18 +2,12 @@ import { Link, useLocation } from "react-router-dom";
 import { Bot, MessageSquarePlus, Pencil, Settings, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import { useChat } from "../../contexts/ChatContext";
+import { useShell } from "../../contexts/ShellContext";
 import { LogoIcon } from "../brand/LogoIcon";
 
-export function Sidebar({
-  mobileOpen,
-  onClose,
-  onOpenSettings
-}: {
-  mobileOpen: boolean;
-  onClose: () => void;
-  onOpenSettings: () => void;
-}) {
+export function Sidebar() {
   const { chats, activeChat, createChat, deleteChat, loadingChats, openChat, updateChat } = useChat();
+  const { isSidebarOpen, closeSidebar, openSettings } = useShell();
   const location = useLocation();
 
   async function renameChat(id: string, currentTitle: string) {
@@ -31,21 +25,21 @@ export function Sidebar({
 
   async function openExistingChat(id: string) {
     await openChat(id);
-    onClose();
+    closeSidebar();
   }
 
   async function createNewChat() {
     await createChat();
-    onClose();
+    closeSidebar();
   }
 
   return (
     <>
-      {mobileOpen && <div className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-sm md:hidden" onClick={onClose} />}
+      {isSidebarOpen && <div className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-sm md:hidden" onClick={closeSidebar} />}
       <aside
         className={clsx(
           "fixed inset-y-0 left-0 z-50 w-72 shrink-0 border-r border-white/10 bg-slate-950/95 text-white shadow-[18px_0_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-transform duration-300 md:static md:z-auto md:flex md:translate-x-0 md:flex-col",
-          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className="flex h-14 items-center justify-between gap-3 border-b border-white/10 px-4">
@@ -57,7 +51,7 @@ export function Sidebar({
               Auto-AI
             </Link>
           </div>
-          <button className="icon-button-dark md:hidden" onClick={onClose} title="Close menu" type="button">
+          <button className="icon-button-dark md:hidden" onClick={closeSidebar} title="Close menu" type="button">
             <X size={16} />
           </button>
         </div>
@@ -113,7 +107,7 @@ export function Sidebar({
           </div>
           <button
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white transition hover:border-cyan-200/30 hover:bg-cyan-200/10"
-            onClick={onOpenSettings}
+            onClick={openSettings}
             type="button"
           >
             <Settings size={16} />

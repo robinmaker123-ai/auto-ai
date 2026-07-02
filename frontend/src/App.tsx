@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -9,6 +9,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { SettingsModal } from "./components/layout/SettingsModal";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
+import { ShellProvider, useShell } from "./contexts/ShellContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const ChatPage = lazy(() => import("./components/chat/ChatPage").then((module) => ({ default: module.ChatPage })));
@@ -34,42 +35,28 @@ function ProtectedRoute() {
 
 function AppShell() {
   const location = useLocation();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const {
+    isSidebarOpen,
+    isSettingsOpen,
+    closeSidebar,
+    closeSettings,
+    openSettings
+  } = useShell();
 
   useEffect(() => {
-    setIsSidebarOpen(false);
-    setIsSettingsOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    const toggleSidebar = () => setIsSidebarOpen((current) => !current);
-    const openSettings = () => setIsSettingsOpen(true);
-    const closeSettings = () => setIsSettingsOpen(false);
-
-    window.addEventListener("toggle-sidebar", toggleSidebar);
-    window.addEventListener("open-settings", openSettings);
-    window.addEventListener("close-settings", closeSettings);
-    return () => {
-      window.removeEventListener("toggle-sidebar", toggleSidebar);
-      window.removeEventListener("open-settings", openSettings);
-      window.removeEventListener("close-settings", closeSettings);
-    };
-  }, []);
+    closeSidebar();
+    closeSettings();
+  }, [closeSettings, closeSidebar, location.pathname]);
 
   return (
     <ChatProvider>
       <div className="app-shell">
-        <Sidebar
-          mobileOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
+        <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col">
-          <Header onOpenSettings={() => setIsSettingsOpen(true)} />
+          <Header />
           <Outlet />
         </main>
-        <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        <SettingsModal open={isSettingsOpen} onClose={closeSettings} />
       </div>
     </ChatProvider>
   );
@@ -79,24 +66,26 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
-            <Routes>
-              <Route index element={<RootRedirect />} />
-              <Route path="/home" element={<LandingPage />} />
-              <Route path="/download" element={<DownloadPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route element={<ProtectedRoute />}>
-                <Route element={<AppShell />}>
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
+        <ShellProvider>
+          <BrowserRouter>
+            <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
+              <Routes>
+                <Route index element={<RootRedirect />} />
+                <Route path="/home" element={<LandingPage />} />
+                <Route path="/download" element={<DownloadPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<AppShell />}>
+                    <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/admin" element={<AdminDashboard />} />
+                  </Route>
                 </Route>
-              </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </ShellProvider>
       </AuthProvider>
     </ThemeProvider>
   );

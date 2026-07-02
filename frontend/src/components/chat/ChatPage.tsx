@@ -10,6 +10,7 @@ import { coerceTextContent } from "../../utils/text";
 import { Composer, type ComposerOptions, type UploadTask } from "./Composer";
 import { ContextPanel } from "./ContextPanel";
 import { MessageBubble, type MessageReaction } from "./MessageBubble";
+import { useShell } from "../../contexts/ShellContext";
 
 const DEFAULT_OPTIONS: ComposerOptions = {
   searchMode: "auto",
@@ -26,6 +27,7 @@ function splitDelta(delta: unknown) {
 export function ChatPage() {
   const { token } = useAuth();
   const { activeChat, createChat, openChat, refreshChats, setActiveChat } = useChat();
+  const { openSidebar, openSettings } = useShell();
   const [messages, setMessages] = useState<Message[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -391,7 +393,7 @@ export function ChatPage() {
         <div className="flex h-12 items-center justify-between border-b border-white/10 bg-slate-950/70 px-4 text-white backdrop-blur-xl md:hidden">
           <button
             className="icon-button-dark"
-            onClick={() => window.dispatchEvent(new CustomEvent("toggle-sidebar"))}
+            onClick={openSidebar}
             title="Menu"
             type="button"
           >
@@ -399,6 +401,9 @@ export function ChatPage() {
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
           <div className="flex items-center gap-1">
+            <button className="icon-button-dark" onClick={openSettings} title="Settings" type="button">
+              <Brain size={18} className="text-cyan-200" />
+            </button>
             <button className="icon-button-dark" onClick={() => setIsContextOpen(true)} title="Context & Memory">
               <Brain size={18} className="text-cyan-200" />
             </button>

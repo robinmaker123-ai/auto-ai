@@ -108,6 +108,12 @@ export function LandingPage() {
                 View workspace
               </Link>
             </div>
+            <div className="mobile-feature-strip">
+              <span><MessageSquare size={14} /> Streaming</span>
+              <span><Mic size={14} /> Voice</span>
+              <span><FileText size={14} /> Files</span>
+              <span><Zap size={14} /> Memory</span>
+            </div>
           </motion.div>
 
           <motion.div

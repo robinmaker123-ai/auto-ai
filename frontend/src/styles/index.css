@@ -208,6 +208,27 @@ button:disabled {
   padding: 4px 2px 0;
 }
 
+.composer-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.composer-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 12px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .composer-plus-button {
   display: grid;
   height: 48px;
@@ -954,6 +975,25 @@ button:disabled {
   flex: 1;
 }
 
+.mobile-feature-strip {
+  display: none;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.mobile-feature-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 8px 10px;
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .landing-section {
   padding: 62px clamp(18px, 5vw, 72px);
 }
@@ -1577,7 +1617,18 @@ button:disabled {
   }
 
   .preview-sidebar {
-    display: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 14px;
+  }
+
+  .preview-sidebar span {
+    height: 12px;
+    width: 40px;
   }
 
   .message-row {
@@ -1595,6 +1646,24 @@ button:disabled {
 
   .composer-shell {
     padding: 10px;
+  }
+
+  .composer-input-row {
+    gap: 10px;
+  }
+
+  .composer-textarea {
+    min-height: 62px;
+    font-size: 18px;
+  }
+
+  .composer-inline-actions {
+    gap: 10px;
+  }
+
+  .mobile-feature-strip {
+    display: flex;
+    flex-wrap: wrap;
   }
 
   .landing-footer {
@@ -1622,5 +1691,9 @@ button:disabled {
 
   .download-copy h1 {
     font-size: clamp(42px, 16vw, 68px);
+  }
+
+  .landing-nav nav {
+    display: none;
   }
 }

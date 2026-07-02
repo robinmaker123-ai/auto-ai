@@ -1,11 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import { Brain, LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useShell } from "../../contexts/ShellContext";
 import { useTheme } from "../../contexts/ThemeContext";
 
-export function Header({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Header() {
   const { logout, user } = useAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
+  const { openSettings } = useShell();
   const location = useLocation();
 
   const isChatWorkspace = location.pathname === "/chat" || location.pathname === "/";
@@ -34,7 +36,7 @@ export function Header({ onOpenSettings }: { onOpenSettings: () => void }) {
             <Brain size={18} className="text-cyan-200" />
           </button>
         )}
-        <button className="icon-button-dark" onClick={onOpenSettings} title="Settings" type="button">
+        <button className="icon-button-dark" onClick={openSettings} title="Settings" type="button">
           <Settings size={18} />
         </button>
         {user?.is_admin && (
