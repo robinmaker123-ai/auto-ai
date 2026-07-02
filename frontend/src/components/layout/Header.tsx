@@ -1,11 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { LogOut, Moon, Shield, Sun, Zap, Brain } from "lucide-react";
+import { Brain, LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 
-export function Header() {
+export function Header({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { logout, user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const location = useLocation();
 
   const isChatWorkspace = location.pathname === "/chat" || location.pathname === "/";
@@ -34,13 +34,16 @@ export function Header() {
             <Brain size={18} className="text-cyan-200" />
           </button>
         )}
+        <button className="icon-button-dark" onClick={onOpenSettings} title="Settings" type="button">
+          <Settings size={18} />
+        </button>
         {user?.is_admin && (
           <Link className="icon-button-dark" to="/admin" title="Admin dashboard">
             <Shield size={18} />
           </Link>
         )}
         <button className="icon-button-dark" onClick={toggleTheme} title="Toggle theme">
-          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          {resolvedTheme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <button className="icon-button-dark" onClick={logout} title="Logout">
           <LogOut size={18} />

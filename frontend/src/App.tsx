@@ -1,11 +1,12 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
 import { LoginPage } from "./components/auth/LoginPage";
 import { RegisterPage } from "./components/auth/RegisterPage";
 import { Header } from "./components/layout/Header";
 import { Sidebar } from "./components/layout/Sidebar";
+import { SettingsModal } from "./components/layout/SettingsModal";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -32,14 +33,43 @@ function ProtectedRoute() {
 }
 
 function AppShell() {
+  const location = useLocation();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+    setIsSettingsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const toggleSidebar = () => setIsSidebarOpen((current) => !current);
+    const openSettings = () => setIsSettingsOpen(true);
+    const closeSettings = () => setIsSettingsOpen(false);
+
+    window.addEventListener("toggle-sidebar", toggleSidebar);
+    window.addEventListener("open-settings", openSettings);
+    window.addEventListener("close-settings", closeSettings);
+    return () => {
+      window.removeEventListener("toggle-sidebar", toggleSidebar);
+      window.removeEventListener("open-settings", openSettings);
+      window.removeEventListener("close-settings", closeSettings);
+    };
+  }, []);
+
   return (
     <ChatProvider>
       <div className="app-shell">
-        <Sidebar />
+        <Sidebar
+          mobileOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
         <main className="flex min-w-0 flex-1 flex-col">
-          <Header />
+          <Header onOpenSettings={() => setIsSettingsOpen(true)} />
           <Outlet />
         </main>
+        <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       </div>
     </ChatProvider>
   );

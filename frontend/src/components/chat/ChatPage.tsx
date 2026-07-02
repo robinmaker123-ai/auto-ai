@@ -389,7 +389,12 @@ export function ChatPage() {
     <div className="chat-workspace">
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-12 items-center justify-between border-b border-white/10 bg-slate-950/70 px-4 text-white backdrop-blur-xl md:hidden">
-          <button className="icon-button-dark" title="Menu">
+          <button
+            className="icon-button-dark"
+            onClick={() => window.dispatchEvent(new CustomEvent("toggle-sidebar"))}
+            title="Menu"
+            type="button"
+          >
             <Menu size={18} />
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
