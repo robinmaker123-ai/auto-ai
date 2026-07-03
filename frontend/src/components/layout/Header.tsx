@@ -29,7 +29,14 @@ export function Header() {
         <p className="truncate text-xs text-slate-400">{user?.email}</p>
       </div>
       <div className="flex items-center gap-2">
-        <button className="icon-button-dark" onClick={openSettings} title="Settings" aria-label="Open settings" type="button">
+        <button
+          className="icon-button-dark"
+          onClick={openSettings}
+          onPointerUp={openSettings}
+          title="Settings"
+          aria-label="Open settings"
+          type="button"
+        >
           <Settings size={18} />
         </button>
         {user?.is_admin && (

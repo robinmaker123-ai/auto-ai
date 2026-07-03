@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -47,6 +48,14 @@ class ChatRequest(BaseModel):
     chat_id: str | None = None
     title: str | None = Field(default=None, max_length=160)
     system_prompt: str | None = Field(default=None, max_length=8000)
+    mode: Literal["normal", "deep_research", "multi_model"] = "normal"
+    providers: list[Literal["groq", "bedrock"]] = Field(default_factory=lambda: ["groq", "bedrock"])
+    max_models: int | None = Field(default=None, ge=1, le=12)
+    all_models: bool = False
+    timeout_seconds: int | None = Field(default=None, ge=5, le=120)
+    groq_models: list[str] = Field(default_factory=list)
+    bedrock_models: list[str] = Field(default_factory=list)
+    final_judge_model: str | None = Field(default=None, max_length=160)
     provider: str | None = Field(default=None, pattern="^(openai|groq|bedrock)$")
     model: str | None = Field(default=None, max_length=120)
     web_search: bool = False

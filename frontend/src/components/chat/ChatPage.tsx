@@ -15,6 +15,11 @@ import { useShell } from "../../contexts/ShellContext";
 
 const DEFAULT_OPTIONS: ComposerOptions = {
   searchMode: "auto",
+  chatMode: "normal",
+  researchProviders: ["groq", "bedrock"],
+  maxModels: 3,
+  allModels: false,
+  timeoutSeconds: 45,
   reasoning: false,
   provider: "groq",
   model: "openai/gpt-oss-120b"
@@ -266,6 +271,11 @@ export function ChatPage() {
           chat_id: chat.id,
           provider: options.provider,
           model: options.model,
+          mode: options.chatMode,
+          providers: options.chatMode === "normal" ? undefined : options.researchProviders,
+          max_models: options.chatMode === "normal" ? undefined : options.maxModels,
+          all_models: options.chatMode === "normal" ? undefined : options.allModels,
+          timeout_seconds: options.chatMode === "normal" ? undefined : options.timeoutSeconds,
           web_search: options.searchMode !== "off" && options.searchMode !== "auto",
           search_mode: options.searchMode,
           reasoning: options.reasoning,
@@ -418,7 +428,14 @@ export function ChatPage() {
             <Menu size={18} />
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
-          <button className="icon-button-dark" onClick={openSettings} title="Settings" aria-label="Open settings" type="button">
+          <button
+            className="icon-button-dark"
+            onClick={openSettings}
+            onPointerUp={openSettings}
+            title="Settings"
+            aria-label="Open settings"
+            type="button"
+          >
             <Settings size={18} className="text-cyan-200" />
           </button>
         </div>

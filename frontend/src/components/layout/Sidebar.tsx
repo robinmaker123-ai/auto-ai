@@ -132,6 +132,7 @@ export function Sidebar() {
           <button
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white transition hover:border-cyan-200/30 hover:bg-cyan-200/10"
             aria-label="Open account and settings"
+            onPointerUp={openSettings}
             onClick={() => {
               openSettings();
               closeSidebar();

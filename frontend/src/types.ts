@@ -7,6 +7,8 @@ export type User = {
 };
 
 export type SearchMode = "off" | "auto" | "web" | "news" | "research" | "deep";
+export type ChatMode = "normal" | "deep_research" | "multi_model";
+export type ResearchProvider = "groq" | "bedrock";
 
 export type SearchSource = {
   id: string;
@@ -88,6 +90,14 @@ export type ChatRequest = {
   chat_id?: string | null;
   title?: string | null;
   system_prompt?: string | null;
+  mode?: ChatMode;
+  providers?: ResearchProvider[];
+  max_models?: number;
+  all_models?: boolean;
+  timeout_seconds?: number;
+  groq_models?: string[];
+  bedrock_models?: string[];
+  final_judge_model?: string | null;
   provider?: "openai" | "groq" | "bedrock";
   model?: string | null;
   web_search?: boolean;

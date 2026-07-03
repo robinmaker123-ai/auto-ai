@@ -137,11 +137,12 @@ class GroqService:
         *,
         model: str,
         stream: bool = False,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            self._openai_token_parameter(model): settings.GROQ_MAX_TOKENS,
+            self._openai_token_parameter(model): max_tokens or settings.GROQ_MAX_TOKENS,
         }
         if stream:
             payload["stream"] = True
@@ -280,12 +281,13 @@ class GroqService:
         messages: list[dict[str, Any]],
         *,
         temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         bedrock_messages, system_prompts = self._bedrock_messages(messages)
         payload: dict[str, Any] = {
             "messages": bedrock_messages,
             "inferenceConfig": {
-                "maxTokens": settings.GROQ_MAX_TOKENS,
+                "maxTokens": max_tokens or settings.GROQ_MAX_TOKENS,
                 "temperature": settings.GROQ_TEMPERATURE if temperature is None else temperature,
             },
         }
@@ -299,11 +301,12 @@ class GroqService:
         *,
         model: str,
         stream: bool = False,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "max_tokens": settings.GROQ_MAX_TOKENS,
+            "max_tokens": max_tokens or settings.GROQ_MAX_TOKENS,
         }
         if stream:
             payload["stream"] = True
@@ -357,13 +360,15 @@ class GroqService:
         messages: list[dict[str, Any]],
         *,
         model: str,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
     ) -> tuple[str, dict[str, int], str]:
         try:
             response = httpx.post(
                 f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
                 headers=self._openai_headers(),
-                json=self._openai_payload(messages, model=model),
-                timeout=90,
+                json=self._openai_payload(messages, model=model, max_tokens=max_tokens),
+                timeout=request_timeout or 90,
             )
         except httpx.HTTPError as exc:
             raise HTTPException(
@@ -383,13 +388,15 @@ class GroqService:
         messages: list[dict[str, Any]],
         *,
         model: str,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
     ) -> tuple[str, dict[str, int], str]:
         try:
             response = httpx.post(
                 f"{settings.bedrock_mantle_base_url}/chat/completions",
                 headers=self._bedrock_mantle_headers(),
-                json=self._bedrock_mantle_payload(messages, model=model),
-                timeout=90,
+                json=self._bedrock_mantle_payload(messages, model=model, max_tokens=max_tokens),
+                timeout=request_timeout or 90,
             )
         except httpx.HTTPError as exc:
             raise HTTPException(
@@ -410,10 +417,12 @@ class GroqService:
         *,
         model: str,
         temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
     ) -> tuple[str, dict[str, int], str]:
         url, host, path = self._bedrock_endpoint_parts(model)
         body = json.dumps(
-            self._bedrock_payload(messages, temperature=temperature),
+            self._bedrock_payload(messages, temperature=temperature, max_tokens=max_tokens),
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
@@ -424,7 +433,7 @@ class GroqService:
                     url,
                     headers=headers,
                     content=body,
-                    timeout=90,
+                    timeout=request_timeout or 90,
                 )
             except httpx.HTTPError as exc:
                 last_error = (status.HTTP_502_BAD_GATEWAY, str(exc), auth_label)
@@ -457,6 +466,9 @@ class GroqService:
         model: str,
         temperature: float | None = None,
         web_search: bool = False,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
+        allow_fallback: bool = True,
     ) -> tuple[str, dict[str, int], str]:
         endpoint_mode = settings.bedrock_endpoint_mode.lower()
         attempts: list[Any] = []
@@ -466,16 +478,20 @@ class GroqService:
                     messages,
                     model=model,
                     temperature=temperature,
+                    max_tokens=max_tokens,
+                    request_timeout=request_timeout,
                 )
             )
-            attempts.append(lambda: self._complete_bedrock_mantle(messages, model=model))
+            attempts.append(lambda: self._complete_bedrock_mantle(messages, model=model, max_tokens=max_tokens, request_timeout=request_timeout))
         else:
-            attempts.append(lambda: self._complete_bedrock_mantle(messages, model=model))
+            attempts.append(lambda: self._complete_bedrock_mantle(messages, model=model, max_tokens=max_tokens, request_timeout=request_timeout))
             attempts.append(
                 lambda: self._complete_bedrock_runtime(
                     messages,
                     model=model,
                     temperature=temperature,
+                    max_tokens=max_tokens,
+                    request_timeout=request_timeout,
                 )
             )
 
@@ -486,11 +502,21 @@ class GroqService:
             except HTTPException as exc:
                 last_error = exc
 
+        if not allow_fallback:
+            if last_error:
+                raise last_error
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Bedrock request failed before fallback.",
+            )
+
         try:
             return self._complete_groq(
                 messages,
                 model=self._groq_model_for_fallback(web_search=web_search),
                 temperature=temperature,
+                max_tokens=max_tokens,
+                request_timeout=request_timeout,
             )
         except HTTPException as groq_error:
             if last_error:
@@ -644,13 +670,18 @@ class GroqService:
         *,
         model: str,
         temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
     ) -> tuple[str, dict[str, int], str]:
         try:
-            completion = self._client().chat.completions.create(
+            client: Any = self._client()
+            if request_timeout:
+                client = client.with_options(timeout=request_timeout)
+            completion = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=settings.GROQ_TEMPERATURE if temperature is None else temperature,
-                max_tokens=settings.GROQ_MAX_TOKENS,
+                max_tokens=max_tokens or settings.GROQ_MAX_TOKENS,
             )
         except GroqError as exc:
             self._handle_groq_error(exc)
@@ -683,6 +714,9 @@ class GroqService:
         provider: str | None = None,
         web_search: bool = False,
         temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_timeout: float | None = None,
+        allow_bedrock_fallback: bool = True,
     ) -> tuple[str, dict[str, int], str]:
         selected_provider = self.selected_provider(provider)
         selected_model = self.selected_model(
@@ -691,16 +725,30 @@ class GroqService:
             web_search=web_search,
         )
         if selected_provider == "openai":
-            return self._complete_openai(messages, model=selected_model)
+            return self._complete_openai(
+                messages,
+                model=selected_model,
+                max_tokens=max_tokens,
+                request_timeout=request_timeout,
+            )
         if selected_provider == "bedrock":
             return self._complete_bedrock(
                 messages,
                 model=selected_model,
                 temperature=temperature,
                 web_search=web_search,
+                max_tokens=max_tokens,
+                request_timeout=request_timeout,
+                allow_fallback=allow_bedrock_fallback,
             )
 
-        return self._complete_groq(messages, model=selected_model, temperature=temperature)
+        return self._complete_groq(
+            messages,
+            model=selected_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            request_timeout=request_timeout,
+        )
 
     def stream(
         self,

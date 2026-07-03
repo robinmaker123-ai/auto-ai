@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Box, FileText, Plus, SendHorizonal, Sparkles, Trash2, X } from "lucide-react";
+import { Box, BrainCircuit, Check, FileText, Plus, SendHorizonal, Sparkles, Timer, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
-import type { DocumentItem, SearchMode } from "../../types";
+import type { ChatMode, DocumentItem, ResearchProvider, SearchMode } from "../../types";
 import { PROVIDER_MODELS, useAppSettings, type AiProvider } from "../../contexts/AppSettingsContext";
 import { VoiceButton } from "./VoiceButton";
 
@@ -10,6 +10,11 @@ type Provider = AiProvider;
 
 export type ComposerOptions = {
   searchMode: SearchMode;
+  chatMode: ChatMode;
+  researchProviders: ResearchProvider[];
+  maxModels: number;
+  allModels: boolean;
+  timeoutSeconds: number;
   reasoning: boolean;
   provider: Provider;
   model: string;
@@ -38,6 +43,12 @@ const SEARCH_MODES: Array<{ value: SearchMode; label: string }> = [
   { value: "news", label: "News" },
   { value: "research", label: "Research" },
   { value: "deep", label: "Deep" }
+];
+
+const CHAT_MODES: Array<{ value: ChatMode; label: string }> = [
+  { value: "normal", label: "Normal" },
+  { value: "deep_research", label: "Deep Research" },
+  { value: "multi_model", label: "Multi-Model" }
 ];
 
 const PROVIDER_LABELS: Record<Provider, string> = {
@@ -82,6 +93,11 @@ export function Composer({
   const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
   const [draft, setDraft] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
+  const [chatMode, setChatMode] = useState<ChatMode>("normal");
+  const [researchProviders, setResearchProviders] = useState<ResearchProvider[]>(["groq", "bedrock"]);
+  const [maxModels, setMaxModels] = useState(3);
+  const [allModels, setAllModels] = useState(false);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(45);
   const [reasoning] = useState(false);
   const [provider, setProvider] = useState<Provider>(settings.defaultProvider);
   const [model, setModel] = useState<string>(settings.defaultModel);
@@ -156,7 +172,21 @@ export function Composer({
     setImageAttachments([]);
     setSending(true);
     try {
-      await onSend(text, { searchMode, reasoning, provider, model }, files);
+      await onSend(
+        text,
+        {
+          searchMode,
+          chatMode,
+          researchProviders,
+          maxModels,
+          allModels,
+          timeoutSeconds,
+          reasoning,
+          provider,
+          model
+        },
+        files
+      );
     } finally {
       setSending(false);
     }
@@ -171,6 +201,17 @@ export function Composer({
   }
 
   const openFilePicker = () => fileInputRef.current?.click();
+  const researchModeActive = chatMode !== "normal";
+
+  function toggleResearchProvider(nextProvider: ResearchProvider) {
+    setResearchProviders((current) => {
+      if (current.includes(nextProvider)) {
+        return current.length === 1 ? current : current.filter((item) => item !== nextProvider);
+      }
+      return [...current, nextProvider];
+    });
+  }
+
   return (
     <form
       className="composer-shell"
@@ -278,6 +319,21 @@ export function Composer({
                 ))}
               </select>
             </div>
+          <div className={clsx("composer-pill", researchModeActive && "composer-pill-active")} title="Answer mode">
+            <BrainCircuit size={18} />
+            <select
+              aria-label="Answer mode"
+              className="composer-pill-select"
+              value={chatMode}
+              onChange={(event) => setChatMode(event.target.value as ChatMode)}
+            >
+              {CHAT_MODES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <span className="composer-divider" />
           <div className="composer-pill" title="Model provider">
             <Box size={18} />
@@ -299,6 +355,79 @@ export function Composer({
             </select>
           </div>
         </div>
+
+        <AnimatePresence>
+          {researchModeActive && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 overflow-hidden"
+            >
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-cyan-200/15 bg-cyan-200/[0.06] px-3 py-2 text-xs text-cyan-50">
+                <span className="inline-flex items-center gap-1 font-semibold text-cyan-100">
+                  <BrainCircuit size={14} />
+                  Multi-model reasoning active
+                </span>
+                {(["groq", "bedrock"] as ResearchProvider[]).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={clsx(
+                      "inline-flex h-7 items-center gap-1 rounded-md border px-2 font-semibold transition",
+                      researchProviders.includes(item)
+                        ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-50"
+                        : "border-white/10 bg-white/5 text-slate-400"
+                    )}
+                    onClick={() => toggleResearchProvider(item)}
+                  >
+                    {researchProviders.includes(item) && <Check size={12} />}
+                    {item === "groq" ? "Groq" : "Bedrock"}
+                  </button>
+                ))}
+                <label className="inline-flex h-7 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2">
+                  <Box size={13} />
+                  <select
+                    className="border-0 bg-transparent text-xs font-semibold text-cyan-50 outline-none"
+                    value={maxModels}
+                    disabled={allModels}
+                    onChange={(event) => setMaxModels(Number(event.target.value))}
+                    aria-label="Max research models"
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((value) => (
+                      <option key={value} value={value}>
+                        Max {value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="inline-flex h-7 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={allModels}
+                    onChange={(event) => setAllModels(event.target.checked)}
+                  />
+                  All models
+                </label>
+                <label className="inline-flex h-7 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2">
+                  <Timer size={13} />
+                  <select
+                    className="border-0 bg-transparent text-xs font-semibold text-cyan-50 outline-none"
+                    value={timeoutSeconds}
+                    onChange={(event) => setTimeoutSeconds(Number(event.target.value))}
+                    aria-label="Research timeout"
+                  >
+                    {[20, 35, 45, 60].map((value) => (
+                      <option key={value} value={value}>
+                        {value}s
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="composer-input-row">
           <textarea

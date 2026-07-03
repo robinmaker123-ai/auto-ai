@@ -69,6 +69,26 @@ class Settings(BaseSettings):
     MAX_CONTEXT_MESSAGES: int = 24
     MAX_DOCUMENT_CONTEXT_CHARS: int = 24000
 
+    GROQ_RESEARCH_MODELS: list[str] = [
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
+        "deepseek-r1-distill-llama-70b",
+    ]
+    BEDROCK_RESEARCH_MODELS: list[str] = [
+        "amazon.nova-pro-v1:0",
+        "amazon.nova-lite-v1:0",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+    ]
+    DEEP_RESEARCH_DEFAULT_MAX_MODELS: int = 3
+    DEEP_RESEARCH_MAX_MODELS: int = 6
+    DEEP_RESEARCH_MAX_INPUT_TOKENS: int = 6000
+    DEEP_RESEARCH_MAX_OUTPUT_TOKENS: int = 1200
+    DEEP_RESEARCH_PER_MODEL_TIMEOUT_SECONDS: int = 45
+    DEEP_RESEARCH_RATE_LIMIT_PER_MINUTE: int = 8
+    DEEP_RESEARCH_GROQ_TPM_BUDGET: int = 7600
+    DEEP_RESEARCH_JUDGE_PROVIDER: str = "groq"
+    DEEP_RESEARCH_JUDGE_MODEL: str | None = None
+
     TAVILY_API_KEY: str | None = None
     SERPER_API_KEY: str | None = None
     SEARCH_CACHE_TTL_SECONDS: int = 60 * 30
@@ -95,6 +115,13 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, value: Any) -> list[str] | Any:
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("GROQ_RESEARCH_MODELS", "BEDROCK_RESEARCH_MODELS", mode="before")
+    @classmethod
+    def parse_model_list(cls, value: Any) -> list[str] | Any:
+        if isinstance(value, str):
+            return [model.strip() for model in value.split(",") if model.strip()]
         return value
 
     @field_validator("ADMIN_EMAILS", mode="before")

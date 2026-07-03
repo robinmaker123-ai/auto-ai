@@ -52,6 +52,10 @@ export function MessageBubble({
   const content = coerceTextContent(message.content);
   const isEmptyStreaming = isAssistant && isStreaming && !content && !isSearchingWeb;
   const search = message.message_metadata?.search;
+  const deepResearch = message.message_metadata?.deep_research as
+    | { models_consulted?: Array<{ provider?: string; model?: string }>; confidence?: string }
+    | undefined;
+  const consultedModels = deepResearch?.models_consulted ?? [];
 
   function copyMessage() {
     navigator.clipboard.writeText(content);
@@ -91,6 +95,15 @@ export function MessageBubble({
           </div>
         )}
         {isAssistant && <SourceCards search={search} />}
+        {isAssistant && consultedModels.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <span className="rounded-md border border-cyan-200/15 bg-cyan-200/10 px-2 py-1 font-semibold text-cyan-100">
+              Multi-model
+            </span>
+            <span>{consultedModels.length} models consulted</span>
+            {deepResearch?.confidence && <span>Confidence: {deepResearch.confidence}</span>}
+          </div>
+        )}
 
         {!isEmptyStreaming && (
           <div className="message-actions">
