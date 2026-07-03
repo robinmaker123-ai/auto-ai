@@ -130,7 +130,9 @@ function resolveApiBaseUrl() {
 
   const pageUrl = window.location;
   const localPage = pageUrl.hostname === "localhost" || pageUrl.hostname === "127.0.0.1";
-  if (!runtimeUrl && localPage) return "http://localhost:8000/api/v1";
+  if (!configured && localPage && pageUrl.protocol === "http:") {
+    return "http://localhost:8000/api/v1";
+  }
   if (!configured) return PUBLIC_API_BASE_URL;
 
   try {

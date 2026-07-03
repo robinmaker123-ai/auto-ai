@@ -1,8 +1,5 @@
-import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
-import gsap from "gsap";
 import {
   ArrowRight,
   Brain,
@@ -40,34 +37,10 @@ const faqs = [
 
 export function LandingPage() {
   const { user } = useAuth();
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const qrUrl = typeof window === "undefined" ? APK_DOWNLOAD_URL : new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
 
-  useEffect(() => {
-    if (!stageRef.current) return;
-    const context = gsap.context(() => {
-      gsap.to(".signal-line", {
-        backgroundPosition: "220% 0",
-        duration: 8,
-        ease: "none",
-        repeat: -1,
-        stagger: 0.35
-      });
-      gsap.to(".preview-pulse", {
-        opacity: 0.35,
-        scale: 1.04,
-        duration: 1.8,
-        yoyo: true,
-        repeat: -1,
-        ease: "sine.inOut",
-        stagger: 0.2
-      });
-    }, stageRef);
-    return () => context.revert();
-  }, []);
-
   return (
-    <div ref={stageRef} className="landing-page">
+    <div className="landing-page">
       <header className="landing-nav">
         <Link className="brand-mark" to="/">
           <span className="brand-icon"><LogoIcon /></span>
@@ -89,12 +62,7 @@ export function LandingPage() {
       <main>
         <section className="landing-hero">
           <div className="landing-lighting" aria-hidden="true" />
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55 }}
-            className="hero-copy"
-          >
+          <div className="hero-copy">
             <p className="hero-kicker"><Zap size={14} /> Ultra Premium AI Workspace</p>
             <h1>Auto-AI</h1>
             <p className="hero-subtitle">
@@ -115,12 +83,9 @@ export function LandingPage() {
               <span><FileText size={14} /> Files</span>
               <span><Zap size={14} /> Memory</span>
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 22, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.7, delay: 0.08 }}
+          <div
             className="product-preview"
             aria-label="Auto-AI product preview"
           >
@@ -143,7 +108,7 @@ export function LandingPage() {
                 <ArrowRight size={14} />
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
 
         <section id="features" className="landing-section">
@@ -153,15 +118,14 @@ export function LandingPage() {
           </div>
           <div className="feature-grid">
             {features.map((feature) => (
-              <motion.article
+              <article
                 key={feature.title}
-                whileHover={{ y: -4 }}
                 className="premium-feature"
               >
                 <span>{feature.icon}</span>
                 <h3>{feature.title}</h3>
                 <p>{feature.body}</p>
-              </motion.article>
+              </article>
             ))}
           </div>
         </section>

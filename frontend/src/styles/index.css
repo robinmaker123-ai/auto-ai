@@ -132,6 +132,38 @@ button:disabled {
   color: #dbeafe;
 }
 
+.static-landing-fallback {
+  padding: 48px 18px;
+  text-align: center;
+}
+
+.static-landing-fallback section {
+  max-width: 820px;
+}
+
+.static-landing-fallback p:first-child {
+  color: #a5f3fc;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.static-landing-fallback h1 {
+  margin-top: 12px;
+  color: #ffffff;
+  font-size: clamp(56px, 9vw, 124px);
+  line-height: 0.9;
+  font-weight: 800;
+}
+
+.static-landing-fallback p:last-child {
+  margin: 24px auto 0;
+  max-width: 640px;
+  color: #cbd5e1;
+  font-size: clamp(17px, 1.6vw, 22px);
+  line-height: 1.65;
+}
+
 .app-shell {
   position: relative;
   display: flex;
@@ -1060,6 +1092,13 @@ button:disabled {
   border-radius: 999px;
   background: linear-gradient(90deg, #67e8f9, #fda4af, #fcd34d, #86efac, #67e8f9);
   background-size: 220% 100%;
+  animation: signal-pan 8s linear infinite;
+}
+
+@keyframes signal-pan {
+  to {
+    background-position: 220% 0;
+  }
 }
 
 .preview-message {
@@ -1086,6 +1125,14 @@ button:disabled {
   inset: -1px;
   border: 1px solid rgba(103, 232, 249, 0.4);
   border-radius: 8px;
+  animation: preview-pulse 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes preview-pulse {
+  to {
+    opacity: 0.35;
+    transform: scale(1.04);
+  }
 }
 
 .preview-composer {
@@ -1165,6 +1212,14 @@ button:disabled {
 .testimonial-grid figure,
 .pricing-card {
   padding: 22px;
+}
+
+.premium-feature {
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.premium-feature:hover {
+  transform: translateY(-4px);
 }
 
 .premium-feature > span {

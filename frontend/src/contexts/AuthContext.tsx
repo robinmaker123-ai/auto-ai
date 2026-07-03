@@ -43,7 +43,7 @@ function removeStoredToken() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => readStoredToken());
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => Boolean(readStoredToken()));
 
   useEffect(() => {
     let active = true;
