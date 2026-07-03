@@ -69,6 +69,22 @@ class ChatResponse(BaseModel):
     assistant_message: MessageRead
 
 
+class ChatGenerationRead(BaseModel):
+    id: str
+    chat_id: str
+    user_message_id: str | None = None
+    assistant_message_id: str | None = None
+    status: str
+    error: str | None = None
+    user_message: MessageRead | None = None
+    assistant_message: MessageRead | None = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class ResearchProviderModels(BaseModel):
     enabled: bool
     models: list[str] = Field(default_factory=list)

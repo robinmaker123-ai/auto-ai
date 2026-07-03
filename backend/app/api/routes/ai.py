@@ -1,6 +1,8 @@
 import json
 import re
+import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -13,11 +15,20 @@ from app.core.config import settings
 from app.db.session import SessionLocal, get_db
 from app.models.api_usage import APIUsage
 from app.models.chat import Chat
+from app.models.chat_generation import ChatGeneration
 from app.models.document import Document
 from app.models.message import Message
 from app.models.search import SearchRun
 from app.models.user import User
-from app.schemas.chat import ChatRead, ChatRequest, ChatResponse, CodeAssistRequest, CodeAssistResponse, ResearchModelOptions
+from app.schemas.chat import (
+    ChatGenerationRead,
+    ChatRead,
+    ChatRequest,
+    ChatResponse,
+    CodeAssistRequest,
+    CodeAssistResponse,
+    ResearchModelOptions,
+)
 from app.schemas.search import SearchResultBundle
 from app.services.admin_control import enforce_plan_and_feature_access, record_usage_log
 from app.services.deep_research import deep_research_service
@@ -28,6 +39,7 @@ from app.services.web_search import SearchAgent, web_search_service
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+generation_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="chat-generation")
 
 
 DEFAULT_CHAT_SYSTEM_PROMPT = (
@@ -100,6 +112,7 @@ def build_messages(
     adaptive_context: str | None = None,
     search_context: str | None = None,
     runtime_identity: str | None = None,
+    history_messages: list[Message] | None = None,
 ) -> list[dict[str, str]]:
     base_prompt = (
         system_prompt
@@ -135,7 +148,8 @@ def build_messages(
     if search_context:
         messages.append({"role": "system", "content": search_context})
 
-    history = chat.messages[-settings.MAX_CONTEXT_MESSAGES :] if chat.messages else []
+    source_history = history_messages if history_messages is not None else (chat.messages or [])
+    history = source_history[-settings.MAX_CONTEXT_MESSAGES :]
     messages.extend({"role": msg.role, "content": msg.content} for msg in history)
     messages.append({"role": "user", "content": user_message})
     return messages
@@ -237,9 +251,521 @@ def runtime_identity_prompt(provider: str | None, model: str | None, *, mode: st
     )
 
 
+RUNNING_GENERATION_STATUSES = {"pending", "running", "cancel_requested"}
+TERMINAL_GENERATION_STATUSES = {"completed", "failed", "cancelled"}
+
+
+def generation_payload(db: Session, generation: ChatGeneration) -> dict:
+    user_message = db.get(Message, generation.user_message_id) if generation.user_message_id else None
+    assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
+    return {
+        "id": generation.id,
+        "chat_id": generation.chat_id,
+        "user_message_id": generation.user_message_id,
+        "assistant_message_id": generation.assistant_message_id,
+        "status": generation.status,
+        "error": generation.error,
+        "user_message": user_message,
+        "assistant_message": assistant_message,
+        "created_at": generation.created_at,
+        "updated_at": generation.updated_at,
+        "completed_at": generation.completed_at,
+    }
+
+
+def update_generation_message(
+    db: Session,
+    *,
+    generation: ChatGeneration,
+    assistant_message: Message,
+    content: str,
+    status_value: str,
+    metadata: dict | None = None,
+    error: str | None = None,
+    phase: str | None = None,
+    completed: bool = False,
+) -> None:
+    message_metadata = dict(assistant_message.message_metadata or {})
+    if metadata:
+        message_metadata.update(metadata)
+    stream_metadata = dict(message_metadata.get("streaming") or {})
+    stream_metadata.update(
+        {
+            "generation_id": generation.id,
+            "status": status_value,
+            "partial": status_value not in TERMINAL_GENERATION_STATUSES,
+        }
+    )
+    if phase:
+        stream_metadata["phase"] = phase
+    elif status_value in TERMINAL_GENERATION_STATUSES:
+        stream_metadata.pop("phase", None)
+    if error:
+        stream_metadata["error"] = error
+    else:
+        stream_metadata.pop("error", None)
+
+    message_metadata["streaming"] = stream_metadata
+    assistant_message.content = content
+    assistant_message.message_metadata = message_metadata
+    generation.status = status_value
+    generation.error = error
+    generation.updated_at = datetime.utcnow()
+    if completed:
+        generation.completed_at = datetime.utcnow()
+    chat_record = db.get(Chat, generation.chat_id)
+    if chat_record:
+        chat_record.updated_at = datetime.utcnow()
+    db.add_all([generation, assistant_message])
+
+
+def generation_cancel_requested(db: Session, generation: ChatGeneration) -> bool:
+    db.refresh(generation)
+    return generation.status == "cancel_requested"
+
+
+def complete_identity_generation(
+    db: Session,
+    *,
+    generation: ChatGeneration,
+    payload: ChatRequest,
+    user_message_id: str,
+    assistant_message: Message,
+    prepared_context: dict,
+    selected_provider: str,
+    selected_model: str,
+    selected_model_payload: dict,
+) -> None:
+    content = model_identity_answer(selected_provider, selected_model)
+    update_generation_message(
+        db,
+        generation=generation,
+        assistant_message=assistant_message,
+        content=content,
+        status_value="completed",
+        metadata=selected_model_payload,
+        completed=True,
+    )
+    meta_cognition_layer.complete_turn(
+        db,
+        user_id=generation.user_id,
+        chat_id=generation.chat_id,
+        user_message=payload.message,
+        prepared=prepared_context,
+        user_message_id=user_message_id,
+        assistant_message_id=assistant_message.id,
+    )
+    record_usage(db, generation.user_id, "chat_identity_background", selected_model, {})
+    db.commit()
+
+
+def run_chat_generation(generation_id: str) -> None:
+    with SessionLocal() as db:
+        generation = db.get(ChatGeneration, generation_id)
+        if not generation or generation.status not in RUNNING_GENERATION_STATUSES:
+            return
+
+        assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
+        if not assistant_message:
+            generation.status = "failed"
+            generation.error = "Assistant message was not found."
+            generation.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
+        try:
+            payload = ChatRequest.model_validate(generation.request_payload)
+            chat_row = db.scalar(
+                select(Chat)
+                .where(Chat.id == generation.chat_id, Chat.user_id == generation.user_id)
+                .options(selectinload(Chat.messages))
+            )
+            if not chat_row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+            history = [
+                message
+                for message in (chat_row.messages or [])
+                if message.id not in {generation.user_message_id, generation.assistant_message_id}
+            ]
+            prepared_context = meta_cognition_layer.prepare_context(
+                db,
+                user_id=generation.user_id,
+                chat_id=generation.chat_id,
+                user_message=payload.message,
+                history=history[-settings.MAX_CONTEXT_MESSAGES :],
+            )
+            documents = load_documents(db, generation.user_id, payload.document_ids)
+            selected_provider = groq_service.selected_provider(payload.provider)
+            selected_model = groq_service.selected_model(
+                payload.model or chat_row.model,
+                provider=selected_provider,
+                web_search=False,
+            )
+            selected_model_payload = model_payload(selected_provider, selected_model)
+            model_messages = build_messages(
+                chat_row,
+                payload.message,
+                documents,
+                system_prompt=payload.system_prompt,
+                reasoning=payload.reasoning,
+                adaptive_context=prepared_context["prompt_context"],
+                runtime_identity=runtime_identity_prompt(payload.provider, selected_model, mode=payload.mode),
+                history_messages=history,
+            )
+            chat_row.model = selected_model
+            generation.status = "running"
+            update_generation_message(
+                db,
+                generation=generation,
+                assistant_message=assistant_message,
+                content=assistant_message.content,
+                status_value="running",
+                metadata=selected_model_payload,
+            )
+            db.commit()
+
+            if payload.mode == "normal" and is_model_identity_question(payload.message):
+                complete_identity_generation(
+                    db,
+                    generation=generation,
+                    payload=payload,
+                    user_message_id=generation.user_message_id or "",
+                    assistant_message=assistant_message,
+                    prepared_context=prepared_context,
+                    selected_provider=selected_provider,
+                    selected_model=selected_model,
+                    selected_model_payload=selected_model_payload,
+                )
+                return
+
+            search_bundle: SearchResultBundle | None = None
+            search_mode = SearchAgent.effective_mode(payload.search_mode, payload.web_search)
+            should_search, _ = SearchAgent.should_search(payload.message, search_mode)
+            if should_search:
+                if generation_cancel_requested(db, generation):
+                    update_generation_message(
+                        db,
+                        generation=generation,
+                        assistant_message=assistant_message,
+                        content=assistant_message.content,
+                        status_value="cancelled",
+                        completed=True,
+                    )
+                    db.commit()
+                    return
+
+                update_generation_message(
+                    db,
+                    generation=generation,
+                    assistant_message=assistant_message,
+                    content=assistant_message.content,
+                    status_value="running",
+                    phase="searching",
+                )
+                db.commit()
+                search_bundle = web_search_service.execute(
+                    db,
+                    user_id=generation.user_id,
+                    query=payload.message,
+                    mode=search_mode,
+                    chat_id=generation.chat_id,
+                    message_id=generation.user_message_id,
+                )
+                search_context = web_search_service.build_model_context(search_bundle)
+                if search_context:
+                    model_messages = [
+                        *model_messages[:-1],
+                        {"role": "system", "content": search_context},
+                        model_messages[-1],
+                    ]
+                update_generation_message(
+                    db,
+                    generation=generation,
+                    assistant_message=assistant_message,
+                    content=assistant_message.content,
+                    status_value="running",
+                    metadata=search_payload(search_bundle),
+                )
+                db.commit()
+
+            if payload.mode in {"deep_research", "multi_model"}:
+                research_result = deep_research_service.run(
+                    model_messages,
+                    payload=payload,
+                    user_id=generation.user_id,
+                )
+                final_content = web_search_service.ensure_citations(research_result.content, search_bundle)
+                final_content = clean_model_output(final_content)
+                update_generation_message(
+                    db,
+                    generation=generation,
+                    assistant_message=assistant_message,
+                    content=final_content,
+                    status_value="completed",
+                    metadata={
+                        **search_payload(search_bundle),
+                        **deep_research_payload(research_result.metadata),
+                    },
+                    completed=True,
+                )
+                attach_search_run_to_message(db, search_bundle, assistant_message.id)
+                meta_cognition_layer.complete_turn(
+                    db,
+                    user_id=generation.user_id,
+                    chat_id=generation.chat_id,
+                    user_message=payload.message,
+                    prepared=prepared_context,
+                    user_message_id=generation.user_message_id or "",
+                    assistant_message_id=assistant_message.id,
+                )
+                record_usage(db, generation.user_id, "deep_research_background", research_result.selected_model, research_result.usage)
+                db.commit()
+                return
+
+            raw_content = ""
+            visible_content = assistant_message.content or ""
+            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            last_persist_at = time.monotonic()
+            last_cancel_check_at = 0.0
+            last_persisted_length = len(visible_content)
+
+            stream = groq_service.stream(
+                model_messages,
+                model=selected_model,
+                provider=selected_provider,
+                web_search=False,
+                allow_bedrock_fallback=selected_provider != "bedrock",
+            )
+            for chunk in stream:
+                now = time.monotonic()
+                if now - last_cancel_check_at >= 0.25:
+                    last_cancel_check_at = now
+                    if generation_cancel_requested(db, generation):
+                        update_generation_message(
+                            db,
+                            generation=generation,
+                            assistant_message=assistant_message,
+                            content=visible_content,
+                            status_value="cancelled",
+                            completed=True,
+                        )
+                        db.commit()
+                        return
+
+                delta = groq_service.extract_stream_delta(chunk)
+                chunk_usage = groq_service.extract_usage(chunk)
+                if chunk_usage["total_tokens"]:
+                    usage = chunk_usage
+                if not delta:
+                    continue
+
+                raw_content += delta
+                next_visible = clean_model_output(raw_content)
+                visible_delta = (
+                    next_visible[len(visible_content) :]
+                    if next_visible.startswith(visible_content)
+                    else next_visible
+                )
+                visible_content = next_visible
+                if not visible_delta:
+                    continue
+
+                if now - last_persist_at >= 0.2 or len(visible_content) - last_persisted_length >= 320:
+                    update_generation_message(
+                        db,
+                        generation=generation,
+                        assistant_message=assistant_message,
+                        content=visible_content,
+                        status_value="running",
+                        metadata={
+                            **search_payload(search_bundle),
+                            **selected_model_payload,
+                        },
+                    )
+                    db.commit()
+                    last_persist_at = now
+                    last_persisted_length = len(visible_content)
+
+            final_content = web_search_service.ensure_citations(clean_model_output(raw_content), search_bundle)
+            visible_content = final_content
+            update_generation_message(
+                db,
+                generation=generation,
+                assistant_message=assistant_message,
+                content=visible_content,
+                status_value="completed",
+                metadata={
+                    **search_payload(search_bundle),
+                    **selected_model_payload,
+                },
+                completed=True,
+            )
+            attach_search_run_to_message(db, search_bundle, assistant_message.id)
+            meta_cognition_layer.complete_turn(
+                db,
+                user_id=generation.user_id,
+                chat_id=generation.chat_id,
+                user_message=payload.message,
+                prepared=prepared_context,
+                user_message_id=generation.user_message_id or "",
+                assistant_message_id=assistant_message.id,
+            )
+            record_usage(db, generation.user_id, "chat_background", selected_model, usage)
+            db.commit()
+        except Exception as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            update_generation_message(
+                db,
+                generation=generation,
+                assistant_message=assistant_message,
+                content=assistant_message.content,
+                status_value="failed",
+                error=str(detail),
+                completed=True,
+            )
+            db.commit()
+
+
+def submit_chat_generation(generation_id: str) -> None:
+    generation_executor.submit(run_chat_generation, generation_id)
+
+
 @router.get("/research-models", response_model=ResearchModelOptions)
 def research_models(_: User = Depends(get_current_user)) -> dict:
     return deep_research_service.model_options()
+
+
+@router.post("/chat/generations", response_model=ChatGenerationRead, status_code=status.HTTP_202_ACCEPTED)
+def start_chat_generation(
+    payload: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    enforce_plan_and_feature_access(
+        db,
+        current_user,
+        mode=payload.mode,
+        web_search=payload.web_search,
+        search_mode=payload.search_mode,
+        max_models=payload.max_models,
+    )
+    chat_row = get_or_create_chat(db, current_user, payload)
+    selected_provider = groq_service.selected_provider(payload.provider)
+    selected_model = groq_service.selected_model(
+        payload.model or chat_row.model,
+        provider=selected_provider,
+        web_search=False,
+    )
+    selected_model_payload = model_payload(selected_provider, selected_model)
+
+    user_message = Message(chat_id=chat_row.id, role="user", content=payload.message)
+    assistant_message = Message(
+        chat_id=chat_row.id,
+        role="assistant",
+        content="",
+        message_metadata={
+            **selected_model_payload,
+            "streaming": {
+                "status": "pending",
+                "partial": True,
+            },
+        },
+    )
+    chat_row.model = selected_model
+    chat_row.updated_at = datetime.utcnow()
+    db.add_all([user_message, assistant_message])
+    db.flush()
+
+    generation = ChatGeneration(
+        user_id=current_user.id,
+        chat_id=chat_row.id,
+        user_message_id=user_message.id,
+        assistant_message_id=assistant_message.id,
+        status="pending",
+        request_payload=payload.model_dump(mode="json"),
+    )
+    db.add(generation)
+    db.flush()
+    assistant_metadata = dict(assistant_message.message_metadata or {})
+    assistant_metadata["streaming"] = {
+        "generation_id": generation.id,
+        "status": "pending",
+        "partial": True,
+    }
+    assistant_message.message_metadata = assistant_metadata
+    db.commit()
+    db.refresh(generation)
+    submit_chat_generation(generation.id)
+    return generation_payload(db, generation)
+
+
+@router.get("/chat/generations/active", response_model=list[ChatGenerationRead])
+def active_chat_generations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    generations = list(
+        db.scalars(
+            select(ChatGeneration)
+            .where(
+                ChatGeneration.user_id == current_user.id,
+                ChatGeneration.status.in_(RUNNING_GENERATION_STATUSES),
+            )
+            .order_by(ChatGeneration.updated_at.desc())
+        )
+    )
+    return [generation_payload(db, generation) for generation in generations]
+
+
+@router.get("/chat/generations/{generation_id}", response_model=ChatGenerationRead)
+def get_chat_generation(
+    generation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    generation = db.scalar(
+        select(ChatGeneration).where(
+            ChatGeneration.id == generation_id,
+            ChatGeneration.user_id == current_user.id,
+        )
+    )
+    if not generation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation not found")
+    return generation_payload(db, generation)
+
+
+@router.post("/chat/generations/{generation_id}/cancel", response_model=ChatGenerationRead)
+def cancel_chat_generation(
+    generation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    generation = db.scalar(
+        select(ChatGeneration).where(
+            ChatGeneration.id == generation_id,
+            ChatGeneration.user_id == current_user.id,
+        )
+    )
+    if not generation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation not found")
+    if generation.status in TERMINAL_GENERATION_STATUSES:
+        return generation_payload(db, generation)
+
+    generation.status = "cancel_requested"
+    generation.updated_at = datetime.utcnow()
+    assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
+    if assistant_message:
+        update_generation_message(
+            db,
+            generation=generation,
+            assistant_message=assistant_message,
+            content=assistant_message.content,
+            status_value="cancel_requested",
+        )
+    db.commit()
+    db.refresh(generation)
+    return generation_payload(db, generation)
 
 
 @router.post("/chat", response_model=ChatResponse)

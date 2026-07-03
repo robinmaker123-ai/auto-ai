@@ -139,6 +139,20 @@ export type StreamEvent =
   | { type: "done"; message_id: string }
   | { type: "error"; detail: string };
 
+export type ChatGeneration = {
+  id: string;
+  chat_id: string;
+  user_message_id?: string | null;
+  assistant_message_id?: string | null;
+  status: "pending" | "running" | "cancel_requested" | "completed" | "failed" | "cancelled" | string;
+  error?: string | null;
+  user_message?: Message | null;
+  assistant_message?: Message | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+};
+
 export type ApkRelease = {
   id: string;
   version: string;

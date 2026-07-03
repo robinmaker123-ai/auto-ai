@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Menu, Settings, Sparkles } from "lucide-react";
-import { api, streamChat } from "../../api/client";
+import { Bot, CornerDownRight, Menu, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
+import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
-import type { DocumentItem, Message, ResponseModelInfo } from "../../types";
+import type { ChatGeneration, DocumentItem, Message, ResponseModelInfo } from "../../types";
 import { coerceTextContent } from "../../utils/text";
 import { Composer, type ComposerOptions, type UploadTask } from "./Composer";
 import { ContextPanel } from "./ContextPanel";
@@ -28,12 +28,6 @@ const DEFAULT_OPTIONS: ComposerOptions = {
   provider: "groq",
   model: "openai/gpt-oss-120b"
 };
-
-function providerLabel(provider: ComposerOptions["provider"]) {
-  if (provider === "bedrock") return "AWS Bedrock";
-  if (provider === "openai") return "OpenAI";
-  return "Groq";
-}
 
 function splitDelta(delta: unknown) {
   const text = coerceTextContent(delta);
@@ -69,19 +63,42 @@ export function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [searchingMessageId, setSearchingMessageId] = useState<string | null>(null);
+  const [activeGeneration, setActiveGeneration] = useState<ChatGeneration | null>(null);
   const [reactions, setReactions] = useState<Record<string, MessageReaction>>({});
   const [bookmarks, setBookmarks] = useState<Record<string, boolean>>({});
   const [isContextOpen, setIsContextOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const activeChatRef = useRef(activeChat);
+  const tokenRef = useRef(token);
+  const activeGenerationRef = useRef<ChatGeneration | null>(null);
   const deltaQueueRef = useRef<string[]>([]);
   const deltaTimerRef = useRef<number | null>(null);
   const deltaTargetRef = useRef<{ chatId: string; messageId: string } | null>(null);
   const deltaResolversRef = useRef<Array<() => void>>([]);
+  const queuedContentRef = useRef<Record<string, string>>({});
+  const generationPollTimerRef = useRef<number | null>(null);
   const lastOptionsRef = useRef<ComposerOptions>(DEFAULT_OPTIONS);
 
   useEffect(() => {
     setMessages(activeChat?.messages ?? []);
   }, [activeChat]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
+    activeGenerationRef.current = activeGeneration;
+  }, [activeGeneration]);
 
   useEffect(() => {
     const handleToggle = () => setIsContextOpen((prev) => !prev);
@@ -105,9 +122,32 @@ export function ChatPage() {
 
   useEffect(() => {
     return () => {
-      if (deltaTimerRef.current) window.clearInterval(deltaTimerRef.current);
+      if (deltaTimerRef.current) window.cancelAnimationFrame(deltaTimerRef.current);
+      if (generationPollTimerRef.current) window.clearTimeout(generationPollTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    void recoverActiveGeneration();
+  }, [token]);
+
+  useEffect(() => {
+    const resume = () => {
+      if (document.hidden) return;
+      const generation = activeGenerationRef.current;
+      if (generation && isRunningGenerationStatus(generation.status)) {
+        startGenerationPolling(generation.id);
+        return;
+      }
+      void recoverActiveGeneration();
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("online", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", resume);
+    };
+  }, [token]);
 
   useAutoScroll(scrollRef, [messages, streamingMessageId]);
 
@@ -125,6 +165,13 @@ export function ChatPage() {
     () => (messages.length > 160 ? messages.slice(-160) : messages),
     [messages]
   );
+  const isGenerationRunning =
+    activeGeneration?.status === "pending" ||
+    activeGeneration?.status === "running" ||
+    activeGeneration?.status === "cancel_requested";
+  const visibleGeneration = activeGeneration?.chat_id === activeChat?.id ? activeGeneration : null;
+  const visibleStreamingMessageId =
+    visibleGeneration && isGenerationRunning ? visibleGeneration.assistant_message_id ?? null : null;
 
   function syncActiveChatMessages(chatId: string, nextMessages: Message[]) {
     setActiveChat((current) =>
@@ -134,11 +181,12 @@ export function ChatPage() {
 
   function updateMessagesForChat(
     chatId: string,
-    updater: (current: Message[]) => Message[]
+    updater: (current: Message[]) => Message[],
+    sync = false
   ) {
     setMessages((current) => {
       const nextMessages = updater(current);
-      syncActiveChatMessages(chatId, nextMessages);
+      if (sync) syncActiveChatMessages(chatId, nextMessages);
       return nextMessages;
     });
   }
@@ -154,9 +202,11 @@ export function ChatPage() {
     deltaQueueRef.current.push(...splitDelta(delta));
     if (deltaTimerRef.current) return;
 
-    deltaTimerRef.current = window.setInterval(() => {
-      const piece = deltaQueueRef.current.shift();
+    const drainQueue = () => {
+      deltaTimerRef.current = null;
       const target = deltaTargetRef.current;
+      const batchSize = document.hidden ? deltaQueueRef.current.length : 8;
+      const piece = deltaQueueRef.current.splice(0, Math.max(1, batchSize)).join("");
       if (piece && target) {
         updateMessagesForChat(target.chatId, (current) =>
           current.map((message) =>
@@ -166,12 +216,14 @@ export function ChatPage() {
           )
         );
       }
-      if (!deltaQueueRef.current.length && deltaTimerRef.current) {
-        window.clearInterval(deltaTimerRef.current);
-        deltaTimerRef.current = null;
+      if (deltaQueueRef.current.length) {
+        deltaTimerRef.current = window.requestAnimationFrame(drainQueue);
+      } else {
         resolveDeltaQueueIfIdle();
       }
-    }, 18);
+    };
+
+    deltaTimerRef.current = window.requestAnimationFrame(drainQueue);
   }
 
   function waitForDeltaDrain() {
@@ -192,6 +244,140 @@ export function ChatPage() {
       });
     } catch (error) {
       console.warn("[Auto-AI Notifications] Unable to show response notification.", error);
+    }
+  }
+
+  function isRunningGenerationStatus(status?: string | null) {
+    return status === "pending" || status === "running" || status === "cancel_requested";
+  }
+
+  function upsertMessage(current: Message[], incoming: Message) {
+    const index = current.findIndex((message) => message.id === incoming.id);
+    if (index < 0) return [...current, incoming];
+    if (current[index] === incoming) return current;
+    const next = current.slice();
+    next[index] = incoming;
+    return next;
+  }
+
+  function applyGenerationSnapshot(generation: ChatGeneration) {
+    const running = isRunningGenerationStatus(generation.status);
+    const assistant = generation.assistant_message ?? null;
+    const user = generation.user_message ?? null;
+
+    if (generation.status === "completed") {
+      setActiveGeneration(null);
+    } else {
+      setActiveGeneration(generation);
+    }
+    setStreaming(running);
+    setStreamingMessageId(running ? generation.assistant_message_id ?? null : null);
+
+    const streamMetadata = assistant?.message_metadata?.streaming as { phase?: string } | undefined;
+    const phase = streamMetadata?.phase;
+    setSearchingMessageId(running && phase === "searching" ? assistant?.id ?? null : null);
+
+    if (activeChatRef.current?.id !== generation.chat_id) return;
+
+    let queuedDelta = "";
+    if (assistant) {
+      const serverContent = coerceTextContent(assistant.content);
+      const existing = messagesRef.current.find((message) => message.id === assistant.id);
+      const displayedContent = coerceTextContent(existing?.content);
+      const queuedContent = queuedContentRef.current[assistant.id] ?? displayedContent;
+
+      if (running && existing && serverContent.startsWith(queuedContent)) {
+        queuedDelta = serverContent.slice(queuedContent.length);
+        queuedContentRef.current[assistant.id] = serverContent;
+      } else {
+        queuedContentRef.current[assistant.id] = serverContent;
+      }
+    }
+
+    updateMessagesForChat(generation.chat_id, (current) => {
+      let next = current;
+      if (user) next = upsertMessage(next, user);
+      if (assistant) {
+        const existing = next.find((message) => message.id === assistant.id);
+        const content = running && existing ? coerceTextContent(existing.content) : coerceTextContent(assistant.content);
+        next = upsertMessage(next, { ...assistant, content });
+      }
+      return next;
+    });
+
+    if (assistant && queuedDelta) {
+      enqueueDelta(generation.chat_id, assistant.id, queuedDelta);
+    }
+  }
+
+  async function pollGeneration(generationId: string) {
+    const authToken = tokenRef.current;
+    if (!authToken) return false;
+    try {
+      const generation = await api.getChatGeneration(authToken, generationId);
+      applyGenerationSnapshot(generation);
+      if (!isRunningGenerationStatus(generation.status)) {
+        await waitForDeltaDrain();
+        setStreaming(false);
+        setStreamingMessageId(null);
+        setSearchingMessageId(null);
+        if (activeChatRef.current?.id === generation.chat_id) {
+          await openChat(generation.chat_id);
+        }
+        await refreshChats();
+        if (generation.status === "completed") {
+          notifyResponseComplete(activeChatRef.current?.title ?? "Response ready");
+        }
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  }
+
+  function stopGenerationPolling() {
+    if (generationPollTimerRef.current) {
+      window.clearTimeout(generationPollTimerRef.current);
+      generationPollTimerRef.current = null;
+    }
+  }
+
+  function startGenerationPolling(generationId: string) {
+    stopGenerationPolling();
+    const tick = async () => {
+      const keepPolling = await pollGeneration(generationId);
+      if (!keepPolling) {
+        stopGenerationPolling();
+        return;
+      }
+      const retryDelay = navigator.onLine === false ? 1800 : document.hidden ? 1200 : 280;
+      generationPollTimerRef.current = window.setTimeout(tick, retryDelay);
+    };
+    void tick();
+  }
+
+  async function recoverActiveGeneration() {
+    if (!token) return;
+    try {
+      const generations = await api.activeChatGenerations(token);
+      const generation = generations[0];
+      if (!generation) {
+        if (activeGenerationRef.current && isRunningGenerationStatus(activeGenerationRef.current.status)) {
+          setStreaming(false);
+          setStreamingMessageId(null);
+          setSearchingMessageId(null);
+          setActiveGeneration(null);
+        }
+        if (activeChatRef.current?.id) {
+          await openChat(activeChatRef.current.id);
+        }
+        return;
+      }
+      applyGenerationSnapshot(generation);
+      startGenerationPolling(generation.id);
+    } catch (error) {
+      console.warn("[Auto-AI Streaming] Unable to recover active generation.", error);
     }
   }
 
@@ -277,47 +463,14 @@ export function ChatPage() {
     if (!token || streaming) return;
     lastOptionsRef.current = options;
     setStreaming(true);
-    const chat = activeChat ?? (await createChat(text.slice(0, 60) || "New chat"));
-    const displayText = imageFiles.length
-      ? [text, imageFiles.map((file) => `[Image: ${file.name}]`).join("\n")].join("\n\n")
-      : text;
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: displayText,
-      created_at: new Date().toISOString()
-    };
-    const assistantMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "",
-      message_metadata: {
-        model:
-          options.chatMode === "normal"
-            ? {
-                provider: options.provider,
-                provider_label: providerLabel(options.provider),
-                model: options.model
-              }
-            : undefined
-      },
-      created_at: new Date().toISOString()
-    };
-    const optimisticMessages = [...messages, userMessage, assistantMessage];
-    setMessages(optimisticMessages);
-    setStreamingMessageId(assistantMessage.id);
-    syncActiveChatMessages(chat.id, optimisticMessages);
-
     try {
+      const chat = activeChat ?? (await createChat(text.slice(0, 60) || "New chat"));
       const imageContext = await analyzeImages(text, imageFiles);
       const modelMessage = imageContext
         ? `${text}\n\nAttached image context extracted by Auto-AI vision:\n${imageContext}`
         : text;
-      let streamFailed = false;
-      let persistedAssistantId: string | null = null;
-      let bufferedResponse = "";
 
-      await streamChat(
+      const generation = await api.startChatGeneration(
         token,
         {
           message: modelMessage,
@@ -336,90 +489,16 @@ export function ChatPage() {
           search_mode: options.searchMode,
           reasoning: options.reasoning,
           document_ids: settings.memoryEnabled ? selectedDocumentIds : []
-        },
-        (event) => {
-          if (event.type === "meta" && event.model) {
-            updateMessagesForChat(chat.id, (current) =>
-              current.map((message) =>
-                message.id === assistantMessage.id
-                  ? { ...message, message_metadata: { ...(message.message_metadata ?? {}), model: event.model } }
-                  : message
-              )
-            );
-          }
-          if (event.type === "searching") {
-            setSearchingMessageId(assistantMessage.id);
-          }
-          if (event.type === "sources") {
-            setSearchingMessageId(null);
-            updateMessagesForChat(chat.id, (current) =>
-              current.map((message) =>
-                message.id === assistantMessage.id
-                  ? { ...message, message_metadata: { ...(message.message_metadata ?? {}), search: event.search } }
-                  : message
-              )
-            );
-          }
-          if (event.type === "delta") {
-            setSearchingMessageId(null);
-            if (settings.streamingEnabled) {
-              enqueueDelta(chat.id, assistantMessage.id, event.delta);
-            } else {
-              bufferedResponse += coerceTextContent(event.delta);
-            }
-          }
-          if (event.type === "done") {
-            setSearchingMessageId(null);
-            persistedAssistantId = event.message_id;
-            if (!settings.streamingEnabled) {
-              updateMessagesForChat(chat.id, (current) =>
-                current.map((message) =>
-                  message.id === assistantMessage.id
-                    ? { ...message, content: bufferedResponse }
-                    : message
-                )
-              );
-            }
-          }
-          if (event.type === "error") {
-            streamFailed = true;
-            setSearchingMessageId(null);
-            updateMessagesForChat(chat.id, (current) =>
-              current.map((message) =>
-                message.id === assistantMessage.id ? { ...message, content: event.detail } : message
-              )
-            );
-          }
         }
       );
 
-      if (settings.streamingEnabled) {
-        await waitForDeltaDrain();
-      }
-      const finalAssistantId = persistedAssistantId;
-      if (finalAssistantId) {
-        updateMessagesForChat(chat.id, (current) =>
-          current.map((message) =>
-            message.id === assistantMessage.id ? { ...message, id: finalAssistantId } : message
-          )
-        );
-      }
-      if (!streamFailed) {
-        await openChat(chat.id);
-        notifyResponseComplete(chat.title);
-      }
-      await refreshChats();
+      applyGenerationSnapshot(generation);
+      startGenerationPolling(generation.id);
+      void refreshChats().catch(() => undefined);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to stream response";
-      updateMessagesForChat(chat.id, (current) =>
-        current.map((message) =>
-          message.id === assistantMessage.id
-            ? { ...message, content: `AI request failed: ${detail}` }
-            : message
-        )
-      );
+      window.alert(`AI request failed: ${detail}`);
       await refreshChats();
-    } finally {
       setStreaming(false);
       setStreamingMessageId(null);
       setSearchingMessageId(null);
@@ -481,6 +560,32 @@ export function ChatPage() {
     );
   }
 
+  async function handleStopGeneration() {
+    if (!token || !activeGeneration || !isRunningGenerationStatus(activeGeneration.status)) return;
+    try {
+      const generation = await api.cancelChatGeneration(token, activeGeneration.id);
+      applyGenerationSnapshot(generation);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unable to stop generation";
+      window.alert(detail);
+    }
+  }
+
+  async function handleRetryGeneration() {
+    const assistantId = visibleGeneration?.assistant_message_id;
+    if (!assistantId || streaming) return;
+    await handleRegenerate(assistantId);
+  }
+
+  const generationStatusLabel =
+    visibleGeneration?.status === "cancel_requested"
+      ? "Stopping..."
+      : visibleGeneration?.status === "failed"
+        ? "Generation failed"
+        : visibleGeneration?.status === "cancelled"
+          ? "Generation stopped"
+          : "Generating...";
+
   return (
     <div className="chat-workspace">
       <section className="flex min-w-0 flex-1 flex-col">
@@ -517,7 +622,7 @@ export function ChatPage() {
                 <MessageBubble
                   key={message.id}
                   message={message}
-                  isStreaming={message.id === streamingMessageId}
+                  isStreaming={message.id === visibleStreamingMessageId}
                   isSearchingWeb={message.id === searchingMessageId}
                   reaction={reactions[message.id]}
                   bookmarked={bookmarks[message.id]}
@@ -562,6 +667,30 @@ export function ChatPage() {
             )}
           </AnimatePresence>
         </div>
+
+        {visibleGeneration && (
+          <div className="generation-status-bar">
+            <span className="generation-dot" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{generationStatusLabel}</span>
+            {isGenerationRunning ? (
+              <button className="generation-action" onClick={handleStopGeneration} type="button">
+                <Square size={14} />
+                Stop
+              </button>
+            ) : (
+              <>
+                <button className="generation-action" onClick={handleRetryGeneration} type="button">
+                  <RefreshCw size={14} />
+                  Retry
+                </button>
+                <button className="generation-action" onClick={handleContinue} type="button">
+                  <CornerDownRight size={14} />
+                  Continue
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         <Composer
           disabled={streaming}

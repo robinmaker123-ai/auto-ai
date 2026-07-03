@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import {
   Bookmark,
   BookmarkCheck,
@@ -31,7 +32,7 @@ function stripThinkBlocks(value: string) {
   return value.replace(THINK_BLOCK_PATTERN, "").replace(OPEN_THINK_BLOCK_PATTERN, "").trim();
 }
 
-export function MessageBubble({
+function MessageBubbleComponent({
   message,
   isStreaming,
   isSearchingWeb,
@@ -60,7 +61,10 @@ export function MessageBubble({
 }) {
   const isAssistant = message.role === "assistant";
   const rawContent = coerceTextContent(message.content);
-  const content = isAssistant ? stripThinkBlocks(rawContent) : rawContent;
+  const content = useMemo(
+    () => (isAssistant ? stripThinkBlocks(rawContent) : rawContent),
+    [isAssistant, rawContent]
+  );
   const isEmptyStreaming = isAssistant && isStreaming && !content && !isSearchingWeb;
   const search = message.message_metadata?.search;
   const responseModel = message.message_metadata?.model ?? fallbackModel ?? undefined;
@@ -85,7 +89,6 @@ export function MessageBubble({
 
   return (
     <motion.article
-      layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24 }}
@@ -105,7 +108,11 @@ export function MessageBubble({
                 Searching the web...
               </div>
             )}
-            <MarkdownMessage content={content} />
+            {isAssistant && isStreaming ? (
+              <div className="streaming-plain-text">{content}</div>
+            ) : (
+              <MarkdownMessage content={content} />
+            )}
             {isAssistant && isStreaming && <span className="typing-cursor" aria-hidden="true" />}
           </div>
         )}
@@ -174,3 +181,14 @@ export function MessageBubble({
     </motion.article>
   );
 }
+
+export const MessageBubble = memo(MessageBubbleComponent, (previous, next) => {
+  return (
+    previous.message === next.message &&
+    previous.isStreaming === next.isStreaming &&
+    previous.isSearchingWeb === next.isSearchingWeb &&
+    previous.reaction === next.reaction &&
+    previous.bookmarked === next.bookmarked &&
+    previous.fallbackModel === next.fallbackModel
+  );
+});

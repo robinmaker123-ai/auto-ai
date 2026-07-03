@@ -57,6 +57,13 @@ def ensure_runtime_schema() -> None:
         if "metadata" not in message_columns:
             statements.append("ALTER TABLE messages ADD COLUMN metadata JSON")
 
+    if "chat_generations" in table_names:
+        generation_columns = {column["name"] for column in inspector.get_columns("chat_generations")}
+        if "error" not in generation_columns:
+            statements.append("ALTER TABLE chat_generations ADD COLUMN error TEXT")
+        if "completed_at" not in generation_columns:
+            statements.append("ALTER TABLE chat_generations ADD COLUMN completed_at DATETIME")
+
     if not statements and not ensure_mobile_index:
         return
 

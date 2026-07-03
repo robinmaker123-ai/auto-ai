@@ -12,6 +12,7 @@ import type {
   ApkRelease,
   ApkStats,
   Chat,
+  ChatGeneration,
   ChatListItem,
   ChatRequest,
   DocumentItem,
@@ -550,6 +551,29 @@ export const api = {
   apkStats: () => apiFetch<ApkStats>("/download/apk/stats", { operation: "download.apk.stats" }),
 
   researchModels: (token: string) => apiFetch<ResearchModelOptions>("/ai/research-models", { token, operation: "ai.researchModels" }),
+  startChatGeneration: (token: string, payload: ChatRequest) =>
+    apiFetch<ChatGeneration>("/ai/chat/generations", {
+      method: "POST",
+      token,
+      operation: "ai.chat.generations.start",
+      body: JSON.stringify(payload)
+    }),
+  activeChatGenerations: (token: string) =>
+    apiFetch<ChatGeneration[]>("/ai/chat/generations/active", {
+      token,
+      operation: "ai.chat.generations.active"
+    }),
+  getChatGeneration: (token: string, generationId: string) =>
+    apiFetch<ChatGeneration>(`/ai/chat/generations/${generationId}`, {
+      token,
+      operation: "ai.chat.generations.get"
+    }),
+  cancelChatGeneration: (token: string, generationId: string) =>
+    apiFetch<ChatGeneration>(`/ai/chat/generations/${generationId}/cancel`, {
+      method: "POST",
+      token,
+      operation: "ai.chat.generations.cancel"
+    }),
 
   adminStats: (token: string) => apiFetch<AdminStats>("/admin/stats", { token, operation: "admin.stats" }),
   adminUsers: (token: string, params: { search?: string; role?: string; status?: string } = {}) => {

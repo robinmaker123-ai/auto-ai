@@ -222,6 +222,46 @@ button:disabled {
   scrollbar-color: rgba(103, 232, 249, 0.45) transparent;
 }
 
+.generation-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  margin: 0 auto;
+  width: min(920px, calc(100% - 28px));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.82rem;
+}
+
+.generation-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #67e8f9;
+  box-shadow: 0 0 16px rgba(103, 232, 249, 0.8);
+}
+
+.generation-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0 10px;
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.generation-action:hover {
+  border-color: rgba(103, 232, 249, 0.35);
+  background: rgba(103, 232, 249, 0.12);
+}
+
 .composer-shell {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, rgba(2, 6, 23, 0.1), rgba(2, 6, 23, 0.82));
@@ -644,6 +684,12 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.streaming-plain-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
 }
 
 .message-actions {
