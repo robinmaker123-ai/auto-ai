@@ -4,51 +4,8 @@ import { ArrowRight, Check, CreditCard, ExternalLink, Loader2 } from "lucide-rea
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
+import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
 import { LogoIcon } from "../brand/LogoIcon";
-
-type RazorpaySuccessResponse = {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-};
-
-type RazorpayFailureResponse = {
-  error?: {
-    description?: string;
-    reason?: string;
-  };
-};
-
-type RazorpayOptions = {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  prefill: {
-    name?: string;
-    email?: string;
-  };
-  theme: {
-    color: string;
-  };
-  modal: {
-    ondismiss: () => void;
-  };
-  handler: (response: RazorpaySuccessResponse) => void;
-};
-
-type RazorpayCheckout = {
-  open: () => void;
-  on: (event: "payment.failed", handler: (response: RazorpayFailureResponse) => void) => void;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayOptions) => RazorpayCheckout;
-  }
-}
 
 type Plan = {
   id: PricingPlanName;
@@ -127,8 +84,10 @@ export function PricingPage() {
         order_id: order.order_id,
         prefill: {
           name: user.name,
-          email: user.email
+          email: user.email,
+          contact: user.mobile ?? undefined
         },
+        ...RAZORPAY_UPI_FIRST_OPTIONS,
         theme: {
           color: "#22d3ee"
         },

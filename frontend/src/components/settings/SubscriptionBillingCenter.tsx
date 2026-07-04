@@ -15,50 +15,7 @@ import {
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentHistoryItem, PromoCodeResponse } from "../../types";
-
-type RazorpaySuccessResponse = {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-};
-
-type RazorpayFailureResponse = {
-  error?: {
-    description?: string;
-    reason?: string;
-  };
-};
-
-type RazorpayOptions = {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  prefill: {
-    name?: string;
-    email?: string;
-  };
-  theme: {
-    color: string;
-  };
-  modal: {
-    ondismiss: () => void;
-  };
-  handler: (response: RazorpaySuccessResponse) => void;
-};
-
-type RazorpayCheckout = {
-  open: () => void;
-  on: (event: "payment.failed", handler: (response: RazorpayFailureResponse) => void) => void;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayOptions) => RazorpayCheckout;
-  }
-}
+import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
 
 const paidPlans = new Set(["pro", "premium", "ultra"]);
 
@@ -139,7 +96,8 @@ export function SubscriptionBillingCenter() {
         name: "Auto-AI",
         description: `${plan.label} plan`,
         order_id: order.order_id,
-        prefill: { name: user.name, email: user.email },
+        prefill: { name: user.name, email: user.email, contact: user.mobile ?? undefined },
+        ...RAZORPAY_UPI_FIRST_OPTIONS,
         theme: { color: "#22d3ee" },
         modal: {
           ondismiss: () => {
