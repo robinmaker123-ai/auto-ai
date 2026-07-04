@@ -419,12 +419,6 @@ export const api = {
       operation: "auth.login",
       body: JSON.stringify(payload)
     }),
-  adminLogin: (payload: { email: string; password: string }) =>
-    apiFetch<{ access_token: string; token_type: string; user: User }>("/auth/admin-login", {
-      method: "POST",
-      operation: "auth.adminLogin",
-      body: JSON.stringify(payload)
-    }),
   me: (token: string) => apiFetch<User>("/auth/me", { token, operation: "auth.me" }),
 
   listChats: (token: string) => apiFetch<ChatListItem[]>("/chats", { token, operation: "chats.list" }),

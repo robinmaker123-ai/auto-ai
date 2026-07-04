@@ -7,6 +7,7 @@ from app.api.routes import admin, ai, auth, chats, documents, download, health, 
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
 from app.db.session import SessionLocal, init_db
+from app.services.admin_seed import create_admin_from_env
 from app.services.apk_service import apk_service
 
 
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
         Path(settings.APK_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
         init_db()
         with SessionLocal() as db:
+            create_admin_from_env(db)
             apk_service.sync_filesystem_release(db)
 
 

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ApiClientError, api } from "../api/client";
+import { api } from "../api/client";
 import type { User } from "../types";
 
 type AuthContextValue = {
@@ -89,15 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       adminLogin: async (email, password) => {
         const credentials = { email: email.trim().toLowerCase(), password };
-        let session: Awaited<ReturnType<typeof api.adminLogin>>;
-        try {
-          session = await api.adminLogin(credentials);
-        } catch (error) {
-          if (!(error instanceof ApiClientError) || error.status !== 404) {
-            throw error;
-          }
-          session = await api.login(credentials);
-        }
+        const session = await api.login(credentials);
         if (!["admin", "super_admin"].includes(session.user.role)) {
           throw new Error("Only admin accounts can access the admin dashboard.");
         }

@@ -1,9 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import AnyHttpUrl, Field, field_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic import AnyHttpUrl, EmailStr, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -108,7 +108,9 @@ class Settings(BaseSettings):
     ALLOWED_AUDIO_EXTENSIONS: set[str] = {".flac", ".mp3", ".m4a", ".mpeg", ".mpga", ".ogg", ".wav", ".webm"}
 
     RATE_LIMIT_PER_MINUTE: int = 90
-    ADMIN_EMAILS: Annotated[set[str], NoDecode] = set()
+    ADMIN_EMAIL: EmailStr | None = None
+    ADMIN_PASSWORD: SecretStr | None = Field(default=None, min_length=8, max_length=128)
+    ADMIN_NAME: str | None = Field(default=None, min_length=2, max_length=120)
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
@@ -122,13 +124,6 @@ class Settings(BaseSettings):
     def parse_model_list(cls, value: Any) -> list[str] | Any:
         if isinstance(value, str):
             return [model.strip() for model in value.split(",") if model.strip()]
-        return value
-
-    @field_validator("ADMIN_EMAILS", mode="before")
-    @classmethod
-    def parse_admin_emails(cls, value: Any) -> set[str] | Any:
-        if isinstance(value, str):
-            return {email.strip().lower() for email in value.split(",") if email.strip()}
         return value
 
     @property

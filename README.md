@@ -37,7 +37,7 @@ Auto-AI is a ChatGPT-style AI assistant built with React, TypeScript, Tailwind C
 cp .env.example .env
 ```
 
-2. Set `AI_PROVIDER=bedrock` and `BEDROCK_API_KEY` in `.env`, or select OpenAI/Groq and configure `AUTO_AI_OPENAI_API_KEY` or `GROQ_API_KEY`.
+2. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_NAME` in `.env`. Set `AI_PROVIDER=bedrock` and `BEDROCK_API_KEY`, or select OpenAI/Groq and configure `AUTO_AI_OPENAI_API_KEY` or `GROQ_API_KEY`.
 
 3. Start the backend:
 
@@ -63,7 +63,7 @@ npm run dev
 http://localhost:5173
 ```
 
-The first registered user becomes an admin automatically.
+The first admin is created from `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_NAME` on backend startup. Public registration always creates normal user accounts.
 
 ## Docker
 
@@ -105,6 +105,7 @@ Important environment variables:
 - `BEDROCK_AUTH_MODE`: Bedrock auth mode, `auto`, `api_key`, or `aws`; default `auto`
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`: optional SigV4 fallback credentials for Bedrock
 - `SECRET_KEY`: JWT signing secret
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`: startup-only first admin bootstrap credentials
 - `SQLITE_PATH`: SQLite database path
 - `BACKEND_CORS_ORIGINS`: frontend origins allowed by FastAPI
 

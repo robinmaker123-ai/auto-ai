@@ -73,23 +73,6 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
     return Token(access_token=create_access_token(user.id), user=UserRead.model_validate(user))
 
 
-@router.post("/admin-login", response_model=Token)
-def admin_login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
-    repo = SQLAlchemyUserRepository(db)
-    user = repo.get_by_email(normalize_email(str(payload.email)))
-    if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin email or password is incorrect.")
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This admin account is disabled.")
-    if user.role not in {"admin", "super_admin"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admin accounts can access the admin dashboard.")
-    if password_needs_rehash(user.hashed_password):
-        user.hashed_password = get_password_hash(payload.password)
-        db.commit()
-        db.refresh(user)
-    return Token(access_token=create_access_token(user.id), user=UserRead.model_validate(user))
-
-
 @router.get("/me", response_model=UserRead)
 def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user

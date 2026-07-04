@@ -85,4 +85,4 @@ Example memory payload:
 
 - `GET /admin/stats`
 
-The first registered user is made an admin. Additional admin users can be configured with `ADMIN_EMAILS`.
+The first admin is created from `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_NAME` on backend startup. Public registration always creates normal user accounts.
