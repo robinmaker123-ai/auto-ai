@@ -1,5 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
-import { LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Bot, Brain, LogOut, Moon, Settings, Shield, Sun, Zap } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -10,10 +10,33 @@ export function Header() {
   const { resolvedTheme, toggleTheme } = useTheme();
   const openSettings = useSettingsNavigation();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const isChatWorkspace = normalizedPath === "/chat" || normalizedPath === "/";
   const isSettingsWorkspace = normalizedPath === "/settings";
+
+  function openContextPanel(tab: "documents" | "memory") {
+    const event = () => window.dispatchEvent(new CustomEvent("open-context-panel", { detail: { tab } }));
+    if (isChatWorkspace) {
+      event();
+      return;
+    }
+    try {
+      const result = navigate("/chat") as void | Promise<void>;
+      if (result && typeof result.catch === "function") {
+        void result
+          .then(() => window.setTimeout(event, 60))
+          .catch((error: unknown) => {
+            console.error("[Auto-AI Navigation] Failed to open context panel.", error);
+          });
+        return;
+      }
+      window.setTimeout(event, 60);
+    } catch (error) {
+      console.error("[Auto-AI Navigation] Failed to open context panel.", error);
+    }
+  }
 
   return (
     <header
@@ -30,6 +53,24 @@ export function Header() {
         <p className="truncate text-xs text-slate-400">{user?.email}</p>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          className="icon-button-dark"
+          onClick={() => openContextPanel("documents")}
+          title="Context"
+          aria-label="Open context"
+          type="button"
+        >
+          <Bot size={18} />
+        </button>
+        <button
+          className="icon-button-dark"
+          onClick={() => openContextPanel("memory")}
+          title="Memory"
+          aria-label="Open memory"
+          type="button"
+        >
+          <Brain size={18} />
+        </button>
         <button
           className="icon-button-dark"
           onClick={openSettings}

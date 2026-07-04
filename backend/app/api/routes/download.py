@@ -8,7 +8,7 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.apk import ApkRelease
 from app.models.user import User
-from app.schemas.download import ApkReleaseRead, ApkReleaseUpdate, ApkStats
+from app.schemas.download import ApkDownloadCountRequest, ApkReleaseRead, ApkReleaseUpdate, ApkStats
 from app.services.apk_service import apk_service
 
 
@@ -27,6 +27,7 @@ def optional_user(request: Request, db: Session) -> User | None:
 def download_apk(
     request: Request,
     version: str | None = None,
+    counted: bool = False,
     db: Session = Depends(get_db),
 ):
     release = apk_service.find_release(db, version)
@@ -36,12 +37,13 @@ def download_apk(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No APK release is available.")
 
     path = apk_service.validate_release_file(release)
-    apk_service.record_download(db, release, request, optional_user(request, db))
-    db.commit()
+    if not counted:
+        apk_service.record_download(db, release, request, optional_user(request, db))
+        db.commit()
     return FileResponse(
         path,
         media_type="application/vnd.android.package-archive",
-        filename=release.filename,
+        filename=release.file_name,
         headers={
             "Cache-Control": "private, max-age=300",
             "X-Auto-AI-APK-Version": release.version_name,
@@ -57,14 +59,32 @@ def latest_apk(db: Session = Depends(get_db)) -> ApkReleaseRead:
     release = apk_service.latest_release(db)
     if not release:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No APK release is available.")
-    apk_service.validate_release_file(release)
     return apk_service.release_read(release)
 
 
 @router.get("/apk/versions", response_model=list[ApkReleaseRead])
 def apk_versions(db: Session = Depends(get_db)) -> list[ApkReleaseRead]:
-    releases = db.scalars(select(ApkRelease).order_by(ApkRelease.version_code.desc())).all()
+    releases = db.scalars(select(ApkRelease).order_by(ApkRelease.version_code.desc(), ApkRelease.released_at.desc())).all()
     return [apk_service.release_read(release) for release in releases]
+
+
+@router.post("/apk/count", response_model=ApkReleaseRead)
+def count_apk_download(
+    request: Request,
+    payload: ApkDownloadCountRequest | None = None,
+    db: Session = Depends(get_db),
+) -> ApkReleaseRead:
+    payload = payload or ApkDownloadCountRequest()
+    release = apk_service.find_release_for_count(
+        db,
+        release_id=payload.id,
+        version_name=payload.version_name,
+        version_code=payload.version_code,
+    )
+    if not release:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No APK release is available.")
+    release = apk_service.increment_download_count(db, release, request, optional_user(request, db))
+    return apk_service.release_read(release)
 
 
 @router.get("/apk/stats", response_model=ApkStats)

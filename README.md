@@ -165,6 +165,17 @@ MYSQL_URL=<Railway MySQL URL>
 
 If `ENVIRONMENT=production` and no persistent database URL or safe `/data` SQLite path is configured, the backend fails startup with a clear error instead of silently creating a new local SQLite database.
 
+## APK Version Persistence
+
+APK version metadata and download counts are stored in the database, not hardcoded in the frontend.
+
+- `GET /api/v1/download/apk/latest` returns the latest active DB version.
+- `POST /api/v1/download/apk/count` increments `download_count` in the database.
+- `GET /api/v1/download/apk/versions` returns all versions with release/update timestamps and counts.
+- `POST /api/v1/admin/apk/version` lets admins add or update version metadata.
+
+Do not store APK stats in source files. Use the same persistent production database as users, chats, subscriptions, tokens, and admin data.
+
 ## Notes
 
 SQLite under `database/auto_ai.db` is for local development only. Production must use a Railway volume-backed SQLite file at `/data/auto_ai.db` or a managed database URL.

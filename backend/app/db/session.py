@@ -21,9 +21,10 @@ def init_db() -> None:
         sqlite_file.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "Database backend=%s target=%s",
+        "database_backend=%s database_path_or_host=%s persistent_storage=%s",
         settings.database_backend,
         settings.safe_database_target,
+        str(settings.persistent_storage).lower(),
     )
 
     from app import models  # noqa: F401
@@ -44,6 +45,7 @@ def ensure_runtime_schema() -> None:
     table_names = set(inspector.get_table_names())
     statements: list[str] = []
     ensure_mobile_index = False
+    backfill_apk_versions = "apk_versions" in table_names
     migrate_legacy_apk_releases = "apk_versions" in table_names and "apk_releases" in table_names
 
     def column_definition(kind: str) -> str:
@@ -128,6 +130,7 @@ def ensure_runtime_schema() -> None:
             "version_code": "INTEGER NOT NULL DEFAULT 1",
             "version_name": "VARCHAR(40) NOT NULL DEFAULT '1.0.0'",
             "apk_url": "VARCHAR(500) NOT NULL DEFAULT '/api/download/apk'",
+            "file_name": "VARCHAR(255) NOT NULL DEFAULT 'auto-ai.apk'",
             "file_size": "INTEGER NOT NULL DEFAULT 0",
             "release_date": "datetime",
             "force_update": "BOOLEAN NOT NULL DEFAULT FALSE",
@@ -140,12 +143,14 @@ def ensure_runtime_schema() -> None:
             "release_notes": "json",
             "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
             "created_at": "datetime",
+            "updated_at": "datetime",
+            "released_at": "datetime",
         }
         for column_name, definition in apk_version_columns.items():
             if column_name not in apk_columns:
                 add_column("apk_versions", column_name, definition)
 
-    if not statements and not ensure_mobile_index and not migrate_legacy_apk_releases:
+    if not statements and not ensure_mobile_index and not backfill_apk_versions and not migrate_legacy_apk_releases:
         return
 
     with engine.begin() as connection:
@@ -200,6 +205,24 @@ def ensure_runtime_schema() -> None:
             connection.execute(text(f"UPDATE {apk_versions} SET {quote('created_at')} = {quote('release_date')} WHERE {quote('created_at')} IS NULL"))
             connection.execute(
                 text(
+                    f"UPDATE {apk_versions} SET {quote('file_name')} = {quote('filename')} "
+                    f"WHERE ({quote('file_name')} IS NULL OR TRIM({quote('file_name')}) = '') "
+                    f"AND {quote('filename')} IS NOT NULL AND TRIM({quote('filename')}) != ''"
+                )
+            )
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('filename')} = {quote('file_name')} "
+                    f"WHERE ({quote('filename')} IS NULL OR TRIM({quote('filename')}) = '') "
+                    f"AND {quote('file_name')} IS NOT NULL AND TRIM({quote('file_name')}) != ''"
+                )
+            )
+            connection.execute(text(f"UPDATE {apk_versions} SET {quote('released_at')} = {quote('release_date')} WHERE {quote('released_at')} IS NULL"))
+            connection.execute(text(f"UPDATE {apk_versions} SET {quote('release_date')} = {quote('released_at')} WHERE {quote('release_date')} IS NULL"))
+            connection.execute(text(f"UPDATE {apk_versions} SET {quote('updated_at')} = {quote('created_at')} WHERE {quote('updated_at')} IS NULL"))
+            connection.execute(text(f"UPDATE {apk_versions} SET {quote('released_at')} = {quote('created_at')} WHERE {quote('released_at')} IS NULL"))
+            connection.execute(
+                text(
                     f"UPDATE {apk_versions} SET {quote('apk_url')} = {concat_url_version(quote('version_name'))} "
                     f"WHERE {quote('apk_url')} IS NULL OR TRIM({quote('apk_url')}) = ''"
                 )
@@ -211,12 +234,12 @@ def ensure_runtime_schema() -> None:
                     f"INSERT INTO {quote('apk_versions')} "
                     f"({quote('id')}, {quote('version_code')}, {quote('version_name')}, {quote('apk_url')}, {quote('file_size')}, "
                     f"{quote('release_date')}, {quote('force_update')}, {quote('changelog')}, {quote('download_count')}, "
-                    f"{quote('filename')}, {quote('file_path')}, {quote('sha256')}, {quote('min_android_version')}, "
-                    f"{quote('release_notes')}, {quote('is_active')}, {quote('created_at')}) "
+                    f"{quote('file_name')}, {quote('filename')}, {quote('file_path')}, {quote('sha256')}, {quote('min_android_version')}, "
+                    f"{quote('release_notes')}, {quote('is_active')}, {quote('created_at')}, {quote('updated_at')}, {quote('released_at')}) "
                     f"SELECT {quote('id')}, {quote('version_code')}, {quote('version')}, {concat_url_version(quote('version'))}, "
-                    f"{quote('file_size')}, {quote('created_at')}, FALSE, {quote('changelog')}, 0, {quote('filename')}, "
+                    f"{quote('file_size')}, {quote('created_at')}, FALSE, {quote('changelog')}, 0, {quote('filename')}, {quote('filename')}, "
                     f"{quote('file_path')}, {quote('sha256')}, {quote('min_android_version')}, {quote('release_notes')}, "
-                    f"{quote('is_active')}, {quote('created_at')} FROM {quote('apk_releases')} "
+                    f"{quote('is_active')}, {quote('created_at')}, {quote('created_at')}, {quote('created_at')} FROM {quote('apk_releases')} "
                     f"WHERE NOT EXISTS (SELECT 1 FROM {quote('apk_versions')})"
                 )
             )

@@ -287,6 +287,7 @@ export function SubscriptionBillingCenter() {
             </div>
             <span className="billing-status">{current.status}</span>
           </div>
+          <div className="billing-block-title">Token Usage</div>
           <div className="billing-token-bar">
             <div style={{ width: `${progress}%` }} />
           </div>
@@ -321,6 +322,7 @@ export function SubscriptionBillingCenter() {
         </div>
       </div>
 
+      <div className="billing-block-title billing-plans-title">Available Plans</div>
       <div className="billing-plan-grid">
         {billing.plans.map((plan) => {
           const isCurrent = current.plan === plan.id;
@@ -346,10 +348,10 @@ export function SubscriptionBillingCenter() {
                 className={isCurrent ? "btn-secondary" : "btn-primary"}
                 onClick={() => upgrade(plan)}
                 disabled={isCurrent || plan.id === "free" || busy === `pay-${plan.id}`}
-                type="button"
-              >
-                {busy === `pay-${plan.id}` ? <Loader2 className="spin-icon" size={16} /> : <Wallet size={16} />}
-                {isCurrent ? "Current" : plan.id === "free" ? "Free" : "Upgrade"}
+              type="button"
+            >
+              {busy === `pay-${plan.id}` ? <Loader2 className="spin-icon" size={16} /> : <Wallet size={16} />}
+                {isCurrent ? "Current" : plan.id === "free" ? "Free" : "Upgrade with Razorpay"}
               </button>
             </article>
           );
@@ -403,11 +405,11 @@ export function SubscriptionBillingCenter() {
             <tbody>
               {billing.payment_history.map((payment) => (
                 <tr key={payment.id}>
-                  <td>{formatDate(payment.date)}</td>
-                  <td>{money(payment.amount_paise, payment.currency)}</td>
-                  <td>{payment.plan}</td>
-                  <td>{payment.status}</td>
-                  <td>
+                  <td data-label="Date">{formatDate(payment.date)}</td>
+                  <td data-label="Amount">{money(payment.amount_paise, payment.currency)}</td>
+                  <td data-label="Plan">{payment.plan}</td>
+                  <td data-label="Status">{payment.status}</td>
+                  <td data-label="Invoice">
                     <button className="chip-dark" onClick={() => downloadInvoice(payment)} disabled={busy === `invoice-${payment.id}`} type="button">
                       <Download size={14} />
                       Invoice
@@ -416,7 +418,7 @@ export function SubscriptionBillingCenter() {
                 </tr>
               ))}
               {billing.payment_history.length === 0 && (
-                <tr><td colSpan={5}>No payments yet.</td></tr>
+                <tr><td data-label="Payment History" colSpan={5}>No payments yet.</td></tr>
               )}
             </tbody>
           </table>

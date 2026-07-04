@@ -48,6 +48,7 @@ from app.schemas.admin import (
     SystemStatus,
     TokenUsageSummary,
 )
+from app.schemas.download import ApkReleaseRead, ApkVersionUpsert
 from app.services.admin_control import (
     FEATURE_DEFINITIONS,
     activate_subscription_plan,
@@ -61,6 +62,7 @@ from app.services.admin_control import (
     recalculate_token_balance,
     refresh_quota_periods,
 )
+from app.services.apk_service import apk_service
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -970,6 +972,18 @@ def update_plan_limit(
     db.commit()
     db.refresh(limit)
     return to_plan_limit_read(limit)
+
+
+@router.post("/apk/version", response_model=ApkReleaseRead)
+def upsert_apk_version(
+    payload: ApkVersionUpsert,
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> ApkReleaseRead:
+    data = payload.model_dump()
+    release_id = data.pop("id", None)
+    release = apk_service.upsert_version(db, release_id=release_id, **data)
+    return apk_service.release_read(release)
 
 
 @router.get("/analytics", response_model=AdminAnalyticsResponse)

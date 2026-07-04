@@ -102,8 +102,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
     APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
     APK_FILENAME: str = "auto-ai.apk"
-    APK_DEFAULT_VERSION: str = "1.0.1"
-    APK_DEFAULT_VERSION_CODE: int = 2
+    APK_DEFAULT_VERSION: str = "1.0.2"
+    APK_DEFAULT_VERSION_CODE: int = 3
     APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
@@ -198,6 +198,15 @@ class Settings(BaseSettings):
             return f"<project>/{relative.as_posix()}"
         except ValueError:
             return sqlite_path.as_posix()
+
+    @property
+    def persistent_storage(self) -> bool:
+        if self.DATABASE_URL or self.MYSQL_URL:
+            return True
+        sqlite_path_value = self.SQLITE_PATH.strip().replace("\\", "/")
+        if self.is_production:
+            return sqlite_path_value == "/data/auto_ai.db"
+        return not self._path_is_inside_project(self.resolved_sqlite_path)
 
     @staticmethod
     def _normalize_sqlalchemy_url(raw_url: str) -> str:

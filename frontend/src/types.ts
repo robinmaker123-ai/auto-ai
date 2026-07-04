@@ -155,21 +155,24 @@ export type ChatGeneration = {
 
 export type ApkRelease = {
   id: string;
+  version_code: number;
   version_name: string;
   apk_url: string;
-  release_date: string;
-  force_update: boolean;
-  download_count: number;
-  version: string;
-  version_code: number;
-  filename: string;
+  file_name: string;
   file_size: number;
+  changelog: string;
+  force_update: boolean;
+  is_active: boolean;
+  download_count: number;
+  created_at: string;
+  updated_at: string;
+  released_at: string;
+  release_date: string;
+  version: string;
+  filename: string;
   sha256: string;
   min_android_version: string;
   release_notes: string[];
-  changelog: string;
-  is_active: boolean;
-  created_at: string;
   download_url: string;
 };
 

@@ -121,6 +121,17 @@ export function ContextPanel({
     refreshMemory();
   }, [token]);
 
+  useEffect(() => {
+    const handleOpen = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (detail?.tab === "memory" || detail?.tab === "documents") {
+        setTab(detail.tab);
+      }
+    };
+    window.addEventListener("open-context-panel", handleOpen);
+    return () => window.removeEventListener("open-context-panel", handleOpen);
+  }, []);
+
   async function createMemory(event: FormEvent) {
     event.preventDefault();
     if (!token || !memoryDraft.trim()) return;

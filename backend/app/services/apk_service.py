@@ -3,10 +3,13 @@ import json
 import re
 import shutil
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Request, UploadFile, status
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -16,6 +19,29 @@ from app.schemas.download import ApkReleaseRead
 
 
 class ApkService:
+    response_tz = ZoneInfo("Asia/Kolkata")
+
+    @staticmethod
+    def _db_datetime(value: datetime | None = None) -> datetime:
+        timestamp = value or datetime.utcnow()
+        if timestamp.tzinfo:
+            return timestamp.astimezone(UTC).replace(tzinfo=None)
+        return timestamp
+
+    @classmethod
+    def response_datetime(cls, value: datetime | None) -> datetime:
+        timestamp = value or datetime.utcnow()
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+        return timestamp.astimezone(cls.response_tz)
+
+    @staticmethod
+    def file_name_from_url(apk_url: str | None) -> str:
+        if not apk_url:
+            return settings.APK_FILENAME
+        candidate = Path(urlsplit(apk_url).path).name
+        return candidate or settings.APK_FILENAME
+
     @staticmethod
     def storage_dir() -> Path:
         path = Path(settings.APK_STORAGE_DIR).resolve()
@@ -41,23 +67,29 @@ class ApkService:
     @classmethod
     def release_read(cls, release: ApkRelease) -> ApkReleaseRead:
         download_url = release.apk_url or cls._download_url(release.version_name)
+        created_at = cls.response_datetime(release.created_at)
+        updated_at = cls.response_datetime(release.updated_at or release.created_at)
+        released_at = cls.response_datetime(release.released_at or release.created_at)
         return ApkReleaseRead(
             id=release.id,
+            version_code=release.version_code,
             version_name=release.version_name,
             apk_url=download_url,
-            release_date=release.release_date,
-            force_update=release.force_update,
-            download_count=release.download_count,
-            version=release.version_name,
-            version_code=release.version_code,
-            filename=release.filename,
+            file_name=release.file_name,
             file_size=release.file_size,
+            changelog=release.changelog or "",
+            force_update=release.force_update,
+            is_active=release.is_active,
+            download_count=release.download_count,
+            created_at=created_at,
+            updated_at=updated_at,
+            released_at=released_at,
+            release_date=released_at,
+            version=release.version_name,
+            filename=release.file_name,
             sha256=release.sha256,
             min_android_version=release.min_android_version,
             release_notes=[str(item) for item in (release.release_notes or [])],
-            changelog=release.changelog or "",
-            is_active=release.is_active,
-            created_at=release.created_at,
             download_url=download_url,
         )
 
@@ -87,15 +119,31 @@ class ApkService:
         return db.scalar(
             select(ApkRelease)
             .where(ApkRelease.is_active.is_(True))
-            .order_by(ApkRelease.version_code.desc(), ApkRelease.created_at.desc())
+            .order_by(ApkRelease.version_code.desc(), ApkRelease.released_at.desc())
         )
 
     def highest_release(self, db: Session) -> ApkRelease | None:
-        return db.scalar(select(ApkRelease).order_by(ApkRelease.version_code.desc(), ApkRelease.created_at.desc()))
+        return db.scalar(select(ApkRelease).order_by(ApkRelease.version_code.desc(), ApkRelease.released_at.desc()))
 
     def find_release(self, db: Session, version: str | None = None) -> ApkRelease | None:
         if version:
             return db.scalar(select(ApkRelease).where(ApkRelease.version_name == version))
+        return self.latest_release(db)
+
+    def find_release_for_count(
+        self,
+        db: Session,
+        *,
+        release_id: str | None = None,
+        version_name: str | None = None,
+        version_code: int | None = None,
+    ) -> ApkRelease | None:
+        if release_id:
+            return db.get(ApkRelease, release_id)
+        if version_name:
+            return db.scalar(select(ApkRelease).where(ApkRelease.version_name == version_name))
+        if version_code:
+            return db.scalar(select(ApkRelease).where(ApkRelease.version_code == version_code))
         return self.latest_release(db)
 
     @staticmethod
@@ -104,56 +152,35 @@ class ApkService:
         return f"auto-ai-{version_code}-{safe_name}.apk"
 
     def sync_filesystem_release(self, db: Session) -> None:
+        if db.scalar(select(ApkRelease.id).limit(1)):
+            return
         path = self.default_apk_path()
         if not path.exists():
-            return
-        releases = db.scalars(select(ApkRelease)).all()
-        if any(release.filename != settings.APK_FILENAME for release in releases):
             return
         checksum = self.sha256_file(path)
         version_name = settings.APK_DEFAULT_VERSION
         version_code = settings.APK_DEFAULT_VERSION_CODE
-        release = db.scalar(select(ApkRelease).where(ApkRelease.version_name == version_name))
-        if release and release.is_active and release.sha256 == checksum and Path(release.file_path).exists():
-            return
-
-        db.execute(update(ApkRelease).values(is_active=False))
-        if release:
-            previous_downloads = release.download_count or 0
-            release.filename = settings.APK_FILENAME
-            release.file_path = str(path)
-            release.file_size = path.stat().st_size
-            release.sha256 = checksum
-            release.min_android_version = settings.APK_MIN_ANDROID_VERSION
-            release.release_notes = release.release_notes or ["Production Android APK"]
-            release.changelog = release.changelog or f"Version {version_name}"
-            release.apk_url = self._download_url(version_name)
-            release.version_code = version_code
-            release.version_name = version_name
-            release.download_count = previous_downloads
-            release.is_active = True
-        else:
-            db.add(
-                ApkRelease(
-                    version_code=version_code,
-                    version_name=version_name,
-                    apk_url=self._download_url(version_name),
-                    filename=settings.APK_FILENAME,
-                    file_path=str(path),
-                    file_size=path.stat().st_size,
-                    sha256=checksum,
-                    min_android_version=settings.APK_MIN_ANDROID_VERSION,
-                    release_notes=["Production Android APK"],
-                    changelog=f"Version {version_name}",
-                    is_active=True,
-                )
+        db.add(
+            ApkRelease(
+                version_code=version_code,
+                version_name=version_name,
+                apk_url=self._download_url(version_name),
+                file_name=settings.APK_FILENAME,
+                file_path=str(path),
+                file_size=path.stat().st_size,
+                sha256=checksum,
+                min_android_version=settings.APK_MIN_ANDROID_VERSION,
+                release_notes=["Production Android APK"],
+                changelog=f"Version {version_name}",
+                is_active=True,
             )
+        )
         db.commit()
 
     def validate_release_file(self, release: ApkRelease) -> Path:
         path = Path(release.file_path).resolve()
         storage_dir = self.storage_dir()
-        if storage_dir not in path.parents and path != storage_dir / release.filename:
+        if storage_dir not in path.parents and path != storage_dir / release.file_name:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid APK storage path.")
         if not path.exists():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="APK file not found on server.")
@@ -183,7 +210,23 @@ class ApkService:
             )
         )
         if release and status_value == "completed":
-            release.download_count = (release.download_count or 0) + 1
+            db.execute(
+                update(ApkRelease)
+                .where(ApkRelease.id == release.id)
+                .values(download_count=ApkRelease.download_count + 1, updated_at=ApkRelease.updated_at)
+            )
+
+    def increment_download_count(
+        self,
+        db: Session,
+        release: ApkRelease,
+        request: Request,
+        user: User | None = None,
+    ) -> ApkRelease:
+        self.record_download(db, release, request, user)
+        db.commit()
+        db.refresh(release)
+        return release
 
     async def save_upload(
         self,
@@ -238,7 +281,7 @@ class ApkService:
             version_code=next_version_code,
             version_name=next_version,
             apk_url=self._download_url(next_version),
-            filename=filename,
+            file_name=filename,
             file_path=str(path),
             file_size=path.stat().st_size,
             sha256=checksum,
@@ -265,24 +308,115 @@ class ApkService:
         db: Session,
         release_id: str,
         *,
+        version_name: str | None = None,
+        version_code: int | None = None,
+        apk_url: str | None = None,
+        file_name: str | None = None,
+        file_size: int | None = None,
         changelog: str | None = None,
         force_update: bool | None = None,
         release_notes: list[str] | None = None,
         is_active: bool | None = None,
+        released_at: datetime | None = None,
     ) -> ApkRelease:
         release = db.get(ApkRelease, release_id)
         if not release:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="APK version not found.")
+        if version_name is not None and version_name != release.version_name:
+            existing = db.scalar(select(ApkRelease).where(ApkRelease.version_name == version_name, ApkRelease.id != release.id))
+            if existing:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="APK version name already exists.")
+            if apk_url is None and release.apk_url.startswith("/api/download/apk"):
+                release.apk_url = self._download_url(version_name)
+            release.version_name = version_name
+        if version_code is not None and version_code != release.version_code:
+            existing = db.scalar(select(ApkRelease).where(ApkRelease.version_code == version_code, ApkRelease.id != release.id))
+            if existing:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="APK version code already exists.")
+            release.version_code = version_code
+        if apk_url is not None:
+            release.apk_url = apk_url.strip() or self._download_url(release.version_name)
+        if file_name is not None:
+            release.file_name = file_name.strip() or self.file_name_from_url(release.apk_url)
+        if file_size is not None:
+            release.file_size = file_size
         if changelog is not None:
             release.changelog = changelog
         if force_update is not None:
             release.force_update = force_update
         if release_notes is not None:
             release.release_notes = [item.strip() for item in release_notes if item.strip()]
+        if released_at is not None:
+            release.released_at = self._db_datetime(released_at)
         if is_active is not None:
             if is_active:
                 db.execute(update(ApkRelease).where(ApkRelease.id != release.id).values(is_active=False))
             release.is_active = is_active
+        release.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(release)
+        return release
+
+    def upsert_version(
+        self,
+        db: Session,
+        *,
+        release_id: str | None,
+        version_code: int,
+        version_name: str,
+        apk_url: str,
+        file_name: str | None,
+        file_size: int,
+        changelog: str,
+        force_update: bool,
+        is_active: bool,
+        released_at: datetime | None,
+        min_android_version: str,
+        release_notes: list[str],
+    ) -> ApkRelease:
+        release = db.get(ApkRelease, release_id) if release_id else None
+        if not release:
+            release = db.scalar(
+                select(ApkRelease).where(or_(ApkRelease.version_code == version_code, ApkRelease.version_name == version_name))
+            )
+        if release:
+            release.min_android_version = min_android_version
+            return self.update_release(
+                db,
+                release.id,
+                version_name=version_name,
+                version_code=version_code,
+                apk_url=apk_url,
+                file_name=file_name or self.file_name_from_url(apk_url),
+                file_size=file_size,
+                changelog=changelog,
+                force_update=force_update,
+                release_notes=release_notes,
+                is_active=is_active,
+                released_at=released_at or release.released_at,
+            )
+
+        if is_active:
+            db.execute(update(ApkRelease).values(is_active=False))
+        now = datetime.utcnow()
+        release = ApkRelease(
+            version_code=version_code,
+            version_name=version_name,
+            apk_url=apk_url,
+            file_name=file_name or self.file_name_from_url(apk_url),
+            file_path="",
+            file_size=file_size,
+            sha256="",
+            min_android_version=min_android_version,
+            release_notes=[item.strip() for item in release_notes if item.strip()],
+            changelog=changelog,
+            force_update=force_update,
+            is_active=is_active,
+            created_at=now,
+            updated_at=now,
+            released_at=self._db_datetime(released_at),
+        )
+        db.add(release)
         db.commit()
         db.refresh(release)
         return release

@@ -157,6 +157,19 @@ function resolveApiBaseUrl() {
 export const API_BASE_URL = resolveApiBaseUrl();
 export const APK_DOWNLOAD_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, "/api").replace(/\/+$/, "") + "/download/apk";
 
+export function resolveApkDownloadUrl(
+  release?: Pick<ApkRelease, "apk_url" | "download_url"> | null,
+  counted = false
+) {
+  const rawUrl = release?.download_url || release?.apk_url || APK_DOWNLOAD_URL;
+  const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+  const url = new URL(rawUrl, apiOrigin);
+  if (counted && url.pathname.endsWith("/api/download/apk")) {
+    url.searchParams.set("counted", "true");
+  }
+  return url.toString();
+}
+
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "detail" in payload) {
     const detail = (payload as { detail?: unknown }).detail;
@@ -551,6 +564,12 @@ export const api = {
   latestApk: () => apiFetch<ApkRelease>("/download/apk/latest", { operation: "download.apk.latest" }),
   apkVersions: () => apiFetch<ApkRelease[]>("/download/apk/versions", { operation: "download.apk.versions" }),
   apkStats: () => apiFetch<ApkStats>("/download/apk/stats", { operation: "download.apk.stats" }),
+  countApkDownload: (payload: { id?: string; version_name?: string; version_code?: number } = {}) =>
+    apiFetch<ApkRelease>("/download/apk/count", {
+      method: "POST",
+      operation: "download.apk.count",
+      body: JSON.stringify(payload)
+    }),
   uploadApkRelease: (token: string, formData: FormData) =>
     apiFetch<ApkRelease>("/download/apk/releases", {
       method: "POST",
@@ -567,6 +586,26 @@ export const api = {
       method: "PATCH",
       token,
       operation: "download.apk.update",
+      body: JSON.stringify(payload)
+    }),
+  adminUpsertApkVersion: (token: string, payload: {
+    id?: string | null;
+    version_code: number;
+    version_name: string;
+    apk_url: string;
+    file_name?: string | null;
+    file_size?: number;
+    changelog?: string;
+    force_update?: boolean;
+    is_active?: boolean;
+    released_at?: string | null;
+    min_android_version?: string;
+    release_notes?: string[];
+  }) =>
+    apiFetch<ApkRelease>("/admin/apk/version", {
+      method: "POST",
+      token,
+      operation: "admin.apk.version.upsert",
       body: JSON.stringify(payload)
     }),
 

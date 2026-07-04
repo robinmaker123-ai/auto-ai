@@ -5,27 +5,35 @@ from pydantic import BaseModel, Field
 
 class ApkReleaseRead(BaseModel):
     id: str
+    version_code: int
     version_name: str
     apk_url: str
-    release_date: datetime
-    force_update: bool
-    download_count: int
-    version: str
-    version_code: int
-    filename: str
+    file_name: str
     file_size: int
+    changelog: str = ""
+    force_update: bool
+    is_active: bool
+    download_count: int
+    created_at: datetime
+    updated_at: datetime
+    released_at: datetime
+    release_date: datetime
+    version: str
+    filename: str
     sha256: str
     min_android_version: str
     release_notes: list[str] = Field(default_factory=list)
-    changelog: str = ""
-    is_active: bool
-    created_at: datetime
     download_url: str
 
 
 class ApkReleaseCreate(BaseModel):
     version_name: str = Field(pattern=r"^\d+\.\d+\.\d+([.-][A-Za-z0-9]+)?$")
     version_code: int = Field(ge=1)
+    apk_url: str | None = Field(default=None, max_length=500)
+    file_name: str | None = Field(default=None, max_length=255)
+    file_size: int = Field(default=0, ge=0)
+    is_active: bool = True
+    released_at: datetime | None = None
     min_android_version: str = Field(default="Android 7.0", max_length=40)
     release_notes: list[str] = Field(default_factory=list, max_length=20)
     changelog: str = Field(default="", max_length=8000)
@@ -33,10 +41,37 @@ class ApkReleaseCreate(BaseModel):
 
 
 class ApkReleaseUpdate(BaseModel):
+    version_name: str | None = Field(default=None, pattern=r"^\d+\.\d+\.\d+([.-][A-Za-z0-9]+)?$")
+    version_code: int | None = Field(default=None, ge=1)
+    apk_url: str | None = Field(default=None, max_length=500)
+    file_name: str | None = Field(default=None, max_length=255)
+    file_size: int | None = Field(default=None, ge=0)
     changelog: str | None = Field(default=None, max_length=8000)
     force_update: bool | None = None
     release_notes: list[str] | None = Field(default=None, max_length=20)
     is_active: bool | None = None
+    released_at: datetime | None = None
+
+
+class ApkDownloadCountRequest(BaseModel):
+    id: str | None = None
+    version_name: str | None = None
+    version_code: int | None = None
+
+
+class ApkVersionUpsert(BaseModel):
+    id: str | None = None
+    version_code: int = Field(ge=1)
+    version_name: str = Field(pattern=r"^\d+\.\d+\.\d+([.-][A-Za-z0-9]+)?$")
+    apk_url: str = Field(min_length=1, max_length=500)
+    file_name: str | None = Field(default=None, max_length=255)
+    file_size: int = Field(default=0, ge=0)
+    changelog: str = Field(default="", max_length=8000)
+    force_update: bool = False
+    is_active: bool = True
+    released_at: datetime | None = None
+    min_android_version: str = Field(default="Android 7.0", max_length=40)
+    release_notes: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ApkStats(BaseModel):

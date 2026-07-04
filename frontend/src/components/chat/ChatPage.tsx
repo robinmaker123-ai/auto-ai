@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, CornerDownRight, Menu, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
+import { Bot, Brain, CornerDownRight, Menu, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -110,8 +110,13 @@ export function ChatPage() {
 
   useEffect(() => {
     const handleToggle = () => setIsContextOpen((prev) => !prev);
+    const handleOpen = () => setIsContextOpen(true);
     window.addEventListener("toggle-context-panel", handleToggle);
-    return () => window.removeEventListener("toggle-context-panel", handleToggle);
+    window.addEventListener("open-context-panel", handleOpen);
+    return () => {
+      window.removeEventListener("toggle-context-panel", handleToggle);
+      window.removeEventListener("open-context-panel", handleOpen);
+    };
   }, []);
 
   const refreshDocuments = useCallback(async () => {
@@ -625,15 +630,28 @@ export function ChatPage() {
             <Menu size={18} />
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
-          <button
-            className="icon-button-dark"
-            onClick={openSettings}
-            title="Settings"
-            aria-label="Open settings"
-            type="button"
-          >
-            <Settings size={18} className="text-cyan-200" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="icon-button-dark"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("open-context-panel", { detail: { tab: "memory" } }));
+              }}
+              title="Context & Memory"
+              aria-label="Open context and memory"
+              type="button"
+            >
+              <Brain size={18} className="text-cyan-200" />
+            </button>
+            <button
+              className="icon-button-dark"
+              onClick={openSettings}
+              title="Settings"
+              aria-label="Open settings"
+              type="button"
+            >
+              <Settings size={18} className="text-cyan-200" />
+            </button>
+          </div>
         </div>
 
         <div ref={scrollRef} className="chat-scroll">

@@ -3,16 +3,16 @@ import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft,
-  Bot,
   CheckCircle2,
   Download,
   FileText,
   Lock,
   MessageSquare,
   Smartphone,
+  Upload,
   Zap
 } from "lucide-react";
-import { api, APK_DOWNLOAD_URL } from "../../api/client";
+import { api, resolveApkDownloadUrl } from "../../api/client";
 import type { ApkRelease, ApkStats } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
 
@@ -35,13 +35,19 @@ function formatBytes(bytes?: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "2-digit" }).format(new Date(value));
+function formatDateTime(value?: string | null) {
+  if (!value) return "Pending";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 function absoluteDownloadUrl() {
-  if (typeof window === "undefined") return APK_DOWNLOAD_URL;
-  return APK_DOWNLOAD_URL.startsWith("/") ? `${window.location.origin}${APK_DOWNLOAD_URL}` : APK_DOWNLOAD_URL;
+  return resolveApkDownloadUrl();
 }
 
 export function DownloadPage() {
@@ -52,6 +58,31 @@ export function DownloadPage() {
   const [error, setError] = useState("");
   const buildVersion = import.meta.env.VITE_BUILD_VERSION ?? "dev";
   const downloadUrl = useMemo(() => absoluteDownloadUrl(), []);
+
+  async function downloadLatestApk() {
+    const release = latest;
+    let countedRelease = release;
+    if (release) {
+      try {
+        const updatedRelease = await api.countApkDownload({ id: release.id });
+        countedRelease = updatedRelease;
+        setLatest(updatedRelease);
+        setVersions((current) => current.map((item) => (item.id === updatedRelease.id ? updatedRelease : item)));
+        setStats((current) => current && {
+          ...current,
+          latest: updatedRelease,
+          total_downloads: current.total_downloads + 1,
+          downloads_by_version: {
+            ...current.downloads_by_version,
+            [updatedRelease.version_name]: updatedRelease.download_count
+          }
+        });
+      } catch {
+        countedRelease = release;
+      }
+    }
+    window.location.href = resolveApkDownloadUrl(countedRelease, Boolean(countedRelease));
+  }
 
   useEffect(() => {
     let active = true;
@@ -103,12 +134,12 @@ export function DownloadPage() {
               Install Auto-AI on Android with the same backend, account, memory, chat history, uploads, settings, and source-grounded answers as the website.
             </p>
             <div className="download-actions">
-              <a className="btn-primary h-12 px-5" href={APK_DOWNLOAD_URL}>
+              <button className="btn-primary h-12 px-5" type="button" onClick={downloadLatestApk}>
                 <Download size={18} />
                 Download Auto-AI APK
-              </a>
+              </button>
               <span className="download-version">
-                {latest ? `Version ${latest.version}` : loading ? "Checking latest version" : `Build ${buildVersion}`}
+                {latest ? `Version ${latest.version_name} (${latest.version_code})` : loading ? "Checking latest version" : `Build ${buildVersion}`}
               </span>
             </div>
           </div>
@@ -137,23 +168,33 @@ export function DownloadPage() {
           <div className="download-meta-grid">
             <article>
               <Smartphone size={18} />
-              <span>APK size</span>
-              <strong>{formatBytes(latest?.file_size)}</strong>
+              <span>Latest version</span>
+              <strong>{latest?.version_name ?? "Pending"}</strong>
             </article>
             <article>
-              <Lock size={18} />
-              <span>Integrity</span>
-              <strong>{latest?.sha256 ? `${latest.sha256.slice(0, 12)}...` : "Pending"}</strong>
+              <Upload size={18} />
+              <span>Version code</span>
+              <strong>{latest?.version_code ?? 0}</strong>
             </article>
             <article>
               <Download size={18} />
               <span>Downloads</span>
-              <strong>{stats?.total_downloads?.toLocaleString() ?? "0"}</strong>
+              <strong>{latest?.download_count?.toLocaleString() ?? stats?.total_downloads?.toLocaleString() ?? "0"}</strong>
             </article>
             <article>
               <FileText size={18} />
-              <span>Release date</span>
-              <strong>{latest?.release_date ? formatDate(latest.release_date) : "Pending"}</strong>
+              <span>Released</span>
+              <strong>{formatDateTime(latest?.released_at ?? latest?.release_date)}</strong>
+            </article>
+            <article>
+              <CheckCircle2 size={18} />
+              <span>Last updated</span>
+              <strong>{formatDateTime(latest?.updated_at)}</strong>
+            </article>
+            <article>
+              <Lock size={18} />
+              <span>APK size</span>
+              <strong>{formatBytes(latest?.file_size)}</strong>
             </article>
             <article>
               <CheckCircle2 size={18} />
@@ -189,9 +230,12 @@ export function DownloadPage() {
           <div className="release-panel">
             <div className="section-heading-left">
               <p className="hero-kicker"><FileText size={14} /> Release Notes</p>
-              <h2>{latest ? `Version ${latest.version}` : `Build ${buildVersion}`}</h2>
+              <h2>{latest ? `Version ${latest.version_name}` : `Build ${buildVersion}`}</h2>
             </div>
             {error && <p className="download-error">{error}</p>}
+            <p className="text-sm text-slate-300">
+              Released {formatDateTime(latest?.released_at ?? latest?.release_date)} - Updated {formatDateTime(latest?.updated_at)}
+            </p>
             {latest?.changelog && <p className="mobile-changelog">{latest.changelog}</p>}
             {(latest?.release_notes?.length ? latest.release_notes : ["Release notes will appear after the first APK upload."]).map((note) => (
               <span key={note} className="release-note"><CheckCircle2 size={15} /> {note}</span>
@@ -205,8 +249,8 @@ export function DownloadPage() {
             </div>
             {(versions.length ? versions : latest ? [latest] : []).map((release) => (
               <div key={release.id} className="version-row">
-                <span>Version {release.version_name}</span>
-                <strong>{formatBytes(release.file_size)}</strong>
+                <span>Version {release.version_name} - Code {release.version_code} - {formatDateTime(release.released_at ?? release.release_date)}</span>
+                <strong>{release.download_count.toLocaleString()} downloads</strong>
               </div>
             ))}
             {!versions.length && !latest && !loading && (

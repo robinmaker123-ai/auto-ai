@@ -20,7 +20,7 @@ import {
   Users,
   Wallet
 } from "lucide-react";
-import { API_BASE_URL, api } from "../../api/client";
+import { API_BASE_URL, api, resolveApkDownloadUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type {
   AdminAnalytics,
@@ -95,6 +95,17 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "2-digit" }).format(new Date(value));
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "Pending";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 function dateInputValue(value?: string | null) {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
 }
@@ -107,14 +118,6 @@ function formatBytes(bytes?: number | null) {
   if (!bytes) return "0 B";
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function apkDownloadHref(release: ApkRelease) {
-  try {
-    return new URL(release.download_url || release.apk_url, `${API_BASE_URL}/`).toString();
-  } catch {
-    return release.download_url || release.apk_url;
-  }
 }
 
 function numberValue(value: string) {
@@ -698,6 +701,34 @@ export function AdminDashboard() {
     }
   }
 
+  async function downloadApkRelease(release: ApkRelease) {
+    setBusyId(`apk-download-${release.id}`);
+    setError("");
+    try {
+      const counted = await api.countApkDownload({ id: release.id });
+      setApkVersions((current) => current.map((item) => (item.id === counted.id ? counted : item)));
+      setApkStats((current) =>
+        current
+          ? {
+              ...current,
+              latest: current.latest?.id === counted.id ? counted : current.latest,
+              total_downloads: current.total_downloads + 1,
+              downloads_by_version: {
+                ...current.downloads_by_version,
+                [counted.version_name]: counted.download_count
+              }
+            }
+          : current
+      );
+      window.location.href = resolveApkDownloadUrl(counted, true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to record APK download");
+      window.location.href = resolveApkDownloadUrl(release);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!isAdmin) {
     return <div className="min-h-0 flex-1 overflow-y-auto p-6 text-sm text-slate-300">Admin access required.</div>;
   }
@@ -1265,11 +1296,16 @@ export function AdminDashboard() {
           {activeSection === "mobile" && (
             <section className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
               <SectionTitle title="Mobile Application" subtitle="Upload APK releases, edit changelog, force updates, and track downloads" />
-              <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <StatTile icon={<Smartphone size={18} />} label="Latest version" value={apkStats?.latest?.version_name ?? "None"} />
-                <StatTile icon={<Download size={18} />} label="Downloads" value={apkStats?.total_downloads ?? 0} />
                 <StatTile icon={<Upload size={18} />} label="Version code" value={apkStats?.latest?.version_code ?? 0} />
-                <StatTile icon={<Activity size={18} />} label="Force update" value={apkStats?.latest?.force_update ? "On" : "Off"} />
+                <StatTile icon={<Download size={18} />} label="Downloads" value={apkStats?.total_downloads ?? 0} />
+                <StatTile icon={<Activity size={18} />} label="Released" value={formatDateTime(apkStats?.latest?.released_at ?? apkStats?.latest?.release_date)} />
+                <StatTile icon={<RefreshCw size={18} />} label="Updated" value={formatDateTime(apkStats?.latest?.updated_at)} />
+              </div>
+              <div className="mb-5 rounded-lg border border-white/10 bg-slate-950/35 p-4">
+                <p className="text-xs font-semibold uppercase text-slate-400">Latest changelog</p>
+                <p className="mt-2 text-sm text-slate-200">{apkStats?.latest?.changelog || "No changelog available."}</p>
               </div>
 
               <form className="mb-6 grid gap-3 rounded-lg border border-white/10 bg-slate-950/35 p-4 xl:grid-cols-[1fr_120px_1fr_1fr_auto]" onSubmit={uploadApk}>
@@ -1319,11 +1355,12 @@ export function AdminDashboard() {
               </form>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
                   <thead className="bg-white/[0.035] text-xs uppercase text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Version</th>
-                      <th className="px-4 py-3">Release date</th>
+                      <th className="px-4 py-3">Released</th>
+                      <th className="px-4 py-3">Updated</th>
                       <th className="px-4 py-3">Size</th>
                       <th className="px-4 py-3">Downloads</th>
                       <th className="px-4 py-3">Changelog</th>
@@ -1341,7 +1378,8 @@ export function AdminDashboard() {
                             <div className="font-semibold text-white">{release.version_name}</div>
                             <div className="text-xs text-slate-400">Code {release.version_code}</div>
                           </td>
-                          <td className="px-4 py-3">{formatDate(release.release_date)}</td>
+                          <td className="px-4 py-3">{formatDateTime(release.released_at ?? release.release_date)}</td>
+                          <td className="px-4 py-3">{formatDateTime(release.updated_at)}</td>
                           <td className="px-4 py-3">{formatBytes(release.file_size)}</td>
                           <td className="px-4 py-3">{release.download_count.toLocaleString()}</td>
                           <td className="px-4 py-3">
@@ -1375,16 +1413,21 @@ export function AdminDashboard() {
                             </button>
                           </td>
                           <td className="px-4 py-3">
-                            <a className="chip-dark" href={apkDownloadHref(release)}>
+                            <button
+                              className="chip-dark"
+                              disabled={busy || busyId === `apk-download-${release.id}`}
+                              onClick={() => downloadApkRelease(release)}
+                              type="button"
+                            >
                               <Download size={15} />
                               APK
-                            </a>
+                            </button>
                           </td>
                         </tr>
                       );
                     })}
                     {apkVersions.length === 0 && (
-                      <tr><td className="px-4 py-6 text-sm text-slate-400" colSpan={8}>No APK versions uploaded yet.</td></tr>
+                      <tr><td className="px-4 py-6 text-sm text-slate-400" colSpan={9}>No APK versions uploaded yet.</td></tr>
                     )}
                   </tbody>
                 </table>

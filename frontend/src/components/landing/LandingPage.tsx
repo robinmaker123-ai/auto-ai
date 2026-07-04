@@ -12,7 +12,7 @@ import {
   Smartphone,
   Zap
 } from "lucide-react";
-import { APK_DOWNLOAD_URL, api } from "../../api/client";
+import { api, resolveApkDownloadUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { ApkRelease, ApkStats } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
@@ -39,14 +39,43 @@ const faqs = [
 
 function formatDate(value?: string | null) {
   if (!value) return "Pending release";
-  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 export function LandingPage() {
   const { user } = useAuth();
   const [latestApk, setLatestApk] = useState<ApkRelease | null>(null);
   const [apkStats, setApkStats] = useState<ApkStats | null>(null);
-  const qrUrl = typeof window === "undefined" ? APK_DOWNLOAD_URL : new URL(APK_DOWNLOAD_URL, window.location.origin).toString();
+  const qrUrl = resolveApkDownloadUrl();
+
+  async function downloadLatestApk() {
+    let release = latestApk;
+    if (release) {
+      try {
+        const countedRelease = await api.countApkDownload({ id: release.id });
+        release = countedRelease;
+        setLatestApk(countedRelease);
+        setApkStats((current) => current && {
+          ...current,
+          latest: countedRelease,
+          total_downloads: current.total_downloads + 1,
+          downloads_by_version: {
+            ...current.downloads_by_version,
+            [countedRelease.version_name]: countedRelease.download_count
+          }
+        });
+      } catch {
+        release = latestApk;
+      }
+    }
+    window.location.href = resolveApkDownloadUrl(release, Boolean(release));
+  }
 
   useEffect(() => {
     let active = true;
@@ -165,15 +194,17 @@ export function LandingPage() {
               </p>
               <div className="mobile-release-strip">
                 <span>Latest: {latestApk?.version_name ?? "Checking"}</span>
-                <span>Released: {formatDate(latestApk?.release_date)}</span>
-                <span>Downloads: {(apkStats?.total_downloads ?? 0).toLocaleString()}</span>
+                <span>Code: {latestApk?.version_code ?? 0}</span>
+                <span>Released: {formatDate(latestApk?.released_at ?? latestApk?.release_date)}</span>
+                <span>Updated: {formatDate(latestApk?.updated_at)}</span>
+                <span>Downloads: {(latestApk?.download_count ?? apkStats?.total_downloads ?? 0).toLocaleString()}</span>
               </div>
               {latestApk?.changelog && <p className="mobile-changelog">{latestApk.changelog}</p>}
               <div className="mt-5 flex flex-wrap gap-3">
-                <a className="btn-primary h-11 px-5" href={APK_DOWNLOAD_URL}>
+                <button className="btn-primary h-11 px-5" type="button" onClick={downloadLatestApk}>
                   <Download size={17} />
                   Download APK
-                </a>
+                </button>
                 <Link className="btn-secondary h-11 px-5" to="/download">
                   App details
                 </Link>
