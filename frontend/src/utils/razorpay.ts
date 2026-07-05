@@ -67,8 +67,43 @@ export const RAZORPAY_UPI_FIRST_OPTIONS = {
     wallet: true,
     emi: true,
     paylater: true
+  },
+  config: {
+    display: {
+      blocks: {
+        upi_qr: {
+          name: "Pay via UPI / QR",
+          instruments: [
+            {
+              method: "upi"
+            }
+          ]
+        },
+        other_methods: {
+          name: "Cards, Netbanking & Wallets",
+          instruments: [
+            {
+              method: "card"
+            },
+            {
+              method: "netbanking"
+            },
+            {
+              method: "wallet"
+            },
+            {
+              method: "paylater"
+            }
+          ]
+        }
+      },
+      sequence: ["block.upi_qr", "block.other_methods"],
+      preferences: {
+        show_default_blocks: false
+      }
+    }
   }
-} satisfies Pick<RazorpayOptions, "method">;
+} satisfies Pick<RazorpayOptions, "method" | "config">;
 
 declare global {
   interface Window {
