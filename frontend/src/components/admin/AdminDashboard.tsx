@@ -583,7 +583,7 @@ export function AdminDashboard() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `auto-ai-invoice-${payment.id}.txt`;
+      anchor.download = `auto-ai-invoice-${payment.id}.pdf`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();

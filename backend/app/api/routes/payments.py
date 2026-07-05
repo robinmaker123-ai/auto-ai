@@ -33,6 +33,7 @@ from app.schemas.payments import (
     VerifyPaymentRequest,
     VerifyPaymentResponse,
 )
+from app.utils.pdf import build_text_pdf
 from app.services.admin_control import (
     PLAN_CATALOG,
     PLAN_PRICES_PAISE,
@@ -316,9 +317,9 @@ def download_invoice(
     payment = db.get(PaymentRecord, payment_id)
     if not payment or payment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
-    invoice = "\n".join(
+    invoice = build_text_pdf(
+        "Auto-AI Invoice",
         [
-            "Auto-AI Invoice",
             f"Invoice ID: {payment.id}",
             f"Date: {(payment.paid_at or payment.created_at).isoformat()}",
             f"Email: {payment.user_email or current_user.email}",
@@ -327,12 +328,12 @@ def download_invoice(
             f"Status: {payment.status}",
             f"Payment ID: {payment.razorpay_payment_id or payment.payment_id or 'N/A'}",
             f"Order ID: {payment_order_id(payment) or 'N/A'}",
-        ]
+        ],
     )
     return Response(
         content=invoice,
-        media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="auto-ai-invoice-{payment.id}.txt"'},
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="auto-ai-invoice-{payment.id}.pdf"'},
     )
 
 

@@ -49,6 +49,7 @@ from app.schemas.admin import (
     TokenUsageSummary,
 )
 from app.schemas.download import ApkReleaseRead, ApkVersionUpsert
+from app.utils.pdf import build_text_pdf
 from app.services.admin_control import (
     FEATURE_DEFINITIONS,
     activate_subscription_plan,
@@ -794,9 +795,9 @@ def download_admin_invoice(
     if not payment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
     user = db.get(User, payment.user_id) if payment.user_id else None
-    invoice = "\n".join(
+    invoice = build_text_pdf(
+        "Auto-AI Invoice",
         [
-            "Auto-AI Invoice",
             f"Invoice ID: {payment.id}",
             f"Date: {(payment.paid_at or payment.created_at).isoformat()}",
             f"Email: {user.email if user else payment.user_email or 'N/A'}",
@@ -805,12 +806,12 @@ def download_admin_invoice(
             f"Status: {payment.status}",
             f"Payment ID: {payment.razorpay_payment_id or payment.payment_id or 'N/A'}",
             f"Order ID: {payment.razorpay_order_id or payment.subscription_id or 'N/A'}",
-        ]
+        ],
     )
     return Response(
         content=invoice,
-        media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="auto-ai-invoice-{payment.id}.txt"'},
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="auto-ai-invoice-{payment.id}.pdf"'},
     )
 
 
