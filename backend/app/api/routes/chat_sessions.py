@@ -8,10 +8,10 @@ from app.api.deps import get_current_user
 from app.api.routes.ai import (
     RUNNING_GENERATION_STATUSES,
     TERMINAL_GENERATION_STATUSES,
+    cancel_generation_now,
     create_chat_generation,
     generation_payload,
     title_from_message,
-    update_generation_message,
 )
 from app.core.config import settings
 from app.db.session import get_db
@@ -38,6 +38,18 @@ from app.services.chat_storage import (
 
 
 router = APIRouter(prefix="/chat/sessions", tags=["chat-sessions"])
+
+
+def cancel_running_session_generations(db: Session, chat_id: str, user_id: str) -> None:
+    generations = db.scalars(
+        select(ChatGeneration).where(
+            ChatGeneration.chat_id == chat_id,
+            ChatGeneration.user_id == user_id,
+            ChatGeneration.status.in_(RUNNING_GENERATION_STATUSES),
+        )
+    ).all()
+    for generation in generations:
+        cancel_generation_now(db, generation)
 
 
 def get_session_or_404(db: Session, session_id: str, user_id: str, *, with_messages: bool = False) -> Chat:
@@ -129,6 +141,8 @@ def update_session(
     for key, value in updates.items():
         setattr(chat, key, value)
     if clear_messages:
+        cancel_running_session_generations(db, chat.id, current_user.id)
+        db.flush()
         db.execute(delete(ChatGeneration).where(ChatGeneration.chat_id == chat.id))
         db.execute(delete(Message).where(Message.chat_id == chat.id))
         clear_chat_message_storage(db, chat.id)
@@ -150,6 +164,9 @@ def delete_session(
     db: Session = Depends(get_db),
 ):
     chat = get_session_or_404(db, session_id, current_user.id)
+    cancel_running_session_generations(db, chat.id, current_user.id)
+    db.flush()
+    db.execute(delete(ChatGeneration).where(ChatGeneration.chat_id == chat.id))
     delete_chat_storage(db, chat.id)
     db.delete(chat)
     db.commit()
@@ -164,6 +181,8 @@ def regenerate_session_message(
     db: Session = Depends(get_db),
 ):
     chat = get_session_or_404(db, session_id, current_user.id, with_messages=True)
+    cancel_running_session_generations(db, chat.id, current_user.id)
+    db.flush()
     messages = list(chat.messages or [])
     if not messages:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No messages to regenerate.")
@@ -256,17 +275,7 @@ def stop_session_generation(
     if generation.status in TERMINAL_GENERATION_STATUSES:
         return generation_payload(db, generation)
 
-    generation.status = "cancel_requested"
-    generation.updated_at = datetime.utcnow()
-    assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
-    if assistant_message:
-        update_generation_message(
-            db,
-            generation=generation,
-            assistant_message=assistant_message,
-            content=assistant_message.content,
-            status_value="cancel_requested",
-        )
+    cancel_generation_now(db, generation)
     db.commit()
     db.refresh(generation)
     return generation_payload(db, generation)

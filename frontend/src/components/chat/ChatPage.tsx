@@ -71,6 +71,7 @@ export function ChatPage() {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [submittingGeneration, setSubmittingGeneration] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [searchingMessageId, setSearchingMessageId] = useState<string | null>(null);
   const [activeGeneration, setActiveGeneration] = useState<ChatGeneration | null>(null);
@@ -180,13 +181,11 @@ export function ChatPage() {
     () => (messages.length > 160 ? messages.slice(-160) : messages),
     [messages]
   );
-  const isGenerationRunning =
-    activeGeneration?.status === "pending" ||
-    activeGeneration?.status === "running" ||
-    activeGeneration?.status === "cancel_requested";
   const visibleGeneration = activeGeneration?.chat_id === activeChat?.id ? activeGeneration : null;
+  const visibleGenerationRunning = Boolean(visibleGeneration && isRunningGenerationStatus(visibleGeneration.status));
+  const visibleChatBusy = submittingGeneration || visibleGenerationRunning;
   const visibleStreamingMessageId =
-    visibleGeneration && isGenerationRunning ? visibleGeneration.assistant_message_id ?? null : null;
+    visibleGenerationRunning ? visibleGeneration?.assistant_message_id ?? null : null;
 
   function syncActiveChatMessages(chatId: string, nextMessages: Message[]) {
     setActiveChat((current) =>
@@ -277,6 +276,7 @@ export function ChatPage() {
 
   function applyGenerationSnapshot(generation: ChatGeneration) {
     const running = isRunningGenerationStatus(generation.status);
+    const visible = activeChatRef.current?.id === generation.chat_id;
     const assistant = generation.assistant_message ?? null;
     const user = generation.user_message ?? null;
 
@@ -285,12 +285,13 @@ export function ChatPage() {
     } else {
       setActiveGeneration(generation);
     }
-    setStreaming(running);
-    setStreamingMessageId(running ? generation.assistant_message_id ?? null : null);
+    setSubmittingGeneration(false);
+    setStreaming(running && visible);
+    setStreamingMessageId(running && visible ? generation.assistant_message_id ?? null : null);
 
     const streamMetadata = assistant?.message_metadata?.streaming as { phase?: string } | undefined;
     const phase = streamMetadata?.phase;
-    setSearchingMessageId(running && phase === "searching" ? assistant?.id ?? null : null);
+    setSearchingMessageId(running && visible && phase === "searching" ? assistant?.id ?? null : null);
 
     if (activeChatRef.current?.id !== generation.chat_id) return;
 
@@ -380,6 +381,7 @@ export function ChatPage() {
       if (!generation) {
         if (activeGenerationRef.current && isRunningGenerationStatus(activeGenerationRef.current.status)) {
           setStreaming(false);
+          setSubmittingGeneration(false);
           setStreamingMessageId(null);
           setSearchingMessageId(null);
           setActiveGeneration(null);
@@ -497,9 +499,10 @@ export function ChatPage() {
   }
 
   async function handleSend(text: string, options: ComposerOptions, imageFiles: File[] = []) {
-    if (!token || streaming) return;
+    if (!token || visibleChatBusy) return;
     lastOptionsRef.current = options;
     setStreaming(true);
+    setSubmittingGeneration(true);
     try {
       const chat = activeChat ?? (await createChat(text.slice(0, 60) || "New chat"));
       const imageContext = await analyzeImages(text, imageFiles);
@@ -524,6 +527,7 @@ export function ChatPage() {
       window.alert(`AI request failed: ${detail}`);
       await refreshChats();
       setStreaming(false);
+      setSubmittingGeneration(false);
       setStreamingMessageId(null);
       setSearchingMessageId(null);
     }
@@ -553,11 +557,12 @@ export function ChatPage() {
   }
 
   async function handleRegenerate(messageId: string) {
-    if (streaming || !token || !activeChat?.id) return;
+    if (visibleChatBusy || !token || !activeChat?.id) return;
     const index = messages.findIndex((message) => message.id === messageId);
     const previousUser = [...messages.slice(0, index)].reverse().find((message) => message.role === "user");
     if (!previousUser) return;
     setStreaming(true);
+    setSubmittingGeneration(true);
     try {
       const generation = await api.regenerateChatSession(token, activeChat.id, {
         message_id: messageId,
@@ -573,11 +578,12 @@ export function ChatPage() {
       const detail = error instanceof Error ? error.message : "Unable to regenerate response";
       window.alert(detail);
       setStreaming(false);
+      setSubmittingGeneration(false);
     }
   }
 
   async function handleEdit(messageId: string) {
-    if (streaming) return;
+    if (visibleChatBusy) return;
     const index = messages.findIndex((message) => message.id === messageId);
     const message = messages[index];
     if (!message || message.role !== "user") return;
@@ -592,7 +598,7 @@ export function ChatPage() {
   }
 
   async function handleContinue() {
-    if (streaming) return;
+    if (visibleChatBusy) return;
     const failedWithoutPartial =
       visibleGeneration?.status === "failed" &&
       !coerceTextContent(visibleGeneration.assistant_message?.content).trim();
@@ -622,6 +628,7 @@ export function ChatPage() {
       ) {
         stopGenerationPolling();
         setStreaming(false);
+        setSubmittingGeneration(false);
         setStreamingMessageId(null);
         setSearchingMessageId(null);
         setActiveGeneration(null);
@@ -635,12 +642,11 @@ export function ChatPage() {
 
   async function handleRetryGeneration() {
     const assistantId = visibleGeneration?.assistant_message_id;
-    if (!assistantId || streaming) return;
+    if (!assistantId || visibleChatBusy) return;
     await handleRegenerate(assistantId);
   }
 
   async function handleNewChat() {
-    if (streaming) return;
     await createChat();
   }
 
@@ -711,13 +717,13 @@ export function ChatPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {isGenerationRunning && (
+            {visibleGenerationRunning && (
               <button className="generation-action" onClick={handleStopGeneration} type="button">
                 <Square size={14} />
                 Stop
               </button>
             )}
-            <button className="chat-topbar-action" onClick={handleNewChat} disabled={streaming} type="button">
+            <button className="chat-topbar-action" onClick={handleNewChat} type="button">
               <MessageSquarePlus size={15} />
               New chat
             </button>
@@ -798,7 +804,7 @@ export function ChatPage() {
           <div className="generation-status-bar">
             <span className="generation-dot" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate" title={generationStatusText}>{generationStatusText}</span>
-            {isGenerationRunning ? (
+            {visibleGenerationRunning ? (
               <button className="generation-action" onClick={handleStopGeneration} type="button">
                 <Square size={14} />
                 Stop
@@ -821,7 +827,7 @@ export function ChatPage() {
         )}
 
         <Composer
-          disabled={streaming}
+          disabled={visibleChatBusy}
           selectedDocuments={selectedDocuments}
           uploadTasks={uploadTasks}
           onRemoveDocument={(id) =>

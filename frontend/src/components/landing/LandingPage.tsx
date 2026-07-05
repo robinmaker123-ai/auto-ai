@@ -197,7 +197,7 @@ export function LandingPage() {
                 <span>Code: {latestApk?.version_code ?? 0}</span>
                 <span>Released: {formatDate(latestApk?.released_at ?? latestApk?.release_date)}</span>
                 <span>Updated: {formatDate(latestApk?.updated_at)}</span>
-                <span>Downloads: {(latestApk?.download_count ?? apkStats?.total_downloads ?? 0).toLocaleString()}</span>
+                <span>Downloads: {(apkStats?.total_downloads ?? latestApk?.download_count ?? 0).toLocaleString()}</span>
               </div>
               {latestApk?.changelog && <p className="mobile-changelog">{latestApk.changelog}</p>}
               <div className="mt-5 flex flex-wrap gap-3">

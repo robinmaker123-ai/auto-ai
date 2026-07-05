@@ -404,7 +404,26 @@ def update_generation_message(
 
 def generation_cancel_requested(db: Session, generation: ChatGeneration) -> bool:
     db.refresh(generation)
-    return generation.status == "cancel_requested"
+    return generation.status in {"cancel_requested", "cancelled"}
+
+
+def cancel_generation_now(db: Session, generation: ChatGeneration) -> None:
+    assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
+    if assistant_message:
+        update_generation_message(
+            db,
+            generation=generation,
+            assistant_message=assistant_message,
+            content=assistant_message.content,
+            status_value="cancelled",
+            completed=True,
+        )
+        return
+
+    generation.status = "cancelled"
+    generation.updated_at = datetime.utcnow()
+    generation.completed_at = datetime.utcnow()
+    db.add(generation)
 
 
 def complete_identity_generation(
@@ -585,6 +604,17 @@ def run_chat_generation(generation_id: str) -> None:
                     payload=payload,
                     user_id=generation.user_id,
                 )
+                if generation_cancel_requested(db, generation):
+                    update_generation_message(
+                        db,
+                        generation=generation,
+                        assistant_message=assistant_message,
+                        content=assistant_message.content,
+                        status_value="cancelled",
+                        completed=True,
+                    )
+                    db.commit()
+                    return
                 final_content = web_search_service.ensure_citations(research_result.content, search_bundle)
                 final_content = clean_model_output(final_content)
                 chat_row.model = research_result.selected_model
@@ -685,6 +715,17 @@ def run_chat_generation(generation_id: str) -> None:
                     last_persisted_length = len(visible_content)
 
             final_content = web_search_service.ensure_citations(clean_model_output(raw_content), search_bundle)
+            if generation_cancel_requested(db, generation):
+                update_generation_message(
+                    db,
+                    generation=generation,
+                    assistant_message=assistant_message,
+                    content=visible_content,
+                    status_value="cancelled",
+                    completed=True,
+                )
+                db.commit()
+                return
             visible_content = final_content
             update_generation_message(
                 db,
@@ -840,8 +881,10 @@ def active_chat_generations(
     generations = list(
         db.scalars(
             select(ChatGeneration)
+            .join(Chat, Chat.id == ChatGeneration.chat_id)
             .where(
                 ChatGeneration.user_id == current_user.id,
+                Chat.user_id == current_user.id,
                 ChatGeneration.status.in_(RUNNING_GENERATION_STATUSES),
             )
             .order_by(ChatGeneration.updated_at.desc())
@@ -884,17 +927,7 @@ def cancel_chat_generation(
     if generation.status in TERMINAL_GENERATION_STATUSES:
         return generation_payload(db, generation)
 
-    generation.status = "cancel_requested"
-    generation.updated_at = datetime.utcnow()
-    assistant_message = db.get(Message, generation.assistant_message_id) if generation.assistant_message_id else None
-    if assistant_message:
-        update_generation_message(
-            db,
-            generation=generation,
-            assistant_message=assistant_message,
-            content=assistant_message.content,
-            status_value="cancel_requested",
-        )
+    cancel_generation_now(db, generation)
     db.commit()
     db.refresh(generation)
     return generation_payload(db, generation)

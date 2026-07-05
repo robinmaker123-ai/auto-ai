@@ -179,7 +179,7 @@ export function DownloadPage() {
             <article>
               <Download size={18} />
               <span>Downloads</span>
-              <strong>{latest?.download_count?.toLocaleString() ?? stats?.total_downloads?.toLocaleString() ?? "0"}</strong>
+              <strong>{stats?.total_downloads?.toLocaleString() ?? latest?.download_count?.toLocaleString() ?? "0"}</strong>
             </article>
             <article>
               <FileText size={18} />
