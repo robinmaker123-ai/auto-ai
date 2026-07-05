@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Box, BrainCircuit, Check, ChevronDown, ChevronRight, FileText, Plus, SendHorizonal, Sparkles, Timer, Trash2, X } from "lucide-react";
+import { Box, BrainCircuit, Check, ChevronDown, ChevronRight, FileText, Plus, SendHorizonal, Sparkles, Square, Timer, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { api } from "../../api/client";
@@ -301,7 +301,8 @@ export function Composer({
   onRemoveDocument,
   onDeleteDocument,
   onUploadDocuments,
-  onSend
+  onSend,
+  onStop
 }: {
   disabled?: boolean;
   selectedDocuments: DocumentItem[];
@@ -310,6 +311,7 @@ export function Composer({
   onDeleteDocument: (id: string) => Promise<void>;
   onUploadDocuments: (files: File[], provider: Provider) => Promise<void>;
   onSend: (text: string, options: ComposerOptions, imageFiles: File[]) => Promise<void>;
+  onStop?: () => Promise<void> | void;
 }) {
   const { token } = useAuth();
   const { settings } = useAppSettings();
@@ -742,9 +744,15 @@ export function Composer({
             {settings.voiceEnabled && (
               <VoiceButton onTranscript={(text) => setDraft((current) => [current, text].filter(Boolean).join(" "))} />
             )}
-            <button className="send-button composer-send-round" disabled={!canSend} type="submit" title="Send message">
-              <SendHorizonal size={18} />
-            </button>
+            {disabled && onStop ? (
+              <button className="stop-button composer-send-round" type="button" onClick={onStop} title="Stop response">
+                <Square size={16} />
+              </button>
+            ) : (
+              <button className="send-button composer-send-round" disabled={!canSend} type="submit" title="Send message">
+                <SendHorizonal size={18} />
+              </button>
+            )}
           </div>
         </div>
       </div>

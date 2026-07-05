@@ -226,6 +226,52 @@ button:disabled {
   overflow: hidden;
 }
 
+.chat-topbar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 7, 13, 0.72);
+  padding: 0 18px;
+  backdrop-filter: blur(18px);
+}
+
+.chat-topbar-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #86efac;
+  box-shadow: 0 0 16px rgba(134, 239, 172, 0.62);
+}
+
+.chat-topbar-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid rgba(103, 232, 249, 0.28);
+  border-radius: 7px;
+  background: rgba(103, 232, 249, 0.12);
+  padding: 0 11px;
+  color: #cffafe;
+  font-size: 0.8rem;
+  font-weight: 750;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.chat-topbar-action:hover:not(:disabled) {
+  border-color: rgba(103, 232, 249, 0.52);
+  background: rgba(103, 232, 249, 0.2);
+  color: #ffffff;
+}
+
+.chat-topbar-action:disabled {
+  opacity: 0.5;
+}
+
 .chat-scroll {
   min-height: 0;
   flex: 1;
@@ -302,6 +348,9 @@ button:disabled {
 }
 
 .composer-shell {
+  position: sticky;
+  bottom: 0;
+  z-index: 16;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, rgba(2, 6, 23, 0.1), rgba(2, 6, 23, 0.82));
   padding: 14px;
@@ -613,6 +662,28 @@ button:disabled {
   opacity: 0.48;
 }
 
+.stop-button {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(252, 165, 165, 0.42);
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.18);
+  padding: 0 14px;
+  color: #fecaca;
+  font-size: 13px;
+  font-weight: 800;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.stop-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(252, 165, 165, 0.68);
+  background: rgba(239, 68, 68, 0.28);
+}
+
 .composer-inline-actions .icon-button-dark,
 .composer-inline-actions .icon-button-danger,
 .composer-send-round {
@@ -644,18 +715,18 @@ button:disabled {
 
 .message-row {
   display: flex;
-  width: min(920px, 100%);
+  width: min(960px, 100%);
   gap: 12px;
   margin: 0 auto;
   padding: 18px 20px;
 }
 
 .message-row-user {
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .message-row-assistant {
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .message-avatar {
@@ -669,7 +740,9 @@ button:disabled {
 }
 
 .message-avatar-ai {
-  display: none;
+  display: grid;
+  background: rgba(103, 232, 249, 0.12);
+  color: #a5f3fc;
 }
 
 .message-avatar-user {
@@ -691,7 +764,9 @@ button:disabled {
 }
 
 .message-card-ai {
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(2, 6, 23, 0.34);
+  padding: 12px 14px;
 }
 
 .message-card-user {

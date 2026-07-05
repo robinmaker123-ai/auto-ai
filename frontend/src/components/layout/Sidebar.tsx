@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, CreditCard, Eraser, LogOut, MessageSquarePlus, Pencil, Settings, Shield, Trash2, UserCircle2, X } from "lucide-react";
+import { Bot, CreditCard, Eraser, LogOut, MessageSquarePlus, Pencil, Search, Settings, Shield, Trash2, UserCircle2, X } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -14,6 +14,13 @@ export function Sidebar() {
   const { isSidebarOpen, closeSidebar } = useShell();
   const openSettings = useSettingsNavigation();
   const location = useLocation();
+  const [query, setQuery] = useState("");
+
+  const filteredChats = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return chats;
+    return chats.filter((chat) => chat.title.toLowerCase().includes(term));
+  }, [chats, query]);
 
   useEffect(() => {
     if (!isSidebarOpen) return;
@@ -66,7 +73,7 @@ export function Sidebar() {
       {isSidebarOpen && <div className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-sm md:hidden" onClick={closeSidebar} />}
       <aside
         className={clsx(
-          "fixed inset-y-0 left-0 z-50 w-72 shrink-0 border-r border-white/10 bg-slate-950/95 text-white shadow-[18px_0_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-transform duration-300 md:static md:z-auto md:flex md:translate-x-0 md:flex-col",
+          "fixed inset-y-0 left-0 z-50 w-80 shrink-0 border-r border-white/10 bg-slate-950/95 text-white shadow-[18px_0_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-transform duration-300 md:static md:z-auto md:flex md:translate-x-0 md:flex-col",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
@@ -83,28 +90,47 @@ export function Sidebar() {
             <X size={16} />
           </button>
         </div>
-        <div className="p-3">
+        <div className="space-y-3 p-3">
           <button
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-sm font-medium text-cyan-50 transition hover:bg-cyan-200/15"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-cyan-200/30 bg-cyan-200 px-3 text-sm font-bold text-slate-950 transition hover:bg-white"
             onClick={createNewChat}
             type="button"
           >
             <MessageSquarePlus size={17} />
             New chat
           </button>
+          <label className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.055] px-3 text-sm text-slate-300 focus-within:border-cyan-200/40">
+            <Search size={15} className="shrink-0 text-slate-500" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search chats"
+            />
+          </label>
+        </div>
+        <div className="flex items-center justify-between px-4 pb-2 text-[11px] font-bold uppercase text-slate-500">
+          <span>Chat history</span>
+          <span>{filteredChats.length}</span>
         </div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
           {loadingChats && <p className="px-2 py-2 text-sm text-white/50">Loading...</p>}
-          {chats.map((chat) => (
+          {!loadingChats && filteredChats.length === 0 && (
+            <p className="px-2 py-2 text-sm text-white/45">No chats found</p>
+          )}
+          {filteredChats.map((chat) => (
             <div
               key={chat.id}
               className={clsx(
-                "group flex items-center rounded-lg transition",
-                activeChat?.id === chat.id && location.pathname === "/chat" ? "bg-white/15" : "hover:bg-white/10"
+                "group flex items-center rounded-lg border border-transparent transition",
+                activeChat?.id === chat.id && location.pathname === "/chat"
+                  ? "border-cyan-200/20 bg-cyan-200/12"
+                  : "hover:bg-white/10"
               )}
             >
-              <button className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm" onClick={() => openExistingChat(chat.id)} type="button">
-                {chat.title}
+              <button className="min-w-0 flex-1 px-3 py-2 text-left" onClick={() => openExistingChat(chat.id)} type="button">
+                <span className="block truncate text-sm text-slate-100">{chat.title}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-slate-500">{chat.mode || "normal"} / {chat.model}</span>
               </button>
               <button
                 className="mr-1 rounded p-1 text-white/50 opacity-0 hover:text-white group-hover:opacity-100"

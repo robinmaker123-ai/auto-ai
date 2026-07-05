@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowDown, Bot, Brain, CornerDownRight, Menu, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
+import { ArrowDown, Bot, Brain, CornerDownRight, Menu, MessageSquarePlus, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -626,6 +626,11 @@ export function ChatPage() {
     await handleRegenerate(assistantId);
   }
 
+  async function handleNewChat() {
+    if (streaming) return;
+    await createChat();
+  }
+
   const generationStatusLabel =
     visibleGeneration?.status === "cancel_requested"
       ? "Stopping..."
@@ -678,6 +683,30 @@ export function ChatPage() {
               type="button"
             >
               <Settings size={18} className="text-cyan-200" />
+            </button>
+          </div>
+        </div>
+
+        <div className="chat-topbar hidden md:flex">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="chat-topbar-dot" aria-hidden="true" />
+              <h1 className="truncate text-sm font-semibold text-white">{activeTitle}</h1>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {(activeChat?.mode || lastOptionsRef.current.chatMode).replace("_", " ")} / {activeChat?.model || lastOptionsRef.current.model}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isGenerationRunning && (
+              <button className="generation-action" onClick={handleStopGeneration} type="button">
+                <Square size={14} />
+                Stop
+              </button>
+            )}
+            <button className="chat-topbar-action" onClick={handleNewChat} disabled={streaming} type="button">
+              <MessageSquarePlus size={15} />
+              New chat
             </button>
           </div>
         </div>
@@ -788,6 +817,7 @@ export function ChatPage() {
           onDeleteDocument={handleDeleteDocument}
           onUploadDocuments={uploadDocuments}
           onSend={handleSend}
+          onStop={handleStopGeneration}
         />
       </section>
 
