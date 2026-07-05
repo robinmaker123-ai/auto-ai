@@ -1,8 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { API_BASE_URL, api, type AuthSession } from "../api/client";
+import { api, type AuthSession } from "../api/client";
 import { nativeGoogleAuth, readStoredSession, removeStoredSession, writeStoredSession } from "../auth/sessionStorage";
 import type { User } from "../types";
-import { isLocalPageWithRemoteApi } from "../utils/runtime";
 
 type AuthContextValue = {
   user: User | null;
@@ -26,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const persistSession = useCallback(async (session: AuthSession) => {
     await writeStoredSession(session.access_token, session.refresh_token);
     setToken(session.access_token);
-    setRefreshToken(session.refresh_token);
+    setRefreshToken(session.refresh_token ?? null);
     setUser(session.user);
   }, []);
 
@@ -50,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        if (stored.refreshToken || !isLocalPageWithRemoteApi(API_BASE_URL)) {
+        if (stored.refreshToken) {
           const refreshed = await api.refreshSession(stored.refreshToken);
           if (active) await persistSession(refreshed);
         }

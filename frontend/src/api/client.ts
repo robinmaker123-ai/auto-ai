@@ -64,7 +64,7 @@ type FetchOptions = Omit<RequestInit, "headers"> & {
 
 export type AuthSession = {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string | null;
   token_type: string;
   user: User;
 };

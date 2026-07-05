@@ -44,6 +44,14 @@ function readLocalStorage(key: string) {
   }
 }
 
+function writeLocalStorage(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn("[Auto-AI Auth] Unable to save browser session.", error);
+  }
+}
+
 function removeLocalStorage(key: string) {
   try {
     localStorage.removeItem(key);
@@ -65,21 +73,30 @@ export async function readStoredSession(): Promise<StoredAuthSession> {
     };
   }
   return {
-    accessToken: readLocalStorage(LEGACY_TOKEN_KEY),
-    refreshToken: null
+    accessToken: readLocalStorage(ACCESS_TOKEN_KEY) || readLocalStorage(LEGACY_TOKEN_KEY),
+    refreshToken: readLocalStorage(REFRESH_TOKEN_KEY)
   };
 }
 
-export async function writeStoredSession(accessToken: string, refreshToken: string) {
+export async function writeStoredSession(accessToken: string, refreshToken?: string | null) {
   const secureStorage = nativeSecureStorage();
   if (secureStorage) {
-    await Promise.all([
-      secureStorage.set({ key: ACCESS_TOKEN_KEY, value: accessToken }),
-      secureStorage.set({ key: REFRESH_TOKEN_KEY, value: refreshToken })
-    ]);
+    const writes = [secureStorage.set({ key: ACCESS_TOKEN_KEY, value: accessToken })];
+    writes.push(
+      refreshToken
+        ? secureStorage.set({ key: REFRESH_TOKEN_KEY, value: refreshToken })
+        : secureStorage.remove({ key: REFRESH_TOKEN_KEY })
+    );
+    await Promise.all(writes);
     return;
   }
-  removeLocalStorage(LEGACY_TOKEN_KEY);
+  writeLocalStorage(ACCESS_TOKEN_KEY, accessToken);
+  writeLocalStorage(LEGACY_TOKEN_KEY, accessToken);
+  if (refreshToken) {
+    writeLocalStorage(REFRESH_TOKEN_KEY, refreshToken);
+  } else {
+    removeLocalStorage(REFRESH_TOKEN_KEY);
+  }
 }
 
 export async function removeStoredSession() {
@@ -90,5 +107,7 @@ export async function removeStoredSession() {
       secureStorage.remove({ key: REFRESH_TOKEN_KEY })
     ]);
   }
+  removeLocalStorage(ACCESS_TOKEN_KEY);
+  removeLocalStorage(REFRESH_TOKEN_KEY);
   removeLocalStorage(LEGACY_TOKEN_KEY);
 }

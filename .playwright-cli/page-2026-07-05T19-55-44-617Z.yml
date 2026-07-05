@@ -1,0 +1,38 @@
+- generic [ref=e47]:
+  - link "Auto-AI logo Auto-AI" [ref=e48] [cursor=pointer]:
+    - /url: /
+    - img "Auto-AI logo" [ref=e50]
+    - text: Auto-AI
+  - generic [ref=e51]:
+    - paragraph [ref=e52]:
+      - img [ref=e53]
+      - text: Personal AI layer
+    - heading "Create your workspace." [level=1] [ref=e63]
+    - paragraph [ref=e64]: Start with streaming chat, memory management, document context, image analysis, and voice input ready on day one.
+  - generic [ref=e65]:
+    - generic [ref=e66]:
+      - paragraph [ref=e67]: Register
+      - heading "Launch Auto-AI" [level=2] [ref=e68]
+    - generic [ref=e69]:
+      - generic [ref=e70]: Name
+      - textbox "Name" [ref=e71]
+    - generic [ref=e72]:
+      - generic [ref=e73]: Email
+      - textbox "Email" [ref=e74]
+    - generic [ref=e75]:
+      - generic [ref=e76]: Password
+      - textbox "Password" [ref=e77]
+    - button "Create account" [ref=e78] [cursor=pointer]:
+      - text: Create account
+      - img [ref=e79]
+    - generic [ref=e82]: or
+    - generic [ref=e85]:
+      - button "Continue with Google. Opens in new tab" [ref=e87] [cursor=pointer]:
+        - generic [ref=e89]:
+          - img [ref=e91]
+          - generic [ref=e98]: Continue with Google
+      - iframe
+    - paragraph [ref=e99]:
+      - text: Already registered?
+      - link "Log in" [ref=e100] [cursor=pointer]:
+        - /url: /login

@@ -26,10 +26,10 @@ class ApkRelease(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
-    released_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    release_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     filename = synonym("file_name")
-    release_date = synonym("released_at")
+    released_at = synonym("release_date")
 
 
 class ApkDownload(Base):
