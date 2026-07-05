@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowDown, Bot, Brain, CornerDownRight, Menu, MessageSquarePlus, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
-import { api } from "../../api/client";
+import { ApiClientError, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
@@ -610,11 +610,24 @@ export function ChatPage() {
   async function handleStopGeneration() {
     if (!token || !activeGeneration || !isRunningGenerationStatus(activeGeneration.status)) return;
     try {
-      const generation = activeChat?.id
-        ? await api.stopChatSession(token, activeChat.id)
+      const generation = activeGeneration.chat_id
+        ? await api.stopChatSession(token, activeGeneration.chat_id)
         : await api.cancelChatGeneration(token, activeGeneration.id);
       applyGenerationSnapshot(generation);
     } catch (error) {
+      if (
+        error instanceof ApiClientError &&
+        error.status === 404 &&
+        error.message.toLowerCase().includes("no active response")
+      ) {
+        stopGenerationPolling();
+        setStreaming(false);
+        setStreamingMessageId(null);
+        setSearchingMessageId(null);
+        setActiveGeneration(null);
+        await recoverActiveGeneration();
+        return;
+      }
       const detail = error instanceof Error ? error.message : "Unable to stop generation";
       window.alert(detail);
     }

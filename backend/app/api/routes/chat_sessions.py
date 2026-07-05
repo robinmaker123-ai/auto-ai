@@ -242,6 +242,16 @@ def stop_session_generation(
         .order_by(ChatGeneration.updated_at.desc())
     )
     if not generation:
+        latest_generation = db.scalar(
+            select(ChatGeneration)
+            .where(
+                ChatGeneration.chat_id == session_id,
+                ChatGeneration.user_id == current_user.id,
+            )
+            .order_by(ChatGeneration.updated_at.desc())
+        )
+        if latest_generation:
+            return generation_payload(db, latest_generation)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active response is running.")
     if generation.status in TERMINAL_GENERATION_STATUSES:
         return generation_payload(db, generation)
