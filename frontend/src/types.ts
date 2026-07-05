@@ -251,6 +251,8 @@ export type PaidPricingPlanName = Exclude<PricingPlanName, "free">;
 
 export type PaymentConfig = {
   key_id?: string | null;
+  upi_id?: string | null;
+  upi_payee_name?: string | null;
   payment_links: Record<PaidPricingPlanName, string | null>;
 };
 

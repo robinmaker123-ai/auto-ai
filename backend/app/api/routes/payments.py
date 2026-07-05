@@ -205,8 +205,12 @@ def razorpay_error_detail(error: Exception) -> str:
 
 @router.get("/payments/config", response_model=PaymentConfigRead)
 def payment_config() -> PaymentConfigRead:
+    upi_id = settings.UPI_ID.strip() if settings.UPI_ID else None
+    upi_payee_name = settings.UPI_PAYEE_NAME.strip() if settings.UPI_PAYEE_NAME else "Auto-AI"
     return PaymentConfigRead(
         key_id=settings.RAZORPAY_KEY_ID,
+        upi_id=upi_id,
+        upi_payee_name=upi_payee_name,
         payment_links=PaymentLinkConfig(
             pro=settings.RAZORPAY_PRO_LINK or None,
             premium=settings.RAZORPAY_PREMIUM_LINK or None,

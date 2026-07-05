@@ -16,6 +16,7 @@ import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
 import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
+import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
 const paidPlans = new Set(["pro", "premium", "ultra"]);
 
@@ -47,6 +48,8 @@ export function SubscriptionBillingCenter() {
   const [promo, setPromo] = useState<PromoCodeResponse | null>(null);
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const upiId = paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "";
+  const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 
   const current = billing?.current_plan;
   const paidPlanOptions = useMemo(
@@ -321,15 +324,20 @@ export function SubscriptionBillingCenter() {
               <ul className="billing-feature-list">
                 {plan.features.map((feature) => <li key={feature}><Check size={14} /> {feature}</li>)}
               </ul>
-              <button
-                className={isCurrent ? "btn-secondary" : "btn-primary"}
-                onClick={() => upgrade(plan)}
-                disabled={isCurrent || plan.id === "free" || busy === `pay-${plan.id}`}
-              type="button"
-            >
-              {busy === `pay-${plan.id}` ? <Loader2 className="spin-icon" size={16} /> : <Wallet size={16} />}
-                {isCurrent ? "Current" : plan.id === "free" ? "Free" : "Upgrade with Razorpay"}
-              </button>
+              <div className="billing-payment-actions">
+                <button
+                  className={isCurrent ? "btn-secondary" : "btn-primary"}
+                  onClick={() => upgrade(plan)}
+                  disabled={isCurrent || plan.id === "free" || busy === `pay-${plan.id}`}
+                  type="button"
+                >
+                  {busy === `pay-${plan.id}` ? <Loader2 className="spin-icon" size={16} /> : <Wallet size={16} />}
+                  {isCurrent ? "Current" : plan.id === "free" ? "Free" : "Upgrade with Razorpay"}
+                </button>
+                {!isCurrent && plan.id !== "free" && (
+                  <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={amount} planLabel={plan.label} />
+                )}
+              </div>
             </article>
           );
         })}

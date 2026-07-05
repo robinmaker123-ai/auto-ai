@@ -116,8 +116,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
     APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
     APK_FILENAME: str = "auto-ai.apk"
-    APK_DEFAULT_VERSION: str = "1.0.9"
-    APK_DEFAULT_VERSION_CODE: int = 10
+    APK_DEFAULT_VERSION: str = "1.0.10"
+    APK_DEFAULT_VERSION_CODE: int = 11
     APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     RAZORPAY_PRO_LINK: str | None = None
     RAZORPAY_PREMIUM_LINK: str | None = None
     RAZORPAY_ULTRA_LINK: str | None = None
+    UPI_ID: str | None = None
+    UPI_PAYEE_NAME: str = "Auto-AI"
     PROMO_CODES: str = ""
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")

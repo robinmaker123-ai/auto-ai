@@ -1516,6 +1516,74 @@ button:disabled {
   justify-content: center;
 }
 
+.upi-payment-box {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(103, 232, 249, 0.22);
+  border-radius: 8px;
+  background: rgba(103, 232, 249, 0.07);
+  padding: 10px;
+}
+
+.upi-payment-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #a5f3fc;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.upi-payment-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.upi-qr-frame {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 144px;
+  height: 144px;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px;
+}
+
+.upi-payment-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.upi-payment-details span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.upi-payment-details strong {
+  color: #ffffff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.upi-payment-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.upi-payment-actions .btn-secondary {
+  width: 100%;
+  min-height: 34px;
+  justify-content: center;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
 .payment-alert {
   margin: 0 auto 22px;
   max-width: 860px;
@@ -2311,8 +2379,16 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.billing-plan-card button {
+.billing-payment-actions {
   margin-top: auto;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.billing-plan-card > button,
+.billing-payment-actions > .btn-primary,
+.billing-payment-actions > .btn-secondary {
   justify-content: center;
   white-space: normal;
 }

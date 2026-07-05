@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
 import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
 import { LogoIcon } from "../brand/LogoIcon";
+import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
 type Plan = {
   id: PricingPlanName;
@@ -34,6 +35,8 @@ export function PricingPage() {
   const [error, setError] = useState("");
 
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const upiId = paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "";
+  const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 
   useEffect(() => {
     let active = true;
@@ -192,6 +195,7 @@ export function PricingPage() {
                         Payment Link
                       </button>
                     )}
+                    <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={plan.amount} planLabel={plan.label} />
                   </div>
                 )}
               </article>

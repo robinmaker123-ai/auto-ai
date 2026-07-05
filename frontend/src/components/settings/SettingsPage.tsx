@@ -257,12 +257,8 @@ export function SettingsPage() {
   }
 
   function goBack() {
-    if (section !== "main") {
-      navigate("/settings");
-      return;
-    }
     try {
-      const result = (location.key === "default" ? navigate("/chat") : navigate(-1)) as void | Promise<void>;
+      const result = navigate("/chat") as void | Promise<void>;
       if (result && typeof result.catch === "function") {
         void result.catch((error: unknown) => {
           console.error("[Auto-AI Navigation] Failed to leave settings.", error);
