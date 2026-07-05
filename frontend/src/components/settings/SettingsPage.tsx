@@ -257,6 +257,10 @@ export function SettingsPage() {
   }
 
   function goBack() {
+    if (section !== "main") {
+      navigate("/settings");
+      return;
+    }
     try {
       const result = navigate("/chat") as void | Promise<void>;
       if (result && typeof result.catch === "function") {
