@@ -15,7 +15,8 @@ import {
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
-import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
+import { razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { normalizeUpiId } from "../../utils/upi";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
 const paidPlans = new Set(["pro", "premium", "ultra"]);
@@ -48,7 +49,13 @@ export function SubscriptionBillingCenter() {
   const [promo, setPromo] = useState<PromoCodeResponse | null>(null);
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const upiId = paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "";
+  const razorpayCheckoutConfigId =
+    paymentConfig?.razorpay_config_id ||
+    import.meta.env.VITE_RAZORPAY_CHECKOUT_CONFIG_ID ||
+    import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID ||
+    import.meta.env.VITE_RAZORPAY_CONFIG_ID ||
+    "";
+  const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 
   const current = billing?.current_plan;
@@ -109,6 +116,7 @@ export function SubscriptionBillingCenter() {
         amount,
         currency: "INR",
         receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40),
+        checkout_config_id: razorpayCheckoutConfigId || null,
         promo_code: promo?.plan === paidPlan ? promo.code : null
       });
       const checkout = new window.Razorpay({
@@ -119,7 +127,7 @@ export function SubscriptionBillingCenter() {
         description: `${plan.label} plan`,
         order_id: order.order_id,
         prefill: { name: user.name, email: user.email, contact: user.mobile || "" },
-        ...RAZORPAY_UPI_FIRST_OPTIONS,
+        ...razorpayAllPaymentOptions(razorpayCheckoutConfigId),
         theme: { color: "#22d3ee" },
         modal: {
           ondismiss: () => {
@@ -325,7 +333,7 @@ export function SubscriptionBillingCenter() {
                 {plan.features.map((feature) => <li key={feature}><Check size={14} /> {feature}</li>)}
               </ul>
               <div className="billing-payment-actions">
-                {!isCurrent && plan.id !== "free" && (
+                {!isCurrent && plan.id !== "free" && upiId && (
                   <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={amount} planLabel={plan.label} />
                 )}
                 <button
@@ -335,7 +343,7 @@ export function SubscriptionBillingCenter() {
                   type="button"
                 >
                   {busy === `pay-${plan.id}` ? <Loader2 className="spin-icon" size={16} /> : <Wallet size={16} />}
-                  {isCurrent ? "Current" : plan.id === "free" ? "Free" : "Card / Netbanking / Wallet"}
+                  {isCurrent ? "Current" : plan.id === "free" ? "Free" : "UPI QR / Cards / Wallet"}
                 </button>
               </div>
             </article>

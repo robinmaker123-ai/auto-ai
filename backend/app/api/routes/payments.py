@@ -53,10 +53,12 @@ from app.services.admin_control import (
 router = APIRouter(tags=["payments"])
 
 PAYMENT_METHODS = [
+    "UPI QR",
     "UPI",
     "Google Pay",
     "PhonePe",
     "Paytm",
+    "Wallet",
     "Debit Card",
     "Credit Card",
     "Net Banking",
@@ -210,6 +212,7 @@ def payment_config() -> PaymentConfigRead:
     upi_payee_name = settings.UPI_PAYEE_NAME.strip() if settings.UPI_PAYEE_NAME else "Auto-AI"
     return PaymentConfigRead(
         key_id=settings.RAZORPAY_KEY_ID,
+        razorpay_config_id=settings.razorpay_checkout_config_id,
         upi_id=upi_id,
         upi_payee_name=upi_payee_name,
         payment_links=PaymentLinkConfig(
@@ -412,6 +415,9 @@ def create_order(
             "plan_id": selected_plan,
         },
     }
+    checkout_config_id = payload.checkout_config_id or settings.razorpay_checkout_config_id
+    if checkout_config_id:
+        order_payload["checkout_config_id"] = checkout_config_id
     try:
         order = razorpay_client().order.create(order_payload)
     except (BadRequestError, GatewayError, ServerError) as exc:
@@ -435,6 +441,7 @@ def create_order(
             raw_metadata={
                 "receipt": receipt[:40],
                 "promo_code": payload.promo_code,
+                "checkout_config_id": checkout_config_id,
                 "user_id": current_user.id,
                 "user_email": current_user.email,
                 "plan_id": selected_plan,

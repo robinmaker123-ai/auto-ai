@@ -15,6 +15,7 @@ class PaymentLinkConfig(BaseModel):
 
 class PaymentConfigRead(BaseModel):
     key_id: str | None = None
+    razorpay_config_id: str | None = None
     upi_id: str | None = None
     upi_payee_name: str | None = None
     payment_links: PaymentLinkConfig
@@ -24,6 +25,7 @@ class CreateOrderRequest(BaseModel):
     amount: int
     currency: str = Field(default="INR", min_length=3, max_length=3)
     receipt: str | None = Field(default=None, max_length=40)
+    checkout_config_id: str | None = Field(default=None, max_length=80)
     plan_id: PaidPlan | None = None
     plan: PaidPlan | None = None
     promo_code: str | None = Field(default=None, max_length=40)
@@ -39,6 +41,14 @@ class CreateOrderRequest(BaseModel):
         if not value:
             return value
         return value.strip() or None
+
+    @field_validator("checkout_config_id")
+    @classmethod
+    def normalize_checkout_config_id(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        candidate = value.strip()
+        return candidate if candidate.startswith("config_") else None
 
     @field_validator("promo_code")
     @classmethod

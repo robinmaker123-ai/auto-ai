@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AlertCircle, Check, Copy, ExternalLink, QrCode } from "lucide-react";
-import { buildUpiPaymentUri, copyText } from "../../utils/upi";
+import { buildUpiPaymentUri, copyText, normalizeUpiId } from "../../utils/upi";
 
 type UpiPaymentBoxProps = {
   upiId?: string | null;
@@ -12,7 +12,7 @@ type UpiPaymentBoxProps = {
 
 export function UpiPaymentBox({ upiId, payeeName, amountPaise, planLabel }: UpiPaymentBoxProps) {
   const [copied, setCopied] = useState(false);
-  const normalizedUpiId = upiId?.trim();
+  const normalizedUpiId = normalizeUpiId(upiId);
   const normalizedPayee = payeeName?.trim() || "Auto-AI";
 
   const upiUri = useMemo(() => {
@@ -34,7 +34,7 @@ export function UpiPaymentBox({ upiId, payeeName, amountPaise, planLabel }: UpiP
         </div>
         <div className="upi-payment-missing-row">
           <AlertCircle size={16} />
-          <span>UPI ID is not configured. Set UPI_ID in backend environment.</span>
+          <span>UPI ID is not configured. Set UPI_ID to an actual UPI ID like name@bank.</span>
         </div>
       </div>
     );

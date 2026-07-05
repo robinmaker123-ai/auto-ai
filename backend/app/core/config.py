@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -116,8 +117,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
     APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
     APK_FILENAME: str = "auto-ai.apk"
-    APK_DEFAULT_VERSION: str = "1.0.15"
-    APK_DEFAULT_VERSION_CODE: int = 16
+    APK_DEFAULT_VERSION: str = "1.0.16"
+    APK_DEFAULT_VERSION_CODE: int = 17
     APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
@@ -134,6 +135,9 @@ class Settings(BaseSettings):
     RAZORPAY_PRO_LINK: str | None = None
     RAZORPAY_PREMIUM_LINK: str | None = None
     RAZORPAY_ULTRA_LINK: str | None = None
+    RAZORPAY_CHECKOUT_CONFIG_ID: str | None = None
+    RAZORPAY_PAYMENT_CONFIG_ID: str | None = None
+    RAZORPAY_CONFIG_ID: str | None = None
     UPI_ID: str | None = None
     PAYMENT_UPI_ID: str | None = None
     MERCHANT_UPI_ID: str | None = None
@@ -325,16 +329,46 @@ class Settings(BaseSettings):
 
     @property
     def payment_upi_id(self) -> str | None:
-        return (
-            self.UPI_ID
-            or self.PAYMENT_UPI_ID
-            or self.MERCHANT_UPI_ID
-            or self.RAZORPAY_UPI_ID
-            or self._project_env_value("UPI_ID")
-            or self._project_env_value("PAYMENT_UPI_ID")
-            or self._project_env_value("MERCHANT_UPI_ID")
-            or self._project_env_value("RAZORPAY_UPI_ID")
-        )
+        for value in (
+            self.UPI_ID,
+            self.PAYMENT_UPI_ID,
+            self.MERCHANT_UPI_ID,
+            self.RAZORPAY_UPI_ID,
+            self._project_env_value("UPI_ID"),
+            self._project_env_value("PAYMENT_UPI_ID"),
+            self._project_env_value("MERCHANT_UPI_ID"),
+            self._project_env_value("RAZORPAY_UPI_ID"),
+        ):
+            normalized = self.normalize_upi_id(value)
+            if normalized:
+                return normalized
+        return None
+
+    @staticmethod
+    def normalize_upi_id(value: str | None) -> str | None:
+        candidate = (value or "").strip()
+        if not candidate or candidate.lower().startswith("config_"):
+            return None
+        if not re.fullmatch(r"[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.-]{2,64}", candidate):
+            return None
+        return candidate
+
+    @property
+    def razorpay_checkout_config_id(self) -> str | None:
+        for value in (
+            self.RAZORPAY_CHECKOUT_CONFIG_ID,
+            self.RAZORPAY_PAYMENT_CONFIG_ID,
+            self.RAZORPAY_CONFIG_ID,
+            self._project_env_value("RAZORPAY_CHECKOUT_CONFIG_ID"),
+            self._project_env_value("RAZORPAY_PAYMENT_CONFIG_ID"),
+            self._project_env_value("RAZORPAY_CONFIG_ID"),
+            self.RAZORPAY_UPI_ID,
+            self._project_env_value("RAZORPAY_UPI_ID"),
+        ):
+            candidate = (value or "").strip()
+            if candidate.lower().startswith("config_"):
+                return candidate
+        return None
 
     def chat_model_for(self, provider: str | None = None) -> str:
         selected_provider = (provider or self.AI_PROVIDER).lower()

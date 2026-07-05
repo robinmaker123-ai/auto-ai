@@ -651,7 +651,14 @@ export const api = {
     }),
   createRazorpayOrder: (
     token: string,
-    payload: { plan_id: PaidPricingPlanName; amount: number; currency: string; receipt?: string; promo_code?: string | null }
+    payload: {
+      plan_id: PaidPricingPlanName;
+      amount: number;
+      currency: string;
+      receipt?: string;
+      promo_code?: string | null;
+      checkout_config_id?: string | null;
+    }
   ) =>
     apiFetch<RazorpayOrder>("/payments/create-order", {
       method: "POST",

@@ -18,6 +18,7 @@ type RazorpayInstrument = {
 
 export type RazorpayOptions = {
   key: string;
+  checkout_config_id?: string;
   amount: number;
   currency: string;
   name: string;
@@ -105,6 +106,19 @@ export const RAZORPAY_UPI_FIRST_OPTIONS = {
     }
   }
 } satisfies Pick<RazorpayOptions, "method" | "config">;
+
+export function razorpayAllPaymentOptions(configId?: string | null): Pick<RazorpayOptions, "method" | "config" | "checkout_config_id"> {
+  const normalizedConfigId = configId?.trim();
+  if (normalizedConfigId?.startsWith("config_")) {
+    return {
+      method: RAZORPAY_UPI_FIRST_OPTIONS.method,
+      checkout_config_id: normalizedConfigId
+    };
+  }
+  return {
+    ...RAZORPAY_UPI_FIRST_OPTIONS
+  };
+}
 
 declare global {
   interface Window {

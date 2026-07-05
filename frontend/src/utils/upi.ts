@@ -15,6 +15,12 @@ export function buildUpiPaymentUri(params: {
   return `upi://pay?${search.toString()}`;
 }
 
+export function normalizeUpiId(value?: string | null) {
+  const candidate = value?.trim() ?? "";
+  if (!candidate || candidate.toLowerCase().startsWith("config_")) return "";
+  return /^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.-]{2,64}$/.test(candidate) ? candidate : "";
+}
+
 export async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);

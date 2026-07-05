@@ -4,7 +4,8 @@ import { ArrowRight, Check, CreditCard, ExternalLink, Loader2 } from "lucide-rea
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
-import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
+import { razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { normalizeUpiId } from "../../utils/upi";
 import { LogoIcon } from "../brand/LogoIcon";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
@@ -35,7 +36,13 @@ export function PricingPage() {
   const [error, setError] = useState("");
 
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const upiId = paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "";
+  const razorpayCheckoutConfigId =
+    paymentConfig?.razorpay_config_id ||
+    import.meta.env.VITE_RAZORPAY_CHECKOUT_CONFIG_ID ||
+    import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID ||
+    import.meta.env.VITE_RAZORPAY_CONFIG_ID ||
+    "";
+  const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 
   useEffect(() => {
@@ -76,7 +83,8 @@ export function PricingPage() {
         plan_id: paidPlan,
         amount: plan.amount,
         currency: "INR",
-        receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40)
+        receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40),
+        checkout_config_id: razorpayCheckoutConfigId || null
       });
       const checkout = new window.Razorpay({
         key: razorpayKeyId,
@@ -90,7 +98,7 @@ export function PricingPage() {
           email: user.email,
           contact: user.mobile || ""
         },
-        ...RAZORPAY_UPI_FIRST_OPTIONS,
+        ...razorpayAllPaymentOptions(razorpayCheckoutConfigId),
         theme: {
           color: "#22d3ee"
         },
@@ -180,10 +188,10 @@ export function PricingPage() {
                   <Link className="btn-secondary" to={user ? "/chat" : "/register"}>Start free</Link>
                 ) : (
                   <div className="pricing-actions">
-                    <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={plan.amount} planLabel={plan.label} />
+                    {upiId && <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={plan.amount} planLabel={plan.label} />}
                     <button className="btn-primary" disabled={busy} onClick={() => startCheckout(plan)} type="button">
                       {busy ? <Loader2 className="spin-icon" size={16} /> : <CreditCard size={16} />}
-                      Card / Netbanking / Wallet
+                      UPI QR / Cards / Wallet
                     </button>
                     {paymentLink ? (
                       <a className="btn-secondary" href={paymentLink} rel="noreferrer" target="_blank">
