@@ -159,29 +159,55 @@ class ApkService:
         return f"auto-ai-{version_code}-{safe_name}.apk"
 
     def sync_filesystem_release(self, db: Session) -> None:
-        if db.scalar(select(ApkRelease.id).limit(1)):
-            return
         path = self.default_apk_path()
         if not path.exists():
             return
         checksum = self.sha256_file(path)
         version_name = settings.APK_DEFAULT_VERSION
         version_code = settings.APK_DEFAULT_VERSION_CODE
-        db.add(
-            ApkRelease(
-                version_code=version_code,
-                version_name=version_name,
-                apk_url=self._download_url(version_name),
-                file_name=settings.APK_FILENAME,
-                file_path=str(path),
-                file_size=path.stat().st_size,
-                sha256=checksum,
-                min_android_version=settings.APK_MIN_ANDROID_VERSION,
-                release_notes=["Production Android APK"],
-                changelog=f"Version {version_name}",
-                is_active=True,
+        highest = self.highest_release(db)
+        if highest and highest.version_code > version_code:
+            return
+
+        existing = db.scalar(
+            select(ApkRelease).where(
+                or_(
+                    ApkRelease.version_code == version_code,
+                    ApkRelease.version_name == version_name,
+                )
             )
         )
+        db.execute(update(ApkRelease).values(is_active=False))
+        if existing:
+            existing.version_code = version_code
+            existing.version_name = version_name
+            existing.apk_url = self._download_url(version_name)
+            existing.file_name = settings.APK_FILENAME
+            existing.file_path = str(path)
+            existing.file_size = path.stat().st_size
+            existing.sha256 = checksum
+            existing.min_android_version = settings.APK_MIN_ANDROID_VERSION
+            existing.changelog = f"Version {version_name}"
+            existing.release_notes = existing.release_notes or ["Production Android APK"]
+            existing.is_active = True
+            existing.updated_at = datetime.utcnow()
+            existing.released_at = existing.released_at or datetime.utcnow()
+        else:
+            db.add(
+                ApkRelease(
+                    version_code=version_code,
+                    version_name=version_name,
+                    apk_url=self._download_url(version_name),
+                    file_name=settings.APK_FILENAME,
+                    file_path=str(path),
+                    file_size=path.stat().st_size,
+                    sha256=checksum,
+                    min_android_version=settings.APK_MIN_ANDROID_VERSION,
+                    release_notes=["Production Android APK"],
+                    changelog=f"Version {version_name}",
+                    is_active=True,
+                )
+            )
         db.commit()
 
     def validate_release_file(self, release: ApkRelease) -> Path:
