@@ -91,12 +91,18 @@ def usage_for_user(db: Session, user_id: str) -> AdminUserUsageSummary:
 def to_admin_user(db: Session, user: User) -> AdminUserRead:
     subscription = ensure_user_subscription(db, user)
     refresh_quota_periods(subscription)
+    sync_user_subscription_status(user, subscription)
     return AdminUserRead(
         id=user.id,
         email=user.email,
         mobile=user.mobile,
         name=user.name,
+        picture=user.picture,
+        avatar=user.avatar,
+        provider=user.provider,
+        google_id=user.google_id,
         role=user.role,
+        subscription_status=user.subscription_status,
         status="active" if user.is_active else "blocked",
         is_active=user.is_active,
         is_admin=user.is_admin,
@@ -158,6 +164,11 @@ def mark_quota_updated(subscription: UserSubscription, current_admin: User) -> N
     subscription.quota_updated_by = current_admin.id
     subscription.quota_updated_at = datetime.utcnow()
     subscription.updated_at = datetime.utcnow()
+
+
+def sync_user_subscription_status(user: User, subscription: UserSubscription) -> None:
+    user.subscription_status = "suspended" if subscription.suspended_at else (subscription.status or subscription.payment_status or "free")
+    user.updated_at = datetime.utcnow()
 
 
 def admin_razorpay_client() -> razorpay.Client:
@@ -719,6 +730,7 @@ def update_subscription(
         subscription.suspended_at = None
         subscription.suspended_by = None
     subscription.updated_at = datetime.utcnow()
+    sync_user_subscription_status(user, subscription)
     db.commit()
     db.refresh(subscription)
     return to_subscription_read(subscription, user)
@@ -736,6 +748,7 @@ def activate_lifetime_subscription(
     subscription.is_lifetime = True
     subscription.expires_at = None
     mark_quota_updated(subscription, current_admin)
+    sync_user_subscription_status(user, subscription)
     log_quota_action(
         db,
         actor_user_id=current_admin.id,
@@ -762,6 +775,7 @@ def suspend_subscription(
     subscription.suspended_at = datetime.utcnow()
     subscription.suspended_by = current_admin.id
     subscription.updated_at = datetime.utcnow()
+    sync_user_subscription_status(user, subscription)
     log_quota_action(
         db,
         actor_user_id=current_admin.id,

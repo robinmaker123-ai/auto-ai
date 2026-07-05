@@ -20,14 +20,38 @@ class UserRead(BaseModel):
     email: EmailStr
     mobile: str | None = None
     name: str
+    picture: str | None = None
+    avatar: str | None = None
+    provider: str = "email"
+    google_id: str | None = None
     is_admin: bool
     role: str = "user"
+    subscription_status: str = "free"
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user: UserRead
+
+
+class GoogleTokenRequest(BaseModel):
+    id_token: str = Field(min_length=32, max_length=8192)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = Field(default=None, min_length=32, max_length=8192)
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = Field(default=None, min_length=32, max_length=8192)
+
+
+class GoogleConfig(BaseModel):
+    enabled: bool
+    client_id: str | None = None

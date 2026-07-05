@@ -40,7 +40,12 @@ class AdminUserRead(BaseModel):
     email: EmailStr
     mobile: str | None = None
     name: str
+    picture: str | None = None
+    avatar: str | None = None
+    provider: str = "email"
+    google_id: str | None = None
     role: str
+    subscription_status: str = "free"
     status: str
     is_active: bool
     is_admin: bool

@@ -23,11 +23,18 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     SECRET_KEY: str = Field(default="change-me-in-production")
+    JWT_SECRET_KEY: str | None = None
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_ANDROID_CLIENT_ID: str | None = None
+    GOOGLE_WEB_CLIENT_ID: str | None = None
 
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "https://autoai.site.je",
+        "https://www.autoai.site.je",
         "http://autoai.site.je",
     ]
 
@@ -117,8 +124,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
     APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
     APK_FILENAME: str = "auto-ai.apk"
-    APK_DEFAULT_VERSION: str = "1.0.16"
-    APK_DEFAULT_VERSION_CODE: int = 17
+    APK_DEFAULT_VERSION: str = "1.0.17"
+    APK_DEFAULT_VERSION_CODE: int = 18
     APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
@@ -383,6 +390,20 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def jwt_secret_key(self) -> str:
+        return self.JWT_SECRET_KEY or self.SECRET_KEY
+
+    @property
+    def google_client_ids(self) -> list[str]:
+        values = [self.GOOGLE_CLIENT_ID, self.GOOGLE_WEB_CLIENT_ID, self.GOOGLE_ANDROID_CLIENT_ID]
+        return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+    @property
+    def google_web_client_id(self) -> str | None:
+        value = self.GOOGLE_WEB_CLIENT_ID or self.GOOGLE_CLIENT_ID
+        return value.strip() if value and value.strip() else None
 
 
 @lru_cache

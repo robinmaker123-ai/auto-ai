@@ -1,3 +1,5 @@
+import hashlib
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -26,14 +28,47 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    payload: dict[str, Any] = {"sub": subject, "exp": expire}
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    payload: dict[str, Any] = {"sub": subject, "exp": expire, "typ": "access", "jti": str(uuid.uuid4())}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token(
+    subject: str,
+    token_id: str,
+    expires_delta: timedelta | None = None,
+) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    payload: dict[str, Any] = {"sub": subject, "jti": token_id, "exp": expire, "typ": "refresh"}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> str | None:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.JWT_ALGORITHM])
+        token_type = payload.get("typ")
+        if token_type not in {None, "access"}:
+            return None
         subject = payload.get("sub")
         return str(subject) if subject else None
     except JWTError:
         return None
+
+
+def decode_refresh_token(token: str) -> tuple[str, str] | None:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("typ") != "refresh":
+            return None
+        subject = payload.get("sub")
+        token_id = payload.get("jti")
+        if not subject or not token_id:
+            return None
+        return str(subject), str(token_id)
+    except JWTError:
+        return None
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

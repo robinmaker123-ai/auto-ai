@@ -1,13 +1,14 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { ArrowRight, Lock } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { authErrorMessage } from "../../utils/apiErrors";
 import { isMobileAppRuntime } from "../../utils/runtime";
 import { LogoIcon } from "../brand/LogoIcon";
+import { GoogleSignInButton } from "./GoogleSignInButton";
 
 export function LoginPage() {
-  const { login, user } = useAuth();
+  const { googleLogin, login, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,6 +29,22 @@ export function LoginPage() {
     }
   }
 
+  const handleGoogleCredential = useCallback(async (idToken: string) => {
+    setError("");
+    setLoading(true);
+    try {
+      await googleLogin(idToken);
+    } catch (err) {
+      setError(authErrorMessage(err, "Google Sign-In failed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [googleLogin]);
+
+  const handleGoogleError = useCallback((message: string) => {
+    setError(message);
+  }, []);
+
   return (
     <div className="auth-page">
       <Link className="brand-mark absolute left-5 top-5" to={isMobileAppRuntime() ? "/login" : "/"}>
@@ -47,16 +64,18 @@ export function LoginPage() {
         {error && <p className="mb-4 rounded-md border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{error}</p>}
         <label className="mb-3 block">
           <span className="mb-1 block text-sm font-medium text-slate-200">Email</span>
-          <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
         </label>
         <label className="mb-5 block">
           <span className="mb-1 block text-sm font-medium text-slate-200">Password</span>
-          <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
         </label>
         <button className="btn-primary h-11 w-full" disabled={loading}>
           {loading ? "Signing in" : "Login"}
           <ArrowRight size={17} />
         </button>
+        <div className="auth-divider"><span>or</span></div>
+        <GoogleSignInButton disabled={loading} onCredential={handleGoogleCredential} onError={handleGoogleError} />
         <p className="mt-4 text-center text-sm text-slate-400">
           New here? <Link className="font-medium text-cyan-200" to="/register">Create an account</Link>
         </p>

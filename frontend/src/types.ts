@@ -3,9 +3,15 @@ export type User = {
   email: string;
   mobile?: string | null;
   name: string;
+  picture?: string | null;
+  avatar?: string | null;
+  provider: string;
+  google_id?: string | null;
   is_admin: boolean;
   role: UserRole;
+  subscription_status: string;
   created_at: string;
+  updated_at: string;
 };
 
 export type UserRole = "user" | "admin" | "super_admin";
@@ -222,7 +228,12 @@ export type AdminUser = {
   email: string;
   mobile?: string | null;
   name: string;
+  picture?: string | null;
+  avatar?: string | null;
+  provider: string;
+  google_id?: string | null;
   role: UserRole;
+  subscription_status: string;
   status: "active" | "blocked";
   is_active: boolean;
   is_admin: boolean;

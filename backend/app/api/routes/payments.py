@@ -168,6 +168,8 @@ def apply_paid_razorpay_payment(
     if razorpay_payment_id:
         subscription.razorpay_payment_id = razorpay_payment_id
     subscription.updated_at = now
+    user.subscription_status = subscription.status
+    user.updated_at = now
 
 
 def expected_plan_amount(plan: str | None, promo_code: str | None = None) -> int | None:
@@ -388,6 +390,8 @@ def restore_purchase(
     subscription = ensure_user_subscription(db, current_user)
     activate_subscription_plan(subscription, payment_plan(payment), payment_status="restored")
     subscription.razorpay_payment_id = payment.razorpay_payment_id or payment.payment_id
+    current_user.subscription_status = subscription.status
+    current_user.updated_at = datetime.utcnow()
     db.commit()
     return RestorePurchaseResponse(restored=True, message="Purchase restored.")
 

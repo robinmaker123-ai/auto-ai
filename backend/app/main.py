@@ -14,6 +14,7 @@ from app.services.apk_service import apk_service
 def get_cors_origins() -> list[str]:
     default_origins = {
         "https://autoai.site.je",
+        "https://www.autoai.site.je",
         "http://autoai.site.je",
         "https://localhost",
         "http://localhost:5173",

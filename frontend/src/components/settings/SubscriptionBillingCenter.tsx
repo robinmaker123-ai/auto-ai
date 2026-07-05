@@ -15,7 +15,7 @@ import {
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
-import { razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { normalizeRazorpayConfigId, razorpayAllPaymentOptions } from "../../utils/razorpay";
 import { normalizeUpiId } from "../../utils/upi";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
@@ -49,12 +49,14 @@ export function SubscriptionBillingCenter() {
   const [promo, setPromo] = useState<PromoCodeResponse | null>(null);
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const razorpayCheckoutConfigId =
-    paymentConfig?.razorpay_config_id ||
-    import.meta.env.VITE_RAZORPAY_CHECKOUT_CONFIG_ID ||
-    import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID ||
-    import.meta.env.VITE_RAZORPAY_CONFIG_ID ||
-    "";
+  const razorpayCheckoutConfigId = normalizeRazorpayConfigId(
+    paymentConfig?.razorpay_config_id,
+    import.meta.env.VITE_RAZORPAY_CHECKOUT_CONFIG_ID,
+    import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID,
+    import.meta.env.VITE_RAZORPAY_CONFIG_ID,
+    paymentConfig?.upi_id,
+    import.meta.env.VITE_UPI_ID
+  );
   const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 

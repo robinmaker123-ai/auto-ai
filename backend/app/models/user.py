@@ -15,9 +15,14 @@ class User(Base):
     mobile: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    picture: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    provider: Mapped[str] = mapped_column(String(32), default="email", index=True, nullable=False)
+    google_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[str] = mapped_column(String(32), default="user", index=True, nullable=False)
+    subscription_status: Mapped[str] = mapped_column(String(32), default="free", index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -42,6 +47,7 @@ class User(Base):
         uselist=False,
     )
     memories = relationship("UserMemory", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     turn_analyses = relationship(
         "ConversationTurnAnalysis",
         back_populates="user",

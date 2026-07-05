@@ -107,8 +107,16 @@ export const RAZORPAY_UPI_FIRST_OPTIONS = {
   }
 } satisfies Pick<RazorpayOptions, "method" | "config">;
 
+export function normalizeRazorpayConfigId(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const candidate = value?.trim();
+    if (candidate?.startsWith("config_")) return candidate;
+  }
+  return "";
+}
+
 export function razorpayAllPaymentOptions(configId?: string | null): Pick<RazorpayOptions, "method" | "config" | "checkout_config_id"> {
-  const normalizedConfigId = configId?.trim();
+  const normalizedConfigId = normalizeRazorpayConfigId(configId);
   if (normalizedConfigId?.startsWith("config_")) {
     return {
       method: RAZORPAY_UPI_FIRST_OPTIONS.method,

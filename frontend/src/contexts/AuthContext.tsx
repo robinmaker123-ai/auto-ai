@@ -1,82 +1,76 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "../api/client";
+import { API_BASE_URL, api, type AuthSession } from "../api/client";
+import { nativeGoogleAuth, readStoredSession, removeStoredSession, writeStoredSession } from "../auth/sessionStorage";
 import type { User } from "../types";
+import { isLocalPageWithRemoteApi } from "../utils/runtime";
 
 type AuthContextValue = {
   user: User | null;
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  googleLogin: (idToken: string) => Promise<void>;
   adminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const TOKEN_STORAGE_KEY = "auto-ai-token";
-
-function readStoredToken() {
-  try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch (error) {
-    console.warn("[Auto-AI Auth] Unable to read saved session from localStorage.", error);
-    return null;
-  }
-}
-
-function writeStoredToken(token: string) {
-  try {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } catch (error) {
-    console.warn("[Auto-AI Auth] Login succeeded, but the session could not be saved to localStorage.", error);
-  }
-}
-
-function removeStoredToken() {
-  try {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-  } catch (error) {
-    console.warn("[Auto-AI Auth] Unable to remove saved session from localStorage.", error);
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => readStoredToken());
+  const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(readStoredToken()));
+  const [loading, setLoading] = useState(true);
+
+  const persistSession = useCallback(async (session: AuthSession) => {
+    await writeStoredSession(session.access_token, session.refresh_token);
+    setToken(session.access_token);
+    setRefreshToken(session.refresh_token);
+    setUser(session.user);
+  }, []);
 
   useEffect(() => {
     let active = true;
-    async function loadUser() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
+
+    async function restoreSession() {
       try {
-        const me = await api.me(token);
-        if (active) setUser(me);
+        const stored = await readStoredSession();
+        if (stored.accessToken) {
+          try {
+            const account = await api.me(stored.accessToken);
+            if (active) {
+              setToken(stored.accessToken);
+              setRefreshToken(stored.refreshToken);
+              setUser(account);
+            }
+            return;
+          } catch (error) {
+            console.warn("[Auto-AI Auth] Stored access token could not be restored.", error);
+          }
+        }
+
+        if (stored.refreshToken || !isLocalPageWithRemoteApi(API_BASE_URL)) {
+          const refreshed = await api.refreshSession(stored.refreshToken);
+          if (active) await persistSession(refreshed);
+        }
       } catch (error) {
-        console.warn("[Auto-AI Auth] Stored session could not be restored.", error);
-        removeStoredToken();
+        await removeStoredSession();
         if (active) {
           setToken(null);
+          setRefreshToken(null);
           setUser(null);
         }
       } finally {
         if (active) setLoading(false);
       }
     }
-    loadUser();
+
+    void restoreSession();
     return () => {
       active = false;
     };
-  }, [token]);
-
-  const persistSession = useCallback((accessToken: string, account: User) => {
-    writeStoredToken(accessToken);
-    setToken(accessToken);
-    setUser(account);
-  }, []);
+  }, [persistSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -85,7 +79,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       login: async (email, password) => {
         const session = await api.login({ email: email.trim().toLowerCase(), password });
-        persistSession(session.access_token, session.user);
+        await persistSession(session);
+      },
+      googleLogin: async (idToken) => {
+        const session = await api.googleLogin({ id_token: idToken });
+        await persistSession(session);
       },
       adminLogin: async (email, password) => {
         const credentials = { email: email.trim().toLowerCase(), password };
@@ -93,19 +91,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!["admin", "super_admin"].includes(session.user.role)) {
           throw new Error("Only admin accounts can access the admin dashboard.");
         }
-        persistSession(session.access_token, session.user);
+        await persistSession(session);
       },
       register: async (name, email, password) => {
         const session = await api.register({ name: name.trim(), email: email.trim().toLowerCase(), password });
-        persistSession(session.access_token, session.user);
+        await persistSession(session);
       },
-      logout: () => {
-        removeStoredToken();
+      logout: async () => {
+        const activeToken = token;
+        const activeRefreshToken = refreshToken;
+        await removeStoredSession();
         setToken(null);
+        setRefreshToken(null);
         setUser(null);
+        try {
+          await api.logout(activeToken, activeRefreshToken);
+          await nativeGoogleAuth()?.signOut?.();
+        } catch (error) {
+          console.warn("[Auto-AI Auth] Logout completed locally, but the server session could not be revoked.", error);
+        }
       }
     }),
-    [loading, persistSession, token, user]
+    [loading, persistSession, refreshToken, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

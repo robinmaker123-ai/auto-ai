@@ -54,11 +54,11 @@ export function AdminLoginPage() {
         {error && <p className="mb-4 rounded-md border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{error}</p>}
         <label className="mb-3 block">
           <span className="mb-1 block text-sm font-medium text-slate-200">Admin email</span>
-          <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
         </label>
         <label className="mb-5 block">
           <span className="mb-1 block text-sm font-medium text-slate-200">Password</span>
-          <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
         </label>
         <button className="btn-primary h-11 w-full" disabled={loading}>
           {loading ? "Checking admin" : "Login as admin"}

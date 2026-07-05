@@ -77,10 +77,25 @@ def ensure_runtime_schema() -> None:
 
     if "users" in table_names:
         user_columns = {column["name"] for column in inspector.get_columns("users")}
+        user_indexes = {index["name"] for index in inspector.get_indexes("users")}
         if "mobile" not in user_columns:
             add_column("users", "mobile", "VARCHAR(32)")
+        if "picture" not in user_columns:
+            add_column("users", "picture", "VARCHAR(500)")
+        if "avatar" not in user_columns:
+            add_column("users", "avatar", "VARCHAR(500)")
+        if "provider" not in user_columns:
+            add_column("users", "provider", "VARCHAR(32) NOT NULL DEFAULT 'email'")
+        if "google_id" not in user_columns:
+            add_column("users", "google_id", "VARCHAR(255)")
         if "role" not in user_columns:
             add_column("users", "role", "VARCHAR(32) NOT NULL DEFAULT 'user'")
+        if "subscription_status" not in user_columns:
+            add_column("users", "subscription_status", "VARCHAR(32) NOT NULL DEFAULT 'free'")
+        if "created_at" not in user_columns:
+            add_column("users", "created_at", "datetime")
+        if "updated_at" not in user_columns:
+            add_column("users", "updated_at", "datetime")
         ensure_mobile_index = True
 
     if "user_subscriptions" in table_names:
@@ -203,11 +218,30 @@ def ensure_runtime_schema() -> None:
                     f"({quote('mobile')}) WHERE {quote('mobile')} IS NOT NULL"
                 )
             )
+            connection.execute(
+                text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON {quote('users')} "
+                    f"({quote('google_id')}) WHERE {quote('google_id')} IS NOT NULL"
+                )
+            )
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_role ON {quote('users')} ({quote('role')})"))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_provider ON {quote('users')} ({quote('provider')})"))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_subscription_status ON {quote('users')} ({quote('subscription_status')})"))
+        if ensure_mobile_index and dialect == "mysql":
+            if "ix_users_google_id" not in user_indexes:
+                connection.execute(text(f"CREATE UNIQUE INDEX ix_users_google_id ON {quote('users')} ({quote('google_id')})"))
+            if "ix_users_provider" not in user_indexes:
+                connection.execute(text(f"CREATE INDEX ix_users_provider ON {quote('users')} ({quote('provider')})"))
+            if "ix_users_subscription_status" not in user_indexes:
+                connection.execute(text(f"CREATE INDEX ix_users_subscription_status ON {quote('users')} ({quote('subscription_status')})"))
         if ensure_mobile_index:
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('provider')} = 'email' WHERE {quote('provider')} IS NULL OR TRIM({quote('provider')}) = ''"))
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('subscription_status')} = 'free' WHERE {quote('subscription_status')} IS NULL OR TRIM({quote('subscription_status')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'user' WHERE {quote('role')} IS NULL OR TRIM({quote('role')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'admin' WHERE {quote('is_admin')} = TRUE AND {quote('role')} NOT IN ('admin', 'super_admin')"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('is_admin')} = TRUE WHERE {quote('role')} IN ('admin', 'super_admin') AND {quote('is_admin')} = FALSE"))
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('created_at')} = CURRENT_TIMESTAMP WHERE {quote('created_at')} IS NULL"))
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('updated_at')} = {quote('created_at')} WHERE {quote('updated_at')} IS NULL"))
         if "user_subscriptions" in table_names:
             subscriptions = quote("user_subscriptions")
             connection.execute(text(f"UPDATE {subscriptions} SET {quote('plan_id')} = {quote('plan')} WHERE {quote('plan_id')} IS NULL OR TRIM({quote('plan_id')}) = ''"))

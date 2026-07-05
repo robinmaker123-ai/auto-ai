@@ -62,6 +62,13 @@ type FetchOptions = Omit<RequestInit, "headers"> & {
   operation?: string;
 };
 
+export type AuthSession = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user: User;
+};
+
 type RequestMeta = {
   path?: string;
   method?: string;
@@ -422,6 +429,7 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     url,
     {
       ...requestOptions,
+      credentials: requestOptions.credentials ?? "include",
       headers
     },
     { path, method, operation }
@@ -447,16 +455,39 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
 
 export const api = {
   register: (payload: { email: string; name: string; password: string; mobile?: string | null }) =>
-    apiFetch<{ access_token: string; token_type: string; user: User }>("/auth/register", {
+    apiFetch<AuthSession>("/auth/register", {
       method: "POST",
       operation: "auth.register",
       body: JSON.stringify(payload)
     }),
   login: (payload: { email: string; password: string }) =>
-    apiFetch<{ access_token: string; token_type: string; user: User }>("/auth/login", {
+    apiFetch<AuthSession>("/auth/login", {
       method: "POST",
       operation: "auth.login",
       body: JSON.stringify(payload)
+    }),
+  googleConfig: () =>
+    apiFetch<{ enabled: boolean; client_id?: string | null }>("/auth/google/config", {
+      operation: "auth.google.config"
+    }),
+  googleLogin: (payload: { id_token: string }) =>
+    apiFetch<AuthSession>("/auth/google", {
+      method: "POST",
+      operation: "auth.google",
+      body: JSON.stringify(payload)
+    }),
+  refreshSession: (refreshToken?: string | null) =>
+    apiFetch<AuthSession>("/auth/refresh", {
+      method: "POST",
+      operation: "auth.refresh",
+      body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
+    }),
+  logout: (token?: string | null, refreshToken?: string | null) =>
+    apiFetch<void>("/auth/logout", {
+      method: "POST",
+      token,
+      operation: "auth.logout",
+      body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
     }),
   me: (token: string) => apiFetch<User>("/auth/me", { token, operation: "auth.me" }),
 
