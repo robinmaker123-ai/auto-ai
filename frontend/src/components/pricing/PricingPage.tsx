@@ -33,7 +33,7 @@ export function PricingPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   useEffect(() => {
     let active = true;
@@ -56,7 +56,7 @@ export function PricingPage() {
       return;
     }
     if (!razorpayKeyId) {
-      setError("Razorpay public key is missing. Set VITE_RAZORPAY_KEY_ID.");
+      setError("Razorpay public key is missing. Set RAZORPAY_KEY_ID in backend environment.");
       return;
     }
     if (!window.Razorpay) {

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
-import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentHistoryItem, PromoCodeResponse } from "../../types";
+import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
 import { RAZORPAY_UPI_FIRST_OPTIONS } from "../../utils/razorpay";
 
 const paidPlans = new Set(["pro", "premium", "ultra"]);
@@ -45,7 +45,8 @@ export function SubscriptionBillingCenter() {
   const [promoCode, setPromoCode] = useState("");
   const [promoPlan, setPromoPlan] = useState<PaidPricingPlanName>("pro");
   const [promo, setPromo] = useState<PromoCodeResponse | null>(null);
-  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
+  const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const current = billing?.current_plan;
   const paidPlanOptions = useMemo(
@@ -70,10 +71,24 @@ export function SubscriptionBillingCenter() {
     void loadBilling();
   }, [token]);
 
+  useEffect(() => {
+    let active = true;
+    api.paymentConfig()
+      .then((config) => {
+        if (active) setPaymentConfig(config);
+      })
+      .catch(() => {
+        if (active) setPaymentConfig(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   async function upgrade(plan: BillingPlan) {
     if (!token || !user || !paidPlans.has(plan.id)) return;
     if (!razorpayKeyId) {
-      setError("Razorpay public key is missing. Set VITE_RAZORPAY_KEY_ID.");
+      setError("Razorpay public key is missing. Set RAZORPAY_KEY_ID in backend environment.");
       return;
     }
     if (!window.Razorpay) {
