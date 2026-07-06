@@ -60,6 +60,10 @@ export type RazorpayCheckout = {
   on: (event: "payment.failed", handler: (response: RazorpayFailureResponse) => void) => void;
 };
 
+const RAZORPAY_SCRIPT_ID = "razorpay-checkout-js";
+const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
+export const DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID = "config_T9ulbVgLBfz7ko";
+
 export const RAZORPAY_UPI_FIRST_OPTIONS = {
   method: {
     upi: true,
@@ -126,6 +130,35 @@ export function razorpayAllPaymentOptions(configId?: string | null): Pick<Razorp
   return {
     ...RAZORPAY_UPI_FIRST_OPTIONS
   };
+}
+
+export function loadRazorpayCheckout() {
+  return new Promise<void>((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("Razorpay checkout is only available in the browser."));
+      return;
+    }
+    if (window.Razorpay) {
+      resolve();
+      return;
+    }
+
+    const existing = document.getElementById(RAZORPAY_SCRIPT_ID) as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Razorpay checkout failed to load.")), { once: true });
+      if (window.Razorpay) resolve();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = RAZORPAY_SCRIPT_ID;
+    script.src = RAZORPAY_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Razorpay checkout failed to load. Check internet connection and try again."));
+    document.head.appendChild(script);
+  });
 }
 
 declare global {

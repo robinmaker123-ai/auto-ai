@@ -4,7 +4,8 @@ import { ArrowRight, Check, CreditCard, ExternalLink, Loader2 } from "lucide-rea
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
-import { normalizeRazorpayConfigId, razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID, loadRazorpayCheckout, normalizeRazorpayConfigId, razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { isMobileAppRuntime } from "../../utils/runtime";
 import { normalizeUpiId } from "../../utils/upi";
 import { LogoIcon } from "../brand/LogoIcon";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
@@ -34,6 +35,7 @@ export function PricingPage() {
   const [busyPlan, setBusyPlan] = useState<PaidPricingPlanName | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const mobileApp = isMobileAppRuntime();
 
   const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
   const razorpayReady = paymentConfig?.razorpay_ready ?? Boolean(import.meta.env.VITE_RAZORPAY_KEY_ID);
@@ -43,7 +45,8 @@ export function PricingPage() {
     import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID,
     import.meta.env.VITE_RAZORPAY_CONFIG_ID,
     paymentConfig?.upi_id,
-    import.meta.env.VITE_UPI_ID
+    import.meta.env.VITE_UPI_ID,
+    DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID
   );
   const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
@@ -76,16 +79,13 @@ export function PricingPage() {
       setError("Razorpay payment is not fully configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in backend environment.");
       return;
     }
-    if (!window.Razorpay) {
-      setError("Razorpay checkout failed to load.");
-      return;
-    }
-
     const paidPlan = plan.id as PaidPricingPlanName;
     setBusyPlan(paidPlan);
     setError("");
     setMessage("");
     try {
+      await loadRazorpayCheckout();
+      if (!window.Razorpay) throw new Error("Razorpay checkout failed to load. Check internet connection and try again.");
       const order = await api.createRazorpayOrder(token, {
         plan_id: paidPlan,
         amount: plan.amount,
@@ -201,12 +201,12 @@ export function PricingPage() {
                       UPI QR / Cards / Wallet
                     </button>
                     {paymentLink ? (
-                      <a className="btn-secondary" href={paymentLink} rel="noreferrer" target="_blank">
+                      <a className="btn-secondary" href={paymentLink} rel="noreferrer" target={mobileApp ? "_self" : "_blank"}>
                         <ExternalLink size={16} />
                         Payment Link
                       </a>
                     ) : (
-                      <button className="btn-secondary" disabled type="button">
+                      <button className="btn-secondary" disabled={busy} onClick={() => startCheckout(plan)} type="button">
                         <ExternalLink size={16} />
                         Payment Link
                       </button>

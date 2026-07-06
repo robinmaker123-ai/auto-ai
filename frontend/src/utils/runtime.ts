@@ -1,7 +1,15 @@
 export function isMobileAppRuntime() {
   if (typeof window === "undefined") return false;
   const { protocol, hostname } = window.location;
-  return protocol === "https:" && hostname === "localhost";
+  const capacitor = window.Capacitor as { getPlatform?: () => string } | undefined;
+  const platform = capacitor?.getPlatform?.();
+  return (
+    platform === "android" ||
+    platform === "ios" ||
+    protocol === "capacitor:" ||
+    protocol === "ionic:" ||
+    (protocol === "https:" && hostname === "localhost")
+  );
 }
 
 export function isLocalPageWithRemoteApi(apiBaseUrl: string) {

@@ -75,17 +75,20 @@ function loadGoogleIdentityScript() {
 
 export function GoogleSignInButton({ disabled = false, onCredential, onError }: GoogleSignInButtonProps) {
   const buttonRef = useRef<HTMLDivElement | null>(null);
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [clientId, setClientId] = useState<string | null>(ENV_GOOGLE_CLIENT_ID || null);
+  const [loading, setLoading] = useState(!ENV_GOOGLE_CLIENT_ID);
   const [busy, setBusy] = useState(false);
   const nativeAuth = nativeGoogleAuth();
+  const mobileApp = isMobileAppRuntime();
 
   useEffect(() => {
     let active = true;
     async function loadConfig() {
       if (ENV_GOOGLE_CLIENT_ID) {
-        setClientId(ENV_GOOGLE_CLIENT_ID);
-        setLoading(false);
+        if (active) {
+          setClientId(ENV_GOOGLE_CLIENT_ID);
+          setLoading(false);
+        }
         return;
       }
       if (isLocalPageWithRemoteApi(API_BASE_URL)) {
@@ -142,10 +145,15 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
   }, [clientId, nativeAuth, onCredential, onError]);
 
   async function signInWithNativeGoogle() {
-    if (!clientId || !nativeAuth) return;
+    const auth = nativeGoogleAuth();
+    if (!clientId) return;
+    if (!auth) {
+      onError("Google Sign-In is not ready in this app build. Update the app and try again.");
+      return;
+    }
     setBusy(true);
     try {
-      const result = await nativeAuth.signIn({ clientId });
+      const result = await auth.signIn({ clientId });
       if (!result.idToken) throw new Error("Google did not return a valid ID token.");
       await onCredential(result.idToken);
     } catch (error) {
@@ -159,7 +167,7 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
     return null;
   }
 
-  if (nativeAuth || isMobileAppRuntime()) {
+  if (nativeAuth || mobileApp) {
     return (
       <button className="google-auth-button" disabled={disabled || loading || busy || !clientId} onClick={signInWithNativeGoogle} type="button">
         <Chrome size={18} />

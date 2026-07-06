@@ -15,7 +15,7 @@ import {
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
-import { normalizeRazorpayConfigId, razorpayAllPaymentOptions } from "../../utils/razorpay";
+import { DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID, loadRazorpayCheckout, normalizeRazorpayConfigId, razorpayAllPaymentOptions } from "../../utils/razorpay";
 import { normalizeUpiId } from "../../utils/upi";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
@@ -56,7 +56,8 @@ export function SubscriptionBillingCenter() {
     import.meta.env.VITE_RAZORPAY_PAYMENT_CONFIG_ID,
     import.meta.env.VITE_RAZORPAY_CONFIG_ID,
     paymentConfig?.upi_id,
-    import.meta.env.VITE_UPI_ID
+    import.meta.env.VITE_UPI_ID,
+    DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID
   );
   const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
@@ -108,16 +109,14 @@ export function SubscriptionBillingCenter() {
       setError("Razorpay payment is not fully configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in backend environment.");
       return;
     }
-    if (!window.Razorpay) {
-      setError("Razorpay checkout is not available.");
-      return;
-    }
     const paidPlan = plan.id as PaidPricingPlanName;
     const amount = planAmount(plan, promo);
     setBusy(`pay-${plan.id}`);
     setError("");
     setSuccess("");
     try {
+      await loadRazorpayCheckout();
+      if (!window.Razorpay) throw new Error("Razorpay checkout failed to load. Check internet connection and try again.");
       const order = await api.createRazorpayOrder(token, {
         plan_id: paidPlan,
         amount,

@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_GOOGLE_WEB_CLIENT_ID = "776507506876-vjrrc9m5eer82k6digta7ie2phd4l1f8.apps.googleusercontent.com"
+DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID = "config_T9ulbVgLBfz7ko"
 
 
 class Settings(BaseSettings):
@@ -125,8 +126,8 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = str(PROJECT_ROOT / "backend" / "uploads")
     APK_STORAGE_DIR: str = str(PROJECT_ROOT / "public" / "downloads")
     APK_FILENAME: str = "auto-ai.apk"
-    APK_DEFAULT_VERSION: str = "1.0.17"
-    APK_DEFAULT_VERSION_CODE: int = 18
+    APK_DEFAULT_VERSION: str = "1.0.18"
+    APK_DEFAULT_VERSION_CODE: int = 19
     APK_MIN_ANDROID_VERSION: str = "Android 7.0"
     MAX_UPLOAD_MB: int = 20
     ALLOWED_DOCUMENT_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx"}
@@ -143,7 +144,7 @@ class Settings(BaseSettings):
     RAZORPAY_PRO_LINK: str | None = None
     RAZORPAY_PREMIUM_LINK: str | None = None
     RAZORPAY_ULTRA_LINK: str | None = None
-    RAZORPAY_CHECKOUT_CONFIG_ID: str | None = None
+    RAZORPAY_CHECKOUT_CONFIG_ID: str | None = DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID
     RAZORPAY_PAYMENT_CONFIG_ID: str | None = None
     RAZORPAY_CONFIG_ID: str | None = None
     UPI_ID: str | None = None

@@ -62,6 +62,8 @@ export function LoginPage() {
           <h2 className="mt-2 text-2xl font-semibold text-white">Enter Auto-AI</h2>
         </div>
         {error && <p className="mb-4 rounded-md border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{error}</p>}
+        <GoogleSignInButton disabled={loading} onCredential={handleGoogleCredential} onError={handleGoogleError} />
+        <div className="auth-divider"><span>or use email</span></div>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm font-medium text-slate-200">Email</span>
           <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
@@ -74,8 +76,6 @@ export function LoginPage() {
           {loading ? "Signing in" : "Login"}
           <ArrowRight size={17} />
         </button>
-        <div className="auth-divider"><span>or</span></div>
-        <GoogleSignInButton disabled={loading} onCredential={handleGoogleCredential} onError={handleGoogleError} />
         <p className="mt-4 text-center text-sm text-slate-400">
           New here? <Link className="font-medium text-cyan-200" to="/register">Create an account</Link>
         </p>

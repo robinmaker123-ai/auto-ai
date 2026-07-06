@@ -11,6 +11,7 @@ type NativeSecureStorage = {
 declare global {
   interface Window {
     Capacitor?: {
+      getPlatform?: () => string;
       Plugins?: {
         AutoAiSecureStorage?: NativeSecureStorage;
         AutoAiGoogleAuth?: {
