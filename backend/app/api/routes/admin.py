@@ -278,6 +278,30 @@ def to_plan_limit_read(limit: PlanLimit) -> AdminPlanLimitRead:
     )
 
 
+def sync_plan_limit_subscriptions(db: Session, limit: PlanLimit, current_admin: User) -> None:
+    subscriptions = db.scalars(
+        select(UserSubscription).where(or_(UserSubscription.plan == limit.plan, UserSubscription.plan_id == limit.plan))
+    ).all()
+    for subscription in subscriptions:
+        refresh_quota_periods(subscription)
+        subscription.daily_message_limit = limit.daily_prompt_limit
+        subscription.token_limit_monthly = limit.monthly_token_limit
+        subscription.tokens_added = limit.monthly_token_limit
+        recalculate_token_balance(subscription)
+        mark_quota_updated(subscription, current_admin)
+        log_quota_action(
+            db,
+            actor_user_id=current_admin.id,
+            target_user_id=subscription.user_id,
+            action="plan_limit_sync",
+            metadata={
+                "plan": limit.plan,
+                "daily_message_limit": limit.daily_prompt_limit,
+                "token_limit_monthly": limit.monthly_token_limit,
+            },
+        )
+
+
 def stats_payload(db: Session) -> AdminStats:
     usage = db.execute(
         select(
@@ -1010,7 +1034,7 @@ def update_feature(
 def update_plan_limit(
     plan: str,
     payload: AdminPlanLimitUpdate,
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> AdminPlanLimitRead:
     plan = normalize_plan(plan)
@@ -1021,6 +1045,7 @@ def update_plan_limit(
     for field, value in updates.items():
         setattr(limit, field, value)
     limit.updated_at = datetime.utcnow()
+    sync_plan_limit_subscriptions(db, limit, current_admin)
     db.commit()
     db.refresh(limit)
     return to_plan_limit_read(limit)

@@ -10,6 +10,7 @@ import {
   KeyRound,
   MessageSquare,
   RefreshCw,
+  Save,
   Search,
   Settings,
   SlidersHorizontal,
@@ -80,6 +81,27 @@ type ConfirmAction = {
   onConfirm: () => Promise<void>;
 };
 
+type PlanLimitEditableField =
+  | "daily_prompt_limit"
+  | "monthly_prompt_limit"
+  | "daily_token_limit"
+  | "monthly_token_limit"
+  | "max_models"
+  | "allow_deep_research"
+  | "allow_multi_model"
+  | "allow_web_search";
+
+const planLimitEditableFields: PlanLimitEditableField[] = [
+  "daily_prompt_limit",
+  "monthly_prompt_limit",
+  "daily_token_limit",
+  "monthly_token_limit",
+  "max_models",
+  "allow_deep_research",
+  "allow_multi_model",
+  "allow_web_search"
+];
+
 function StatTile({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur">
@@ -144,6 +166,24 @@ function quotaProgress(quota?: AdminQuota | null) {
   return total > 0 ? Math.min(100, Math.round((quota.tokens_used_monthly / total) * 100)) : 0;
 }
 
+function planLimitPatch(original: AdminPlanLimit, draft: AdminPlanLimit): Partial<AdminPlanLimit> {
+  const payload: Partial<AdminPlanLimit> = {};
+  for (const field of planLimitEditableFields) {
+    if (draft[field] !== original[field]) {
+      payload[field] = draft[field] as never;
+    }
+  }
+  return payload;
+}
+
+function hasPlanLimitPatch(original: AdminPlanLimit, draft: AdminPlanLimit) {
+  return planLimitEditableFields.some((field) => draft[field] !== original[field]);
+}
+
+function mapPlanLimitsByPlan(limits: AdminPlanLimit[] = []) {
+  return Object.fromEntries(limits.map((limit) => [limit.plan, limit])) as Record<string, AdminPlanLimit>;
+}
+
 function StatusPill({ active, label }: { active: boolean; label: string }) {
   return (
     <span className={active ? "text-emerald-300" : "text-red-300"}>
@@ -170,6 +210,7 @@ export function AdminDashboard() {
   const [subscriptions, setSubscriptions] = useState<AdminSubscription[]>([]);
   const [usage, setUsage] = useState<AdminUsageResponse | null>(null);
   const [features, setFeatures] = useState<AdminFeaturesResponse | null>(null);
+  const [planLimitDrafts, setPlanLimitDrafts] = useState<Record<string, AdminPlanLimit>>({});
   const [payments, setPayments] = useState<AdminPaymentRecord[]>([]);
   const [apkVersions, setApkVersions] = useState<ApkRelease[]>([]);
   const [apkStats, setApkStats] = useState<ApkStats | null>(null);
@@ -244,6 +285,23 @@ export function AdminDashboard() {
   useEffect(() => {
     void loadAdminData();
   }, [loadAdminData]);
+
+  useEffect(() => {
+    setPlanLimitDrafts(mapPlanLimitsByPlan(features?.plan_limits ?? []));
+  }, [features?.plan_limits]);
+
+  const planLimitRows = useMemo(
+    () => (features?.plan_limits ?? []).map((plan) => planLimitDrafts[plan.plan] ?? plan),
+    [features?.plan_limits, planLimitDrafts]
+  );
+
+  const changedPlanLimits = useMemo(() => {
+    const originals = mapPlanLimitsByPlan(features?.plan_limits ?? []);
+    return planLimitRows.filter((draft) => {
+      const original = originals[draft.plan];
+      return original ? hasPlanLimitPatch(original, draft) : false;
+    });
+  }, [features?.plan_limits, planLimitRows]);
 
   const filteredUsers = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -630,19 +688,50 @@ export function AdminDashboard() {
     }
   }
 
-  async function updatePlanLimit(plan: AdminPlanLimit, field: keyof AdminPlanLimit, value: unknown) {
-    if (!token) return;
-    setBusyId(`${plan.plan}-${String(field)}`);
+  function updatePlanLimitDraft(plan: AdminPlanLimit, field: PlanLimitEditableField, value: AdminPlanLimit[PlanLimitEditableField]) {
+    setPlanLimitDrafts((current) => ({
+      ...current,
+      [plan.plan]: {
+        ...(current[plan.plan] ?? plan),
+        [field]: value
+      }
+    }));
+  }
+
+  function resetPlanLimitDrafts() {
+    setPlanLimitDrafts(mapPlanLimitsByPlan(features?.plan_limits ?? []));
+  }
+
+  async function savePlanLimits() {
+    if (!token || !features || changedPlanLimits.length === 0) return;
+    const originals = mapPlanLimitsByPlan(features.plan_limits);
+    setBusyId("plan-limits-save");
     setError("");
+    setSuccess("");
     try {
-      const updated = await api.updateAdminPlanLimit(token, plan.plan, { [field]: value });
-      setFeatures((current) =>
-        current
-          ? { ...current, plan_limits: current.plan_limits.map((item) => (item.plan === updated.plan ? updated : item)) }
-          : current
+      const updatedLimits = await Promise.all(
+        changedPlanLimits.map((draft) => {
+          const original = originals[draft.plan];
+          return api.updateAdminPlanLimit(token, draft.plan, planLimitPatch(original, draft));
+        })
       );
+      const updatedByPlan = mapPlanLimitsByPlan(updatedLimits);
+      setFeatures({
+        ...features,
+        plan_limits: features.plan_limits.map((item) => updatedByPlan[item.plan] ?? item)
+      });
+      const [nextUsers, nextSubscriptions, nextUsage] = await Promise.all([
+        api.adminUsers(token),
+        api.adminSubscriptions(token),
+        api.adminUsage(token)
+      ]);
+      setUsers(nextUsers);
+      setSubscriptions(nextSubscriptions);
+      setUsage(nextUsage);
+      setSelectedUser((current) => nextUsers.find((item) => item.id === current?.id) ?? null);
+      setSuccess("Plan limits saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update plan limit");
+      setError(err instanceof Error ? err.message : "Unable to save plan limits");
     } finally {
       setBusyId(null);
     }
@@ -1495,7 +1584,31 @@ export function AdminDashboard() {
 
           {activeSection === "settings" && (
             <section className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
-              <SectionTitle title="Settings" subtitle="Plan limits used for usage enforcement" />
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Settings</h2>
+                  <p className="text-sm text-slate-400">Plan limits used for usage enforcement</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="chip-dark"
+                    disabled={busyId === "plan-limits-save" || changedPlanLimits.length === 0}
+                    onClick={resetPlanLimitDrafts}
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    className="btn-primary h-10"
+                    disabled={busyId === "plan-limits-save" || changedPlanLimits.length === 0}
+                    onClick={savePlanLimits}
+                    type="button"
+                  >
+                    <Save size={15} />
+                    {busyId === "plan-limits-save" ? "Saving" : "Save"}
+                  </button>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[980px] border-collapse text-left text-sm">
                   <thead className="bg-white/[0.035] text-xs uppercase text-slate-400">
@@ -1510,23 +1623,27 @@ export function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
-                    {(features?.plan_limits ?? []).map((plan) => (
-                      <tr key={plan.id} className="text-slate-200">
-                        <td className="px-4 py-3 font-semibold text-white">{plan.plan}</td>
-                        <td className="px-4 py-3"><LimitButton value={plan.daily_prompt_limit} onSave={(value) => updatePlanLimit(plan, "daily_prompt_limit", value)} /></td>
-                        <td className="px-4 py-3"><LimitButton value={plan.monthly_prompt_limit} onSave={(value) => updatePlanLimit(plan, "monthly_prompt_limit", value)} /></td>
-                        <td className="px-4 py-3"><LimitButton value={plan.daily_token_limit} onSave={(value) => updatePlanLimit(plan, "daily_token_limit", value)} /></td>
-                        <td className="px-4 py-3"><LimitButton value={plan.monthly_token_limit} onSave={(value) => updatePlanLimit(plan, "monthly_token_limit", value)} /></td>
-                        <td className="px-4 py-3"><LimitButton value={plan.max_models} onSave={(value) => updatePlanLimit(plan, "max_models", value)} /></td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <button className={plan.allow_deep_research ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimit(plan, "allow_deep_research", !plan.allow_deep_research)} type="button">Deep</button>
-                            <button className={plan.allow_multi_model ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimit(plan, "allow_multi_model", !plan.allow_multi_model)} type="button">Multi</button>
-                            <button className={plan.allow_web_search ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimit(plan, "allow_web_search", !plan.allow_web_search)} type="button">Web</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {planLimitRows.map((plan) => {
+                      const original = features?.plan_limits.find((item) => item.plan === plan.plan);
+                      const changed = original ? hasPlanLimitPatch(original, plan) : false;
+                      return (
+                        <tr key={plan.id} className={changed ? "bg-cyan-300/[0.045] text-slate-200" : "text-slate-200"}>
+                          <td className="px-4 py-3 font-semibold text-white">{plan.plan}</td>
+                          <td className="px-4 py-3"><LimitButton value={plan.daily_prompt_limit} onSave={(value) => updatePlanLimitDraft(plan, "daily_prompt_limit", value)} /></td>
+                          <td className="px-4 py-3"><LimitButton value={plan.monthly_prompt_limit} onSave={(value) => updatePlanLimitDraft(plan, "monthly_prompt_limit", value)} /></td>
+                          <td className="px-4 py-3"><LimitButton value={plan.daily_token_limit} onSave={(value) => updatePlanLimitDraft(plan, "daily_token_limit", value)} /></td>
+                          <td className="px-4 py-3"><LimitButton value={plan.monthly_token_limit} onSave={(value) => updatePlanLimitDraft(plan, "monthly_token_limit", value)} /></td>
+                          <td className="px-4 py-3"><LimitButton value={plan.max_models} onSave={(value) => updatePlanLimitDraft(plan, "max_models", value)} /></td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button className={plan.allow_deep_research ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimitDraft(plan, "allow_deep_research", !plan.allow_deep_research)} type="button">Deep</button>
+                              <button className={plan.allow_multi_model ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimitDraft(plan, "allow_multi_model", !plan.allow_multi_model)} type="button">Multi</button>
+                              <button className={plan.allow_web_search ? "chip-dark chip-dark-active" : "chip-dark"} onClick={() => updatePlanLimitDraft(plan, "allow_web_search", !plan.allow_web_search)} type="button">Web</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
