@@ -43,6 +43,10 @@ class ApkService:
         return timestamp.astimezone(cls.response_tz)
 
     @staticmethod
+    def release_timestamp(release: ApkRelease) -> datetime:
+        return release.released_at or release.release_date or release.created_at or datetime.utcnow()
+
+    @staticmethod
     def file_name_from_url(apk_url: str | None) -> str:
         if not apk_url:
             return settings.APK_FILENAME
@@ -76,7 +80,7 @@ class ApkService:
         download_url = release.apk_url or cls._download_url(release.version_name)
         created_at = cls.response_datetime(release.created_at)
         updated_at = cls.response_datetime(release.updated_at or release.created_at)
-        released_at = cls.response_datetime(release.released_at or release.created_at)
+        released_at = cls.response_datetime(cls.release_timestamp(release))
         return ApkReleaseRead(
             id=release.id,
             version_code=release.version_code,
@@ -190,9 +194,13 @@ class ApkService:
             existing.changelog = f"Version {version_name}"
             existing.release_notes = existing.release_notes or ["Production Android APK"]
             existing.is_active = True
-            existing.updated_at = datetime.utcnow()
-            existing.released_at = existing.released_at or datetime.utcnow()
+            now = datetime.utcnow()
+            release_time = existing.released_at or existing.release_date or existing.created_at or now
+            existing.release_date = existing.release_date or release_time
+            existing.released_at = existing.released_at or release_time
+            existing.updated_at = now
         else:
+            now = datetime.utcnow()
             db.add(
                 ApkRelease(
                     version_code=version_code,
@@ -206,6 +214,10 @@ class ApkService:
                     release_notes=["Production Android APK"],
                     changelog=f"Version {version_name}",
                     is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                    release_date=now,
+                    released_at=now,
                 )
             )
         db.commit()
@@ -310,6 +322,7 @@ class ApkService:
         if path != latest_path:
             shutil.copyfile(path, latest_path)
         db.execute(update(ApkRelease).values(is_active=False))
+        now = datetime.utcnow()
         release = ApkRelease(
             version_code=next_version_code,
             version_name=next_version,
@@ -323,6 +336,10 @@ class ApkService:
             changelog=changelog or f"Version {next_version}",
             force_update=force_update,
             is_active=True,
+            created_at=now,
+            updated_at=now,
+            release_date=now,
+            released_at=now,
         )
         db.add(release)
         db.commit()
@@ -380,7 +397,12 @@ class ApkService:
         if release_notes is not None:
             release.release_notes = [item.strip() for item in release_notes if item.strip()]
         if released_at is not None:
-            release.released_at = self._db_datetime(released_at)
+            release_time = self._db_datetime(released_at)
+            release.release_date = release_time
+            release.released_at = release_time
+        release_time = release.released_at or release.release_date or release.created_at or datetime.utcnow()
+        release.release_date = release.release_date or release_time
+        release.released_at = release.released_at or release_time
         if is_active is not None:
             if is_active:
                 db.execute(update(ApkRelease).where(ApkRelease.id != release.id).values(is_active=False))
@@ -426,12 +448,13 @@ class ApkService:
                 force_update=force_update,
                 release_notes=release_notes,
                 is_active=is_active,
-                released_at=released_at or release.released_at,
+                released_at=released_at or release.released_at or release.release_date,
             )
 
         if is_active:
             db.execute(update(ApkRelease).values(is_active=False))
         now = datetime.utcnow()
+        release_time = self._db_datetime(released_at) if released_at else now
         release = ApkRelease(
             version_code=version_code,
             version_name=version_name,
@@ -447,7 +470,8 @@ class ApkService:
             is_active=is_active,
             created_at=now,
             updated_at=now,
-            released_at=self._db_datetime(released_at),
+            release_date=release_time,
+            released_at=release_time,
         )
         db.add(release)
         db.commit()

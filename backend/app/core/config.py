@@ -245,6 +245,8 @@ class Settings(BaseSettings):
     def _normalize_sqlalchemy_url(raw_url: str) -> str:
         parsed = urlsplit(raw_url)
         scheme = parsed.scheme.lower()
+        if scheme.startswith("sqlite"):
+            return raw_url
         if scheme == "postgres":
             scheme = "postgresql+psycopg"
         elif scheme == "postgresql":

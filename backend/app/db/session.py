@@ -308,8 +308,20 @@ def ensure_runtime_schema() -> None:
             backfill_chat_storage_tables(connection, quote)
         if "apk_versions" in table_names:
             apk_versions = quote("apk_versions")
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('release_date')} = {quote('created_at')} WHERE {quote('release_date')} IS NULL"))
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('created_at')} = {quote('release_date')} WHERE {quote('created_at')} IS NULL"))
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('release_date')} = "
+                    f"COALESCE({quote('release_date')}, {quote('released_at')}, {quote('created_at')}, CURRENT_TIMESTAMP) "
+                    f"WHERE {quote('release_date')} IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('created_at')} = "
+                    f"COALESCE({quote('created_at')}, {quote('release_date')}, {quote('released_at')}, CURRENT_TIMESTAMP) "
+                    f"WHERE {quote('created_at')} IS NULL"
+                )
+            )
             connection.execute(
                 text(
                     f"UPDATE {apk_versions} SET {quote('file_name')} = {quote('filename')} "
@@ -324,10 +336,27 @@ def ensure_runtime_schema() -> None:
                     f"AND {quote('file_name')} IS NOT NULL AND TRIM({quote('file_name')}) != ''"
                 )
             )
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('released_at')} = {quote('release_date')} WHERE {quote('released_at')} IS NULL"))
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('release_date')} = {quote('released_at')} WHERE {quote('release_date')} IS NULL"))
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('updated_at')} = {quote('created_at')} WHERE {quote('updated_at')} IS NULL"))
-            connection.execute(text(f"UPDATE {apk_versions} SET {quote('released_at')} = {quote('created_at')} WHERE {quote('released_at')} IS NULL"))
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('released_at')} = "
+                    f"COALESCE({quote('released_at')}, {quote('release_date')}, {quote('created_at')}, CURRENT_TIMESTAMP) "
+                    f"WHERE {quote('released_at')} IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('release_date')} = "
+                    f"COALESCE({quote('release_date')}, {quote('released_at')}, {quote('created_at')}, CURRENT_TIMESTAMP) "
+                    f"WHERE {quote('release_date')} IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    f"UPDATE {apk_versions} SET {quote('updated_at')} = "
+                    f"COALESCE({quote('updated_at')}, {quote('created_at')}, {quote('released_at')}, CURRENT_TIMESTAMP) "
+                    f"WHERE {quote('updated_at')} IS NULL"
+                )
+            )
             connection.execute(
                 text(
                     f"UPDATE {apk_versions} SET {quote('apk_url')} = {concat_url_version(quote('version_name'))} "
