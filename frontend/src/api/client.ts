@@ -347,7 +347,7 @@ async function createConnectionError(input: string, originalError: unknown, meta
     message = "SSL certificate issue: the browser rejected the API connection certificate.";
   } else if (context.crossOrigin) {
     if (await canReachApiWithCors()) {
-      message = `Connection failed: Auto-AI API is reachable, but this request was interrupted. Check mobile network and try again.`;
+      message = "Connection interrupted. Please retry.";
     } else if (await canReachApiHostWithoutCors()) {
       kind = "cors_blocked";
       message = `CORS blocked: ${context.apiOrigin} is reachable, but it is not allowing requests from ${context.pageOrigin}.`;
@@ -688,7 +688,6 @@ export const api = {
       currency: string;
       receipt?: string;
       promo_code?: string | null;
-      checkout_config_id?: string | null;
     }
   ) =>
     apiFetch<RazorpayOrder>("/payments/create-order", {

@@ -263,6 +263,7 @@ export type PaidPricingPlanName = Exclude<PricingPlanName, "free">;
 export type PaymentConfig = {
   key_id?: string | null;
   razorpay_ready?: boolean;
+  razorpay_mode?: "test" | "live" | string | null;
   razorpay_config_id?: string | null;
   upi_id?: string | null;
   upi_payee_name?: string | null;

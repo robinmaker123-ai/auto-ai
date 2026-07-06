@@ -78,6 +78,7 @@ export function ChatPage() {
   const [reactions, setReactions] = useState<Record<string, MessageReaction>>({});
   const [bookmarks, setBookmarks] = useState<Record<string, boolean>>({});
   const [isContextOpen, setIsContextOpen] = useState(false);
+  const [chatNotice, setChatNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const activeChatRef = useRef(activeChat);
@@ -259,6 +260,10 @@ export function ChatPage() {
     } catch (error) {
       console.warn("[Auto-AI Notifications] Unable to show response notification.", error);
     }
+  }
+
+  function showChatNotice(message: string) {
+    setChatNotice(message);
   }
 
   function isRunningGenerationStatus(status?: string | null) {
@@ -458,7 +463,7 @@ export function ChatPage() {
       await refreshDocuments();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to delete document";
-      window.alert(detail);
+      showChatNotice(detail);
     }
   }
 
@@ -501,6 +506,7 @@ export function ChatPage() {
   async function handleSend(text: string, options: ComposerOptions, imageFiles: File[] = []) {
     if (!token || visibleChatBusy) return;
     lastOptionsRef.current = options;
+    setChatNotice("");
     setStreaming(true);
     setSubmittingGeneration(true);
     try {
@@ -524,7 +530,7 @@ export function ChatPage() {
       void refreshChats().catch(() => undefined);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to stream response";
-      window.alert(`AI request failed: ${detail}`);
+      showChatNotice(`AI request failed: ${detail}`);
       await refreshChats();
       setStreaming(false);
       setSubmittingGeneration(false);
@@ -576,7 +582,7 @@ export function ChatPage() {
       void refreshChats().catch(() => undefined);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to regenerate response";
-      window.alert(detail);
+      showChatNotice(detail);
       setStreaming(false);
       setSubmittingGeneration(false);
     }
@@ -636,7 +642,7 @@ export function ChatPage() {
         return;
       }
       const detail = error instanceof Error ? error.message : "Unable to stop generation";
-      window.alert(detail);
+      showChatNotice(detail);
     }
   }
 
@@ -787,6 +793,15 @@ export function ChatPage() {
             )}
           </AnimatePresence>
         </div>
+
+        {chatNotice && (
+          <div className="chat-notice" role="status">
+            <span className="min-w-0 flex-1">{chatNotice}</span>
+            <button className="chat-notice-close" onClick={() => setChatNotice("")} type="button">
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {!isPinnedToBottom && messages.length > 0 && (
           <button

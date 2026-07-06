@@ -48,8 +48,8 @@ export function SubscriptionBillingCenter() {
   const [promoPlan, setPromoPlan] = useState<PaidPricingPlanName>("pro");
   const [promo, setPromo] = useState<PromoCodeResponse | null>(null);
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
-  const razorpayKeyId = paymentConfig?.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const razorpayReady = paymentConfig?.razorpay_ready ?? Boolean(import.meta.env.VITE_RAZORPAY_KEY_ID);
+  const razorpayKeyId = paymentConfig?.key_id || "";
+  const razorpayReady = paymentConfig?.razorpay_ready ?? false;
   const razorpayCheckoutConfigId = normalizeRazorpayConfigId(
     paymentConfig?.razorpay_config_id,
     import.meta.env.VITE_RAZORPAY_CHECKOUT_CONFIG_ID,
@@ -122,7 +122,6 @@ export function SubscriptionBillingCenter() {
         amount,
         currency: "INR",
         receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40),
-        checkout_config_id: razorpayCheckoutConfigId || null,
         promo_code: promo?.plan === paidPlan ? promo.code : null
       });
       const checkout = new window.Razorpay({

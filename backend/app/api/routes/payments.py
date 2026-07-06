@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import datetime
+from typing import Any
 
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -52,6 +54,7 @@ from app.services.admin_control import (
 
 
 router = APIRouter(tags=["payments"])
+logger = logging.getLogger("auto_ai.payments")
 
 PAYMENT_METHODS = [
     "UPI QR",
@@ -69,10 +72,20 @@ PAYMENT_SCREENSHOT_MESSAGE = "After payment, send your registered email and paym
 RAZORPAY_SECRET_PATTERN = re.compile(
     r"(?i)(key_secret|secret|token|signature|password)([\"']?\s*[:=]\s*[\"']?)[^,\"'\s}]+"
 )
+RAZORPAY_KEY_PATTERN = re.compile(r"rzp_(test|live)_([A-Za-z0-9]{6})[A-Za-z0-9]+")
 
 
 def razorpay_key_id() -> str:
     return (settings.RAZORPAY_KEY_ID or "").strip()
+
+
+def razorpay_key_mode(key_id: str | None = None) -> str | None:
+    value = (key_id or razorpay_key_id()).strip().lower()
+    if value.startswith("rzp_test_"):
+        return "test"
+    if value.startswith("rzp_live_"):
+        return "live"
+    return None
 
 
 def razorpay_secret_value() -> str:
@@ -99,7 +112,13 @@ def razorpay_webhook_secret() -> str:
 
 
 def razorpay_client() -> razorpay.Client:
-    return razorpay.Client(auth=(razorpay_key_id(), razorpay_secret()))
+    key_id = razorpay_key_id()
+    if not razorpay_key_mode(key_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Razorpay key_id is invalid. Use a valid TEST or LIVE key from the same Razorpay account.",
+        )
+    return razorpay.Client(auth=(key_id, razorpay_secret()))
 
 
 def request_plan(plan_id: str | None, plan: str | None) -> str:
@@ -214,12 +233,49 @@ def razorpay_error_status(error: Exception) -> int:
     return status.HTTP_502_BAD_GATEWAY
 
 
+def sanitize_razorpay_log_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): "[redacted]" if re.search(r"(?i)(secret|token|signature|password)", str(key)) else sanitize_razorpay_log_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_razorpay_log_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_razorpay_log_value(item) for item in value]
+    if isinstance(value, str):
+        sanitized = RAZORPAY_SECRET_PATTERN.sub(r"\1\2[redacted]", value)
+        return RAZORPAY_KEY_PATTERN.sub(r"rzp_\1_\2...", sanitized)
+    return value
+
+
+def razorpay_exception_body(error: Exception) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "type": type(error).__name__,
+        "message": safe_razorpay_error_message(error),
+    }
+    for attr in ("status_code", "http_status_code", "error_code", "field"):
+        value = getattr(error, attr, None)
+        if value is not None:
+            body[attr] = value
+    response = getattr(error, "response", None)
+    if response is not None:
+        body["response_status"] = getattr(response, "status_code", None)
+        try:
+            body["response_body"] = response.json()
+        except Exception:
+            body["response_body"] = getattr(response, "text", None)
+    if error.args:
+        body["args"] = list(error.args)
+    return sanitize_razorpay_log_value(body)
+
+
 def safe_razorpay_error_message(error: Exception) -> str:
     message = str(error).strip()
     if not message:
         return ""
     message = RAZORPAY_SECRET_PATTERN.sub(r"\1\2[redacted]", message)
-    message = re.sub(r"rzp_(test|live)_([A-Za-z0-9]{6})[A-Za-z0-9]+", r"rzp_\1_\2...", message)
+    message = RAZORPAY_KEY_PATTERN.sub(r"rzp_\1_\2...", message)
     return message[:300]
 
 
@@ -229,10 +285,48 @@ def razorpay_error_detail(error: Exception) -> str:
     if "expired" in message and "api key" in message:
         return "Razorpay API key has expired. Update RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."
     if "auth" in message or "unauthorized" in message or "invalid api key" in message or "api key" in message:
-        return "Razorpay authentication failed. Check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."
-    if safe_message:
-        return f"Razorpay order creation failed: {safe_message}"
-    return "Razorpay order creation failed. Check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."
+        return "Razorpay authentication failed. Check that key_id and key_secret are from the same TEST or LIVE account."
+    if "id provided does not exist" in message:
+        return "Razorpay rejected the order setup. Check Razorpay mode and remove deleted dashboard IDs."
+    return "Razorpay order creation failed. Please try again or contact support."
+
+
+def log_razorpay_order_request(order_payload: dict[str, Any], plan_id: str, receipt: str) -> None:
+    logger.info(
+        "razorpay_order_create_request %s",
+        sanitize_razorpay_log_value(
+            {
+                "mode": razorpay_key_mode(),
+                "order_request": order_payload,
+                "plan_id": plan_id,
+                "customer_id": None,
+                "subscription_id": None,
+                "receipt": receipt,
+                "amount": order_payload.get("amount"),
+                "currency": order_payload.get("currency"),
+            }
+        ),
+    )
+
+
+def log_razorpay_order_failure(error: Exception, order_payload: dict[str, Any], plan_id: str, receipt: str) -> None:
+    logger.warning(
+        "razorpay_order_create_failed %s",
+        sanitize_razorpay_log_value(
+            {
+                "status": razorpay_error_status(error),
+                "mode": razorpay_key_mode(),
+                "order_request": order_payload,
+                "plan_id": plan_id,
+                "customer_id": None,
+                "subscription_id": None,
+                "receipt": receipt,
+                "amount": order_payload.get("amount"),
+                "currency": order_payload.get("currency"),
+                "razorpay_response": razorpay_exception_body(error),
+            }
+        ),
+    )
 
 
 @router.get("/payments/config", response_model=PaymentConfigRead)
@@ -243,6 +337,7 @@ def payment_config() -> PaymentConfigRead:
     return PaymentConfigRead(
         key_id=key_id,
         razorpay_ready=bool(key_id and razorpay_secret_value()),
+        razorpay_mode=razorpay_key_mode(key_id),
         razorpay_config_id=settings.razorpay_checkout_config_id,
         upi_id=upi_id,
         upi_payee_name=upi_payee_name,
@@ -448,16 +543,16 @@ def create_order(
             "plan_id": selected_plan,
         },
     }
-    checkout_config_id = payload.checkout_config_id or settings.razorpay_checkout_config_id
-    if checkout_config_id:
-        order_payload["checkout_config_id"] = checkout_config_id
+    log_razorpay_order_request(order_payload, selected_plan, receipt[:40])
     try:
         order = razorpay_client().order.create(order_payload)
     except HTTPException:
         raise
     except (BadRequestError, GatewayError, ServerError) as exc:
+        log_razorpay_order_failure(exc, order_payload, selected_plan, receipt[:40])
         raise HTTPException(status_code=razorpay_error_status(exc), detail=razorpay_error_detail(exc)) from exc
     except Exception as exc:
+        log_razorpay_order_failure(exc, order_payload, selected_plan, receipt[:40])
         raise HTTPException(status_code=razorpay_error_status(exc), detail=razorpay_error_detail(exc)) from exc
 
     db.add(
@@ -476,7 +571,6 @@ def create_order(
             raw_metadata={
                 "receipt": receipt[:40],
                 "promo_code": payload.promo_code,
-                "checkout_config_id": checkout_config_id,
                 "user_id": current_user.id,
                 "user_email": current_user.email,
                 "plan_id": selected_plan,

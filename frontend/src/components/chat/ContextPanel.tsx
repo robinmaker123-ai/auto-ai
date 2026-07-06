@@ -96,6 +96,7 @@ export function ContextPanel({
   const [memoryDraft, setMemoryDraft] = useState("");
   const [category, setCategory] = useState("preference");
   const [memoryLoading, setMemoryLoading] = useState(false);
+  const [panelError, setPanelError] = useState("");
 
   // Search & filter states for memory
   const [searchQuery, setSearchQuery] = useState("");
@@ -135,6 +136,7 @@ export function ContextPanel({
   async function createMemory(event: FormEvent) {
     event.preventDefault();
     if (!token || !memoryDraft.trim()) return;
+    setPanelError("");
     try {
       const value = memoryDraft.trim();
       const created = await api.createMemory(token, {
@@ -150,12 +152,13 @@ export function ContextPanel({
       setMemoryDraft("");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to save memory";
-      window.alert(detail);
+      setPanelError(detail);
     }
   }
 
   async function deleteMemory(memory: UserMemory) {
     if (!token) return;
+    setPanelError("");
     try {
       await api.deleteMemory(token, memory.id);
       setHumanState((current) =>
@@ -163,7 +166,7 @@ export function ContextPanel({
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unable to delete memory";
-      window.alert(detail);
+      setPanelError(detail);
     }
   }
 
@@ -274,6 +277,11 @@ export function ContextPanel({
                 Memory
               </button>
             </div>
+            {panelError && (
+              <div className="mt-3 rounded-md border border-red-300/25 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                {panelError}
+              </div>
+            )}
           </div>
 
           {/* Body Content */}
