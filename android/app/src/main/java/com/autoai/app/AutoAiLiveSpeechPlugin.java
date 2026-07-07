@@ -1,23 +1,14 @@
 package com.autoai.app;
 
-import android.app.Activity;
-import android.content.ActivityNotFoundException;
-import android.content.Intent;
 import android.os.Bundle;
-import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 
-import androidx.activity.result.ActivityResult;
-
-import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.util.ArrayList;
 import java.util.Locale;
 
 @CapacitorPlugin(name = "AutoAiLiveSpeech")
@@ -33,36 +24,6 @@ public class AutoAiLiveSpeechPlugin extends Plugin {
     @Override
     public void load() {
         initTts();
-    }
-
-    @PluginMethod
-    public void startListening(PluginCall call) {
-        String language = normalizeLanguage(call.getString("language", "hi-IN"));
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language);
-        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Auto-AI");
-        try {
-            startActivityForResult(call, intent, "handleSpeechResult");
-        } catch (ActivityNotFoundException error) {
-            call.reject("Android speech recognition is not available.", error);
-        }
-    }
-
-    @ActivityCallback
-    private void handleSpeechResult(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
-            call.reject("No speech detected.");
-            return;
-        }
-        ArrayList<String> matches = result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-        String text = matches == null || matches.isEmpty() ? "" : matches.get(0);
-        JSObject payload = new JSObject();
-        payload.put("text", text == null ? "" : text.trim());
-        call.resolve(payload);
     }
 
     @PluginMethod

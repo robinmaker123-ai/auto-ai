@@ -8,35 +8,7 @@ import { useAppSettings } from "../../contexts/AppSettingsContext";
 type LiveStatus = "connecting" | "listening" | "thinking" | "speaking" | "connection_lost" | "muted" | "looking" | "analyzing";
 type LiveLine = { id: string; role: "user" | "assistant" | "system"; text: string };
 
-type SpeechRecognitionLike = EventTarget & {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: { error?: string }) => void) | null;
-  onspeechstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-};
-
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: {
-      isFinal: boolean;
-      length: number;
-      [index: number]: { transcript: string };
-    };
-  };
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type NativeLiveSpeechPlugin = {
-  startListening: (options: { language: string }) => Promise<{ text?: string }>;
   speak: (options: { text: string; language: string; rate: number }) => Promise<void>;
   stopSpeaking: () => Promise<void>;
 };
@@ -61,14 +33,6 @@ function audioFilename(mimeType: string) {
 
 function makeId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function speechRecognitionConstructor(): SpeechRecognitionConstructor | null {
-  const win = window as typeof window & {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  };
-  return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null;
 }
 
 function nativeLiveSpeechPlugin(): NativeLiveSpeechPlugin | null {
@@ -108,10 +72,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
   const [sessionId, setSessionId] = useState("");
   const sessionIdRef = useRef("");
   const sessionPromiseRef = useRef<Promise<string> | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const sendUserTextRef = useRef<(text: string) => void>(() => undefined);
-  const recognitionActiveRef = useRef(false);
-  const nativeListeningRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -195,6 +156,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
       setError("Microphone permission is required for Live Mode.");
       return;
     }
+    if (recorderRef.current && recorderRef.current.state === "recording") return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = supportedRecorderMimeType();
@@ -241,7 +203,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
       setStatus("listening");
       fallbackTimerRef.current = window.setTimeout(() => {
         if (recorder.state === "recording") recorder.stop();
-      }, 4200);
+      }, 3200);
     } catch {
       setStatus("connection_lost");
       setError("Microphone permission is required for Live Mode.");
@@ -251,100 +213,13 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
   const startListening = useCallback(async () => {
     setError("");
     if (!token || mutedRef.current) return;
-    const nativeSpeech = nativeLiveSpeechPlugin();
-    if (nativeSpeech && !nativeListeningRef.current) {
-      nativeListeningRef.current = true;
-      setStatus("listening");
-      try {
-        const result = await nativeSpeech.startListening({ language: languageToSpeechCode(language) });
-        const text = (result.text || "").trim();
-        if (text) {
-          sendUserTextRef.current(text);
-        } else if (shouldListenRef.current && !mutedRef.current && !speakingRef.current) {
-          window.setTimeout(() => void startListening(), 450);
-        }
-      } catch {
-        setError("No speech detected. Tap mic or type a message.");
-      } finally {
-        nativeListeningRef.current = false;
-      }
-      return;
-    }
-    const Recognition = speechRecognitionConstructor();
-    if (!Recognition) {
-      await startFallbackRecording();
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-    } catch {
-      setStatus("connection_lost");
-      setError("Microphone permission is required for Live Mode.");
-      return;
-    }
-    recognitionRef.current?.abort();
-    const recognition = new Recognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = languageToSpeechCode(language);
-    recognition.onstart = () => {
-      recognitionActiveRef.current = true;
-      if (!speakingRef.current) setStatus("listening");
-    };
-    recognition.onspeechstart = () => {
-      if (speakingRef.current) stopSpeaking();
-    };
-    recognition.onerror = (event) => {
-      recognitionActiveRef.current = false;
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setError("Microphone permission is required for Live Mode.");
-      } else {
-        setError("Connection interrupted. Trying again...");
-      }
-      setStatus("connection_lost");
-    };
-    recognition.onend = () => {
-      recognitionActiveRef.current = false;
-      if (shouldListenRef.current && !mutedRef.current && !speakingRef.current) {
-        window.setTimeout(() => {
-          try {
-            recognition.start();
-          } catch {
-            setStatus("connection_lost");
-          }
-        }, 350);
-      }
-    };
-    recognition.onresult = (event) => {
-      let finalText = "";
-      let interimText = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const text = result[0]?.transcript ?? "";
-        if (result.isFinal) finalText += text;
-        else interimText += text;
-      }
-      setInterimTranscript(interimText.trim());
-      if (finalText.trim()) {
-        setInterimTranscript("");
-        sendUserTextRef.current(finalText.trim());
-      }
-    };
-    recognitionRef.current = recognition;
-    try {
-      shouldListenRef.current = true;
-      recognition.start();
-    } catch {
-      setStatus("connection_lost");
-      setError("Could not start microphone.");
-    }
-  }, [language, startFallbackRecording, stopSpeaking, token]);
+    shouldListenRef.current = true;
+    await startFallbackRecording();
+  }, [startFallbackRecording, token]);
 
   const speak = useCallback((text: string) => {
     const nativeSpeech = nativeLiveSpeechPlugin();
     if (nativeSpeech && text.trim()) {
-      recognitionRef.current?.abort();
       stopFallbackRecording();
       speakingRef.current = true;
       setStatus("speaking");
@@ -564,7 +439,6 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     if ("speechSynthesis" in window) window.speechSynthesis.onvoiceschanged = loadVoices;
     return () => {
       shouldListenRef.current = false;
-      recognitionRef.current?.abort();
       stopFallbackRecording();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -590,8 +464,6 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     setMuted(true);
     mutedRef.current = true;
     shouldListenRef.current = false;
-    nativeListeningRef.current = false;
-    recognitionRef.current?.abort();
     stopFallbackRecording();
     setStatus("muted");
   }
@@ -625,8 +497,6 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
 
   async function endCall() {
     shouldListenRef.current = false;
-    nativeListeningRef.current = false;
-    recognitionRef.current?.abort();
     stopFallbackRecording();
     stopSpeaking();
     stopCamera();
@@ -637,7 +507,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="live-mode-shell" role="dialog" aria-modal="true">
+    <div className={clsx("live-mode-shell", cameraActive && "live-mode-camera-on")} role="dialog" aria-modal="true">
       <div className="live-mode-topbar">
         <button className="live-icon-button" type="button" onClick={endCall} title="Back">
           <X size={20} />

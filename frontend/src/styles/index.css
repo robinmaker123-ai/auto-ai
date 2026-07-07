@@ -864,6 +864,7 @@ button:disabled {
 }
 
 .live-mode-main {
+  position: relative;
   display: grid;
   min-height: 0;
   grid-template-rows: minmax(170px, 0.7fr) minmax(288px, 1.2fr) auto auto auto;
@@ -970,6 +971,69 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   background: rgba(2, 6, 23, 0.44);
+}
+
+.live-mode-camera-on .live-mode-main {
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  padding: 0 0 12px;
+}
+
+.live-mode-camera-on .live-camera-panel {
+  order: -1;
+  min-height: min(74vh, 720px);
+  border: 0;
+  border-radius: 0;
+}
+
+.live-mode-camera-on .live-camera-panel video {
+  min-height: min(74vh, 720px);
+}
+
+.live-mode-camera-on .live-orb-zone {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  top: calc(72px + env(safe-area-inset-top));
+  z-index: 4;
+  min-height: 128px;
+  width: 128px;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.62);
+  padding: 10px;
+  backdrop-filter: blur(16px);
+}
+
+.live-mode-camera-on .live-orb {
+  height: 58px;
+  width: 58px;
+  min-height: 58px;
+  min-width: 58px;
+}
+
+.live-mode-camera-on .live-status-text {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.live-mode-camera-on .live-error-text,
+.live-mode-camera-on .live-interim {
+  position: fixed;
+  left: 50%;
+  bottom: calc(134px + env(safe-area-inset-bottom));
+  z-index: 6;
+  width: min(620px, calc(100% - 24px));
+  transform: translateX(-50%);
+}
+
+.live-mode-camera-on .live-transcript,
+.live-mode-camera-on .live-manual-form,
+.live-mode-camera-on .live-settings-row {
+  width: min(920px, calc(100% - 24px));
+  margin-inline: auto;
 }
 
 .live-camera-panel video {
@@ -3461,6 +3525,26 @@ button:disabled {
   .live-camera-panel,
   .live-camera-empty {
     min-height: 236px;
+  }
+
+  .live-mode-camera-on .live-camera-panel,
+  .live-mode-camera-on .live-camera-panel video {
+    min-height: 62vh;
+  }
+
+  .live-mode-camera-on .live-orb-zone {
+    top: calc(64px + env(safe-area-inset-top));
+    right: 10px;
+    min-height: 104px;
+    width: 104px;
+    padding: 8px;
+  }
+
+  .live-mode-camera-on .live-orb {
+    height: 48px;
+    width: 48px;
+    min-height: 48px;
+    min-width: 48px;
   }
 
   .live-transcript {
