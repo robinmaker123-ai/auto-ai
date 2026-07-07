@@ -36,6 +36,24 @@ type SpeechRecognitionEventLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
+const RECORDER_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg;codecs=opus",
+  "audio/mp4"
+];
+
+function supportedRecorderMimeType() {
+  if (typeof MediaRecorder === "undefined") return "";
+  return RECORDER_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+function audioFilename(mimeType: string) {
+  if (mimeType.includes("ogg")) return "live-voice.ogg";
+  if (mimeType.includes("mp4")) return "live-voice.m4a";
+  return "live-voice.webm";
+}
+
 function makeId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -76,6 +94,11 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const sendUserTextRef = useRef<(text: string) => void>(() => undefined);
   const recognitionActiveRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const fallbackTimerRef = useRef<number | null>(null);
+  const recorderManualStopRef = useRef(false);
   const shouldListenRef = useRef(true);
   const speakingRef = useRef(false);
   const mutedRef = useRef(false);
@@ -131,13 +154,86 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     }
   }, [token]);
 
+  const stopFallbackRecording = useCallback((manual = true) => {
+    recorderManualStopRef.current = manual;
+    if (fallbackTimerRef.current) {
+      window.clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      if (recorder.state === "recording") recorder.requestData();
+      recorder.stop();
+    }
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioStreamRef.current = null;
+  }, []);
+
+  const startFallbackRecording = useCallback(async () => {
+    if (!token || mutedRef.current || typeof MediaRecorder === "undefined") {
+      setStatus("connection_lost");
+      setError("Microphone permission is required for Live Mode.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = supportedRecorderMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      audioStreamRef.current = stream;
+      audioChunksRef.current = [];
+      recorderManualStopRef.current = false;
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setStatus("connection_lost");
+        setError("Connection interrupted. Trying again...");
+        stopFallbackRecording();
+      };
+      recorder.onstop = async () => {
+        const chunks = audioChunksRef.current;
+        audioChunksRef.current = [];
+        let sentTranscript = false;
+        stream.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current = null;
+        if (!recorderManualStopRef.current && chunks.length) {
+          try {
+            const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+            if (blob.size > 800) {
+              const result = await api.transcribeAudio(token, blob, audioFilename(blob.type));
+              if (result.text.trim()) {
+                sentTranscript = true;
+                sendUserTextRef.current(result.text.trim());
+              }
+            }
+          } catch {
+            setError("Connection interrupted. Trying again...");
+          }
+        }
+        if (shouldListenRef.current && !sentTranscript && !mutedRef.current && !speakingRef.current && !recorderManualStopRef.current) {
+          window.setTimeout(() => {
+            void startFallbackRecording();
+          }, 250);
+        }
+      };
+      recorder.start(1000);
+      setStatus("listening");
+      fallbackTimerRef.current = window.setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 4200);
+    } catch {
+      setStatus("connection_lost");
+      setError("Microphone permission is required for Live Mode.");
+    }
+  }, [stopFallbackRecording, token]);
+
   const startListening = useCallback(async () => {
     setError("");
     if (!token || mutedRef.current) return;
     const Recognition = speechRecognitionConstructor();
     if (!Recognition) {
-      setStatus("connection_lost");
-      setError("Live speech recognition is not supported in this browser.");
+      await startFallbackRecording();
       return;
     }
     try {
@@ -204,7 +300,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
       setStatus("connection_lost");
       setError("Could not start microphone.");
     }
-  }, [language, stopSpeaking, token]);
+  }, [language, startFallbackRecording, stopSpeaking, token]);
 
   const speak = useCallback((text: string) => {
     if (!("speechSynthesis" in window) || !text.trim()) {
@@ -212,6 +308,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
       return;
     }
     window.speechSynthesis.cancel();
+    stopFallbackRecording();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = speechRate;
     utterance.lang = selectedVoice?.lang || languageToSpeechCode(language);
@@ -222,14 +319,20 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     };
     utterance.onend = () => {
       speakingRef.current = false;
-      if (!muted) setStatus("listening");
+      if (!muted) {
+        setStatus("listening");
+        void startListening();
+      }
     };
     utterance.onerror = () => {
       speakingRef.current = false;
-      if (!muted) setStatus("listening");
+      if (!muted) {
+        setStatus("listening");
+        void startListening();
+      }
     };
     window.speechSynthesis.speak(utterance);
-  }, [language, muted, selectedVoice, speechRate]);
+  }, [language, muted, selectedVoice, speechRate, startListening, stopFallbackRecording]);
 
   const captureVideoBlob = useCallback(async () => {
     const video = videoRef.current;
@@ -406,10 +509,11 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     return () => {
       shouldListenRef.current = false;
       recognitionRef.current?.abort();
+      stopFallbackRecording();
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     };
-  }, [addLine, ensureSession, startListening, token, user?.name]);
+  }, [addLine, ensureSession, startListening, stopFallbackRecording, token, user?.name]);
 
   useEffect(() => {
     if (!liveVision || !cameraActive) return;
@@ -431,6 +535,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
     mutedRef.current = true;
     shouldListenRef.current = false;
     recognitionRef.current?.abort();
+    stopFallbackRecording();
     setStatus("muted");
   }
 
@@ -456,6 +561,7 @@ export function LiveMode({ onClose }: { onClose: () => void }) {
   async function endCall() {
     shouldListenRef.current = false;
     recognitionRef.current?.abort();
+    stopFallbackRecording();
     stopSpeaking();
     stopCamera();
     if (token && sessionIdRef.current) {
