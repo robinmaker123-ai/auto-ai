@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.CookieManager;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.LinearLayout;
@@ -26,7 +27,9 @@ import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
 
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebViewClient;
 
 import org.json.JSONObject;
 
@@ -91,6 +94,8 @@ public class MainActivity extends BridgeActivity {
         settings.setDatabaseEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(true);
+        settings.setUserAgentString(browserLikeUserAgent(settings.getUserAgentString()));
+        getBridge().setWebViewClient(new AutoAiWebViewClient(getBridge()));
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
@@ -122,6 +127,85 @@ public class MainActivity extends BridgeActivity {
     private void startUpdatePolling() {
         mainHandler.removeCallbacks(updatePollRunnable);
         mainHandler.postDelayed(updatePollRunnable, UPDATE_CHECK_INTERVAL_MS);
+    }
+
+    private String browserLikeUserAgent(String userAgent) {
+        if (userAgent == null || userAgent.trim().isEmpty()) return userAgent;
+        return userAgent
+            .replace("; wv", "")
+            .replace(" wv", "")
+            .replace("Version/4.0 ", "");
+    }
+
+    private boolean openPaymentIntent(Uri uri) {
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.US);
+        if ("intent".equals(scheme)) {
+            return openParsedIntent(uri.toString());
+        }
+        if (!isPaymentScheme(scheme)) {
+            return false;
+        }
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        try {
+            startActivity(intent);
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(this, "Payment app not found.", Toast.LENGTH_SHORT).show();
+        }
+        return true;
+    }
+
+    private boolean openParsedIntent(String url) {
+        try {
+            Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+            intent.setComponent(null);
+            try {
+                startActivity(intent);
+                return true;
+            } catch (ActivityNotFoundException error) {
+                String fallbackUrl = intent.getStringExtra("browser_fallback_url");
+                if (fallbackUrl != null && !fallbackUrl.trim().isEmpty()) {
+                    getBridge().getWebView().loadUrl(fallbackUrl);
+                    return true;
+                }
+                Toast.makeText(this, "Payment app not found.", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isPaymentScheme(String scheme) {
+        return "upi".equals(scheme)
+            || "tez".equals(scheme)
+            || "phonepe".equals(scheme)
+            || "paytmmp".equals(scheme)
+            || "gpay".equals(scheme)
+            || "bhim".equals(scheme);
+    }
+
+    private class AutoAiWebViewClient extends BridgeWebViewClient {
+        private final Bridge bridge;
+
+        AutoAiWebViewClient(Bridge bridge) {
+            super(bridge);
+            this.bridge = bridge;
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            return openPaymentIntent(uri) || super.shouldOverrideUrlLoading(view, request);
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            Uri uri = Uri.parse(url);
+            return openPaymentIntent(uri) || bridge.launchIntent(uri);
+        }
     }
 
     private void checkForUpdate(boolean force) {
