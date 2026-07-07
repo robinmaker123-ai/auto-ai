@@ -75,17 +75,6 @@ export function createRazorpayCheckoutOptions({
   };
 }
 
-export function openPaymentCheckoutExternal(url: string) {
-  const capacitor = window.Capacitor as
-    | { Plugins?: { Browser?: { open?: (options: { url: string }) => Promise<void> } } }
-    | undefined;
-  const browserOpen = capacitor?.Plugins?.Browser?.open;
-  if (browserOpen) return browserOpen({ url });
-  const opened = window.open(url, "_blank", "noopener,noreferrer");
-  if (!opened) window.location.assign(url);
-  return Promise.resolve();
-}
-
 export function loadRazorpayCheckout() {
   return new Promise<void>((resolve, reject) => {
     if (typeof window === "undefined") {

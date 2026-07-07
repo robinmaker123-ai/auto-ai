@@ -4,7 +4,7 @@ import { ArrowRight, Check, CreditCard, ExternalLink, Loader2 } from "lucide-rea
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
-import { createRazorpayCheckoutOptions, loadRazorpayCheckout, openPaymentCheckoutExternal } from "../../utils/razorpay";
+import { createRazorpayCheckoutOptions, loadRazorpayCheckout } from "../../utils/razorpay";
 import { isMobileAppRuntime } from "../../utils/runtime";
 import { normalizeUpiId } from "../../utils/upi";
 import { LogoIcon } from "../brand/LogoIcon";
@@ -81,12 +81,6 @@ export function PricingPage() {
         currency: "INR",
         receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40)
       });
-      if (mobileApp) {
-        await openPaymentCheckoutExternal(session.checkout_url);
-        setMessage("Payment opened in browser. Return here after payment to refresh your subscription.");
-        setBusyPlan(null);
-        return;
-      }
       await loadRazorpayCheckout();
       if (!window.Razorpay) throw new Error("Razorpay checkout failed to load. Check internet connection and try again.");
       const checkout = new window.Razorpay(createRazorpayCheckoutOptions({

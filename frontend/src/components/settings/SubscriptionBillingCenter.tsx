@@ -15,8 +15,7 @@ import {
 import { API_BASE_URL, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, PaymentHistoryItem, PromoCodeResponse } from "../../types";
-import { createRazorpayCheckoutOptions, loadRazorpayCheckout, openPaymentCheckoutExternal } from "../../utils/razorpay";
-import { isMobileAppRuntime } from "../../utils/runtime";
+import { createRazorpayCheckoutOptions, loadRazorpayCheckout } from "../../utils/razorpay";
 import { normalizeUpiId } from "../../utils/upi";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
@@ -51,7 +50,6 @@ export function SubscriptionBillingCenter() {
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
   const razorpayKeyId = paymentConfig?.key_id || "";
   const razorpayReady = paymentConfig?.razorpay_ready ?? false;
-  const mobileApp = isMobileAppRuntime();
   const upiId = normalizeUpiId(paymentConfig?.upi_id || import.meta.env.VITE_UPI_ID || "");
   const upiPayeeName = paymentConfig?.upi_payee_name || import.meta.env.VITE_UPI_PAYEE_NAME || "Auto-AI";
 
@@ -127,12 +125,6 @@ export function SubscriptionBillingCenter() {
         receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40),
         promo_code: promo?.plan === paidPlan ? promo.code : null
       });
-      if (mobileApp) {
-        await openPaymentCheckoutExternal(session.checkout_url);
-        setSuccess("Payment opened in browser. Return here after payment and refresh billing.");
-        setBusy("");
-        return;
-      }
       await loadRazorpayCheckout();
       if (!window.Razorpay) throw new Error("Razorpay checkout failed to load. Check internet connection and try again.");
       const checkout = new window.Razorpay(createRazorpayCheckoutOptions({
