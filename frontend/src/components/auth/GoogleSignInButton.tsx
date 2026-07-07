@@ -43,11 +43,10 @@ declare global {
 }
 
 const GIS_SCRIPT_ID = "google-identity-services";
-const DEFAULT_GOOGLE_WEB_CLIENT_ID = "776507506876-vjrrc9m5eer82k6digta7ie2phd4l1f8.apps.googleusercontent.com";
 const ENV_GOOGLE_CLIENT_ID = (
   import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID ||
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  DEFAULT_GOOGLE_WEB_CLIENT_ID
+  ""
 ).trim();
 
 function loadGoogleIdentityScript() {
@@ -91,7 +90,7 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
         }
         return;
       }
-      if (isLocalPageWithRemoteApi(API_BASE_URL)) {
+      if (!mobileApp && isLocalPageWithRemoteApi(API_BASE_URL)) {
         setLoading(false);
         return;
       }
@@ -108,7 +107,7 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
     return () => {
       active = false;
     };
-  }, [onError]);
+  }, [mobileApp]);
 
   useEffect(() => {
     if (!clientId || nativeAuth || !buttonRef.current) return;
@@ -146,7 +145,6 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
 
   async function signInWithNativeGoogle() {
     const auth = nativeGoogleAuth();
-    if (!clientId) return;
     if (!auth) {
       onError("Google Sign-In is not ready in this app build. Update the app and try again.");
       return;
@@ -163,13 +161,13 @@ export function GoogleSignInButton({ disabled = false, onCredential, onError }: 
     }
   }
 
-  if (!clientId && !loading) {
+  if (!clientId && !loading && !nativeAuth && !mobileApp) {
     return null;
   }
 
   if (nativeAuth || mobileApp) {
     return (
-      <button className="google-auth-button" disabled={disabled || loading || busy || !clientId} onClick={signInWithNativeGoogle} type="button">
+      <button className="google-auth-button" disabled={disabled || loading || busy} onClick={signInWithNativeGoogle} type="button">
         <Chrome size={18} />
         {busy ? "Connecting Google" : "Continue with Google"}
       </button>

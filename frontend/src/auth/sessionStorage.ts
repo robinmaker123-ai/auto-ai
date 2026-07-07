@@ -15,7 +15,7 @@ declare global {
       Plugins?: {
         AutoAiSecureStorage?: NativeSecureStorage;
         AutoAiGoogleAuth?: {
-          signIn: (options: { clientId: string }) => Promise<{ idToken?: string; email?: string; name?: string; picture?: string }>;
+          signIn: (options?: { clientId?: string | null }) => Promise<{ idToken?: string; email?: string; name?: string; picture?: string }>;
           signOut?: () => Promise<void>;
         };
       };

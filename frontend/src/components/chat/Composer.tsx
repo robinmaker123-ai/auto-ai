@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Box, BrainCircuit, Check, ChevronDown, ChevronRight, FileText, Plus, SendHorizonal, Sparkles, Square, Timer, Trash2, X } from "lucide-react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Box, BrainCircuit, Camera, Check, ChevronDown, ChevronRight, FileImage, FileText, FileUp, Plus, SendHorizonal, Sparkles, Square, Timer, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { api } from "../../api/client";
@@ -315,7 +315,10 @@ export function Composer({
 }) {
   const { token } = useAuth();
   const { settings } = useAppSettings();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
   const [draft, setDraft] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
@@ -335,6 +338,7 @@ export function Composer({
   const [model, setModel] = useState<string>(settings.defaultModel);
   const [sending, setSending] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [error, setError] = useState("");
 
@@ -355,6 +359,24 @@ export function Composer({
   useEffect(() => {
     imageAttachmentsRef.current = imageAttachments;
   }, [imageAttachments]);
+
+  useEffect(() => {
+    if (!attachmentMenuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target as Node)) {
+        setAttachmentMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAttachmentMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [attachmentMenuOpen]);
 
   useEffect(() => {
     setProvider(settings.defaultProvider);
@@ -479,7 +501,27 @@ export function Composer({
     });
   }
 
-  const openFilePicker = () => fileInputRef.current?.click();
+  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length) void addFiles(files);
+    event.target.value = "";
+  }
+
+  function openDocumentPicker() {
+    setAttachmentMenuOpen(false);
+    documentInputRef.current?.click();
+  }
+
+  function openImagePicker() {
+    setAttachmentMenuOpen(false);
+    imageInputRef.current?.click();
+  }
+
+  function openCameraPicker() {
+    setAttachmentMenuOpen(false);
+    cameraInputRef.current?.click();
+  }
+
   const researchModeActive = chatMode !== "normal";
 
   function toggleResearchProvider(nextProvider: ResearchProvider) {
@@ -604,22 +646,38 @@ export function Composer({
           )}
         </AnimatePresence>
 
-        <input
-          ref={fileInputRef}
-          className="hidden"
-          type="file"
-          multiple
-          accept=".pdf,.docx,.txt,image/png,image/jpeg,image/webp,image/gif"
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? []);
-            if (files.length) addFiles(files);
-            event.target.value = "";
-          }}
-        />
+        <input ref={documentInputRef} className="hidden" type="file" multiple accept=".pdf,.docx,.txt" onChange={handleFileSelection} />
+        <input ref={imageInputRef} className="hidden" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFileSelection} />
+        <input ref={cameraInputRef} className="hidden" type="file" accept="image/*" capture="environment" onChange={handleFileSelection} />
         <div className="composer-top-row">
-          <button className="composer-plus-button" type="button" onClick={openFilePicker} title="Attach files">
-            <Plus size={19} />
-          </button>
+          <div ref={attachmentMenuRef} className="attachment-menu">
+            <button
+              aria-expanded={attachmentMenuOpen}
+              aria-haspopup="menu"
+              className={clsx("composer-plus-button", attachmentMenuOpen && "composer-plus-button-active")}
+              type="button"
+              onClick={() => setAttachmentMenuOpen((current) => !current)}
+              title="Add attachment"
+            >
+              <Plus size={19} />
+            </button>
+            {attachmentMenuOpen && (
+              <div className="attachment-menu-panel" role="menu">
+                <button className="attachment-menu-item" type="button" role="menuitem" onClick={openImagePicker}>
+                  <FileImage size={16} />
+                  <span>Image</span>
+                </button>
+                <button className="attachment-menu-item" type="button" role="menuitem" onClick={openDocumentPicker}>
+                  <FileUp size={16} />
+                  <span>File</span>
+                </button>
+                <button className="attachment-menu-item" type="button" role="menuitem" onClick={openCameraPicker}>
+                  <Camera size={16} />
+                  <span>Camera</span>
+                </button>
+              </div>
+            )}
+          </div>
           <div className={clsx("composer-pill composer-mode-pill", (searchMode !== "off" || researchModeActive) && "composer-pill-active")} title="Mode">
             <Sparkles size={18} />
             <select

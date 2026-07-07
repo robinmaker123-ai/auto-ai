@@ -64,6 +64,14 @@ if (-not ($keystore -and $storePassword -and $keyAlias -and $keyPassword)) {
   $keyPassword = $localProperties["AUTO_AI_ANDROID_KEY_PASSWORD"]
 }
 
+$googleWebClientId = $env:AUTO_AI_GOOGLE_WEB_CLIENT_ID
+if (-not $googleWebClientId) { $googleWebClientId = $env:GOOGLE_WEB_CLIENT_ID }
+if (-not $googleWebClientId) { $googleWebClientId = $env:VITE_GOOGLE_WEB_CLIENT_ID }
+if (-not $googleWebClientId) { $googleWebClientId = $localProperties["AUTO_AI_GOOGLE_WEB_CLIENT_ID"] }
+if (-not $googleWebClientId) { $googleWebClientId = $localProperties["GOOGLE_WEB_CLIENT_ID"] }
+if (-not $googleWebClientId) { $googleWebClientId = $localProperties["VITE_GOOGLE_WEB_CLIENT_ID"] }
+$googleWebClientId = if ($googleWebClientId) { $googleWebClientId.Trim() } else { "" }
+
 if (-not ($keystore -and $storePassword -and $keyAlias -and $keyPassword)) {
   $signingDir = Join-Path $root ".android-signing"
   New-Item -ItemType Directory -Force -Path $signingDir | Out-Null
@@ -89,11 +97,18 @@ $localPropertyLines += "AUTO_AI_ANDROID_KEYSTORE=$($keystore -replace "\\", "/")
 $localPropertyLines += "AUTO_AI_ANDROID_KEYSTORE_PASSWORD=$storePassword"
 $localPropertyLines += "AUTO_AI_ANDROID_KEY_ALIAS=$keyAlias"
 $localPropertyLines += "AUTO_AI_ANDROID_KEY_PASSWORD=$keyPassword"
+if ($googleWebClientId) {
+  $localPropertyLines += "AUTO_AI_GOOGLE_WEB_CLIENT_ID=$googleWebClientId"
+}
 Set-Content -Path $localPropertiesPath -Value $localPropertyLines -Encoding ASCII
 
 Push-Location $frontend
 try {
   $env:VITE_API_URL = $ApiUrl
+  if ($googleWebClientId) {
+    $env:VITE_GOOGLE_WEB_CLIENT_ID = $googleWebClientId
+    $env:AUTO_AI_GOOGLE_WEB_CLIENT_ID = $googleWebClientId
+  }
   $env:VITE_BUILD_VERSION = $buildVersion
   $env:AUTO_AI_SKIP_COMPRESSION = "1"
   npm install

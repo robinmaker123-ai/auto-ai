@@ -590,9 +590,9 @@ export const api = {
     return apiFetch<TurnAnalysis[]>(`/human/turns${suffix}`, { token, operation: "human.turns.list" });
   },
 
-  transcribeAudio: (token: string, blob: Blob) => {
+  transcribeAudio: (token: string, blob: Blob, filename = "voice.webm") => {
     const formData = new FormData();
-    formData.append("file", blob, "voice.webm");
+    formData.append("file", blob, filename);
     return apiFetch<{ text: string; model: string }>("/voice/transcribe", {
       method: "POST",
       token,

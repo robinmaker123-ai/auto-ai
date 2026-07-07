@@ -9,7 +9,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_GOOGLE_WEB_CLIENT_ID = "776507506876-vjrrc9m5eer82k6digta7ie2phd4l1f8.apps.googleusercontent.com"
 DEFAULT_RAZORPAY_CHECKOUT_CONFIG_ID = "config_T9ulbVgLBfz7ko"
 
 
@@ -32,7 +31,7 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_ANDROID_CLIENT_ID: str | None = None
-    GOOGLE_WEB_CLIENT_ID: str | None = DEFAULT_GOOGLE_WEB_CLIENT_ID
+    GOOGLE_WEB_CLIENT_ID: str | None = None
 
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "https://autoai.site.je",
@@ -401,12 +400,12 @@ class Settings(BaseSettings):
 
     @property
     def google_client_ids(self) -> list[str]:
-        values = [self.GOOGLE_CLIENT_ID, self.GOOGLE_WEB_CLIENT_ID, self.GOOGLE_ANDROID_CLIENT_ID, DEFAULT_GOOGLE_WEB_CLIENT_ID]
+        values = [self.GOOGLE_CLIENT_ID, self.GOOGLE_WEB_CLIENT_ID, self.GOOGLE_ANDROID_CLIENT_ID]
         return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
 
     @property
     def google_web_client_id(self) -> str | None:
-        value = self.GOOGLE_WEB_CLIENT_ID or self.GOOGLE_CLIENT_ID or DEFAULT_GOOGLE_WEB_CLIENT_ID
+        value = self.GOOGLE_WEB_CLIENT_ID or self.GOOGLE_CLIENT_ID
         return value.strip() if value and value.strip() else None
 
 

@@ -442,6 +442,58 @@ button:disabled {
   background: rgba(103, 232, 249, 0.12);
 }
 
+.composer-plus-button-active {
+  border-color: rgba(103, 232, 249, 0.42);
+  background: rgba(103, 232, 249, 0.16);
+  color: #cffafe;
+}
+
+.attachment-menu {
+  position: relative;
+  z-index: 40;
+  flex: 0 0 auto;
+}
+
+.attachment-menu-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 90;
+  width: 168px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.98);
+  padding: 7px;
+  color: #f8fafc;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.48);
+}
+
+.attachment-menu-item {
+  display: flex;
+  min-height: 38px;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 0 9px;
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.attachment-menu-item svg {
+  flex: 0 0 auto;
+  color: #a5f3fc;
+}
+
+.attachment-menu-item:hover,
+.attachment-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
 .composer-pill {
   display: inline-flex;
   height: 44px;
@@ -2845,6 +2897,17 @@ button:disabled {
     height: 34px;
     width: 34px;
     border-radius: 6px;
+  }
+
+  .attachment-menu-panel {
+    width: 150px;
+    padding: 6px;
+  }
+
+  .attachment-menu-item {
+    min-height: 34px;
+    gap: 8px;
+    font-size: 12px;
   }
 
   .composer-plus-button svg,
