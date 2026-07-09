@@ -6,6 +6,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
