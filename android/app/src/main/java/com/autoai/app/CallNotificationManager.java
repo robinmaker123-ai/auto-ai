@@ -1,5 +1,6 @@
 package com.autoai.app;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.Person;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
@@ -15,6 +17,12 @@ import android.os.Build;
 import android.provider.Settings;
 
 import java.util.Map;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class CallNotificationManager {
     public static final String CHANNEL_INCOMING = "auto_ai_incoming_calls";
@@ -22,6 +30,7 @@ public final class CallNotificationManager {
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_CALLER_ID = "caller_id";
     public static final String EXTRA_CALLER_NAME = "caller_name";
+    public static final String EXTRA_CALLER_USERNAME = "caller_username";
     public static final String EXTRA_CALLER_AVATAR = "caller_avatar_url";
     public static final String EXTRA_CALL_TYPE = "call_type";
     public static final String EXTRA_EXPIRES_AT = "expires_at_epoch_ms";
@@ -33,6 +42,7 @@ public final class CallNotificationManager {
     private static final String PENDING_CALL_ID = "pending_call_id";
     private static final String PENDING_ACTION = "pending_action";
     private static final String PENDING_EXPIRES_AT = "pending_expires_at";
+    private static final ExecutorService ACK_EXECUTOR = Executors.newSingleThreadExecutor();
 
     private CallNotificationManager() {}
 
@@ -41,11 +51,11 @@ public final class CallNotificationManager {
         String callId = value(data, "call_id");
         String callerId = value(data, "caller_id");
         String name = value(data, "caller_name");
+        String username = value(data, "caller_username");
         String callType = value(data, "call_type");
         long expiresAt = parseLong(data.get("expires_at_epoch_ms"));
-        if (callId.isEmpty() || (!"audio".equals(callType) && !"video".equals(callType)) || expiresAt <= System.currentTimeMillis()) return;
-        boolean sound = Boolean.parseBoolean(data.get("sound"));
-        boolean vibration = Boolean.parseBoolean(data.get("vibration"));
+        if (callId.isEmpty() || (!"audio".equals(callType) && !"video".equals(callType)) || expiresAt <= System.currentTimeMillis() || !canPostNotifications(context)) return;
+        boolean silent = Boolean.parseBoolean(data.get("silent"));
         savePending(context, callId, null, expiresAt);
         createChannels(context);
 
@@ -53,6 +63,7 @@ public final class CallNotificationManager {
         incomingIntent.putExtra(EXTRA_CALL_ID, callId);
         if (!callerId.isEmpty()) incomingIntent.putExtra(EXTRA_CALLER_ID, callerId);
         incomingIntent.putExtra(EXTRA_CALLER_NAME, name);
+        incomingIntent.putExtra(EXTRA_CALLER_USERNAME, username);
         incomingIntent.putExtra(EXTRA_CALLER_AVATAR, value(data, "caller_avatar_url"));
         incomingIntent.putExtra(EXTRA_CALL_TYPE, callType);
         incomingIntent.putExtra(EXTRA_EXPIRES_AT, expiresAt);
@@ -67,9 +78,11 @@ public final class CallNotificationManager {
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             ? new Notification.Builder(context, CHANNEL_INCOMING)
             : new Notification.Builder(context);
+        String title = name.isEmpty() ? "Incoming Auto-AI call" : name;
+        String text = (username.isEmpty() ? "" : "@" + username + " - ") + "Incoming " + ("audio".equals(callType) ? "audio" : "video") + " call";
         builder.setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(name.isEmpty() ? "Incoming Auto-AI call" : name)
-            .setContentText("Incoming " + ("audio".equals(callType) ? "audio" : "video") + " call")
+            .setContentTitle(title)
+            .setContentText(text)
             .setCategory(Notification.CATEGORY_CALL)
             .setPriority(Notification.PRIORITY_MAX)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -87,10 +100,15 @@ public final class CallNotificationManager {
             builder.addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Reject", reject).build());
             builder.addAction(new Notification.Action.Builder(android.R.drawable.sym_action_call, "Accept", accept).build());
         }
-        if (!sound) builder.setSound(null);
-        if (!vibration) builder.setVibrate(new long[] {0L});
+        if (silent) {
+            builder.setSound(null);
+            builder.setVibrate(new long[] {0L});
+        }
         NotificationManager manager = manager(context);
-        if (manager != null) manager.notify(notificationId(callId), builder.build());
+        if (manager != null) {
+            manager.notify(notificationId(callId), builder.build());
+            acknowledgeRinging(context, callId);
+        }
     }
 
     public static void cancel(Context context, String callId) {
@@ -148,6 +166,41 @@ public final class CallNotificationManager {
 
     private static NotificationManager manager(Context context) {
         return (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
+    private static boolean canPostNotifications(Context context) {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+            || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private static void acknowledgeRinging(Context context, String callId) {
+        ACK_EXECUTOR.execute(() -> {
+            String accessToken = AutoAiSecureStoragePlugin.readStoredValue(context, "auto-ai-access-token");
+            if (accessToken == null || accessToken.trim().isEmpty()) return;
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(trimTrailingSlash(BuildConfig.AUTO_AI_API_BASE_URL) + "/calls/" + callId + "/ringing");
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(12000);
+                connection.setReadTimeout(15000);
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("Authorization", "Bearer " + accessToken);
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                connection.setDoOutput(true);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write("{}".getBytes(StandardCharsets.UTF_8));
+                }
+                connection.getResponseCode();
+            } catch (Exception ignored) {
+                // The WebView repeats validation when the user opens or accepts the call.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private static String trimTrailingSlash(String value) {
+        return value == null ? "" : value.replaceAll("/+$", "");
     }
 
     private static int pendingFlags() {

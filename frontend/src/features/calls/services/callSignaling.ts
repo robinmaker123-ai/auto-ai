@@ -3,6 +3,7 @@ import { callApi } from "./callApi";
 import type { SignalEnvelope } from "../types";
 
 type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
+const MAX_RECONNECT_ATTEMPTS = 8;
 
 function websocketUrl(ticket: string) {
   const base = new URL(API_BASE_URL, window.location.origin);
@@ -17,6 +18,7 @@ export class CallSignaling {
   private heartbeatTimer = 0;
   private reconnectTimer = 0;
   private reconnectAttempt = 0;
+  private connectionAttempt = 0;
   private token = "";
   private closed = false;
   private seenEvents = new Set<string>();
@@ -30,11 +32,12 @@ export class CallSignaling {
     this.token = token;
     this.closed = false;
     if (this.socket && (this.socket.readyState === WebSocket.CONNECTING || this.socket.readyState === WebSocket.OPEN)) return;
+    const connectionAttempt = ++this.connectionAttempt;
     window.clearTimeout(this.reconnectTimer);
     this.onState("connecting");
     try {
       const { ticket } = await callApi.wsTicket(token);
-      if (this.closed || token !== this.token) return;
+      if (this.closed || token !== this.token || connectionAttempt !== this.connectionAttempt) return;
       const socket = new WebSocket(websocketUrl(ticket));
       this.socket = socket;
       socket.onopen = () => {
@@ -65,9 +68,17 @@ export class CallSignaling {
         if (!this.closed) this.scheduleReconnect();
       };
     } catch {
+      if (connectionAttempt !== this.connectionAttempt) return;
       this.onState("error");
       if (!this.closed) this.scheduleReconnect();
     }
+  }
+
+  async retry(token: string) {
+    this.closed = false;
+    this.reconnectAttempt = 0;
+    window.clearTimeout(this.reconnectTimer);
+    await this.connect(token);
   }
 
   send(type: string, callId: string | null, payload: Record<string, unknown> = {}) {
@@ -90,11 +101,13 @@ export class CallSignaling {
 
   close() {
     this.closed = true;
+    this.connectionAttempt += 1;
     window.clearTimeout(this.reconnectTimer);
     this.stopHeartbeat();
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Signed out");
+    this.onState("disconnected");
   }
 
   private startHeartbeat() {
@@ -111,6 +124,11 @@ export class CallSignaling {
 
   private scheduleReconnect() {
     window.clearTimeout(this.reconnectTimer);
+    if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      this.closed = true;
+      this.onState("error");
+      return;
+    }
     const delay = Math.min(15_000, 750 * 2 ** Math.min(this.reconnectAttempt, 5));
     this.reconnectAttempt += 1;
     this.reconnectTimer = window.setTimeout(() => void this.connect(this.token), delay);

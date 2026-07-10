@@ -11,6 +11,7 @@ type AuthContextValue = {
   googleLogin: (idToken: string) => Promise<void>;
   adminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  updateUser: (user: User) => void;
   logout: () => Promise<void>;
 };
 
@@ -96,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const session = await api.register({ name: name.trim(), email: email.trim().toLowerCase(), password });
         await persistSession(session);
       },
+      updateUser: (nextUser) => setUser(nextUser),
       logout: async () => {
         const activeToken = token;
         const activeRefreshToken = refreshToken;

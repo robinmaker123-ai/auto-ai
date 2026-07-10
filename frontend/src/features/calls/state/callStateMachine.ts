@@ -2,8 +2,9 @@ import type { CallSessionState } from "../types";
 
 const transitions: Record<CallSessionState, ReadonlySet<CallSessionState>> = {
   idle: new Set(["preparing", "incoming"]),
-  preparing: new Set(["dialing", "failed", "ending"]),
-  dialing: new Set(["ringing", "connecting", "busy", "cancelled", "missed", "failed", "ending"]),
+  preparing: new Set(["dialing", "notifying", "failed", "ending"]),
+  dialing: new Set(["notifying", "ringing", "connecting", "busy", "cancelled", "missed", "failed", "ending"]),
+  notifying: new Set(["ringing", "connecting", "busy", "cancelled", "missed", "failed", "ending"]),
   ringing: new Set(["connecting", "rejected", "cancelled", "missed", "busy", "failed", "ending"]),
   incoming: new Set(["accepting", "rejected", "cancelled", "missed", "busy", "failed", "ending"]),
   accepting: new Set(["connecting", "cancelled", "missed", "failed", "ending"]),

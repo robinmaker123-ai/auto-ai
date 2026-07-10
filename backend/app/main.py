@@ -5,8 +5,9 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, voice
+from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, users, voice
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
 from app.db.session import SessionLocal, init_db
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
             if settings.is_production and not settings.FIREBASE_PROJECT_ID:
                 logger.warning("calling_configuration Firebase is not configured; killed Android apps cannot receive calls.")
         Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+        Path(settings.UPLOAD_DIR, "profile").mkdir(parents=True, exist_ok=True)
         Path(settings.APK_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
         init_db()
         with SessionLocal() as db:
@@ -82,6 +84,14 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def start_call_workers() -> None:
+        logger.info("calling_redis configured=%s", presence_service.configured)
+        redis_reachable = await presence_service.check(log_failure=True) if presence_service.configured else False
+        if redis_reachable:
+            logger.info("calling_redis reachable=true websocket_ready=%s", settings.CALL_FEATURE_ENABLED)
+        else:
+            logger.warning(
+                "calling_redis reachable=false websocket_ready=false calls_rest_available=true"
+            )
         stop_event = asyncio.Event()
         app.state.call_stop_event = stop_event
         app.state.call_timeout_task = asyncio.create_task(call_timeout_worker(stop_event))
@@ -100,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(health.router, prefix=settings.API_V1_STR)
     app.include_router(auth.router, prefix=settings.API_V1_STR)
+    app.include_router(users.router, prefix=settings.API_V1_STR)
     app.include_router(chat_sessions.router, prefix=settings.API_V1_STR)
     app.include_router(chats.router, prefix=settings.API_V1_STR)
     app.include_router(ai.router, prefix=settings.API_V1_STR)
@@ -118,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(payments.router, prefix="/api")
     app.include_router(payments.router, prefix=settings.API_V1_STR)
     app.include_router(admin.router, prefix=settings.API_V1_STR)
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
     return app
 

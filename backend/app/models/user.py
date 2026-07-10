@@ -15,6 +15,10 @@ class User(Base):
     mobile: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     username: Mapped[str] = mapped_column(String(48), unique=True, index=True, nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(32), nullable=True)
+    phone_country_code: Mapped[str] = mapped_column(String(8), nullable=True)
+    phone_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    phone_verified_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     picture: Mapped[str] = mapped_column(String(500), nullable=True)
     avatar: Mapped[str] = mapped_column(String(500), nullable=True)
@@ -28,6 +32,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+    profile_updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")

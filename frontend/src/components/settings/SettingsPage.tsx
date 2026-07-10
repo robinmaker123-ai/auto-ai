@@ -12,7 +12,6 @@ import {
   Globe2,
   LockKeyhole,
   LogOut,
-  Mail,
   Mic,
   Monitor,
   Moon,
@@ -22,7 +21,6 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  UserCircle2,
   PhoneCall,
   type LucideIcon
 } from "lucide-react";
@@ -38,6 +36,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import type { AiProvider, ResearchProvider } from "../../types";
 import { SubscriptionBillingCenter } from "./SubscriptionBillingCenter";
 import { CallSettings } from "../../features/calls/CallSettings";
+import { ProfileAccountCard } from "./ProfileAccountCard";
 
 const APP_VERSION = "1.0.2";
 
@@ -199,7 +198,7 @@ function Select({
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { token, user, logout } = useAuth();
+  const { token, logout } = useAuth();
   const { chats, refreshChats, setActiveChat } = useChat();
   const { theme, setTheme } = useTheme();
   const {
@@ -229,7 +228,6 @@ export function SettingsPage() {
     [settings.defaultProvider]
   );
   const selectedModelLabel = providerModels.find((item) => item.value === settings.defaultModel)?.label ?? settings.defaultModel;
-  const accountCreated = user?.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown";
   const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : "Settings";
 
   useEffect(() => {
@@ -390,19 +388,7 @@ export function SettingsPage() {
   function renderGeneralSettings() {
     return (
       <div className="grid gap-3">
-        <SettingsCard>
-          <SettingsRow
-            icon={UserCircle2}
-            title="Profile"
-            description={`${user?.name ?? "Account"}${user?.mobile ? ` - ${user.mobile}` : ""}`}
-          />
-          <SettingsRow
-            icon={Mail}
-            accent="violet"
-            title="Account"
-            description={`${user?.email ?? "Unknown email"} - Joined ${accountCreated}`}
-          />
-        </SettingsCard>
+        <ProfileAccountCard />
 
         <SettingsCard>
           <SettingsRow icon={Sun} accent="amber" title="Theme" description="Light / Dark / System">

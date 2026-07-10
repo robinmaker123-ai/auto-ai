@@ -38,6 +38,7 @@ import type {
   StreamEvent,
   TurnAnalysis,
   User,
+  UsernameAvailability,
   UserRole,
   VisionAnalyzeResponse,
   UserMemory
@@ -173,6 +174,13 @@ function resolveApiBaseUrl() {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 export const APK_DOWNLOAD_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, "/api").replace(/\/+$/, "") + "/download/apk";
+
+export function resolveApiAssetUrl(value?: string | null) {
+  if (!value) return "";
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith("data:")) return value;
+  const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+  return `${apiOrigin}${value.startsWith("/") ? value : `/${value}`}`;
+}
 
 export function resolveApkDownloadUrl(
   release?: Pick<ApkRelease, "apk_url" | "download_url"> | null,
@@ -512,6 +520,17 @@ export const api = {
       body: refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined
     }),
   me: (token: string) => apiFetch<User>("/auth/me", { token, operation: "auth.me" }),
+  profile: (token: string) => apiFetch<User>("/users/me", { token, operation: "users.me" }),
+  updateProfile: (token: string, payload: Partial<Pick<User, "name" | "username" | "phone_number" | "phone_country_code">>) =>
+    apiFetch<User>("/users/me", { method: "PATCH", token, operation: "users.me.update", body: JSON.stringify(payload) }),
+  uploadAvatar: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiFetch<User>("/users/me/avatar", { method: "POST", token, operation: "users.me.avatar", body: formData });
+  },
+  deleteAvatar: (token: string) => apiFetch<void>("/users/me/avatar", { method: "DELETE", token, operation: "users.me.avatar.delete" }),
+  usernameAvailable: (token: string, username: string) =>
+    apiFetch<UsernameAvailability>(`/users/username-available?username=${encodeURIComponent(username)}`, { token, operation: "users.usernameAvailable" }),
 
   listChats: (token: string) => apiFetch<ChatListItem[]>("/chat/sessions", { token, operation: "chat.sessions.list" }),
   createChat: (token: string, payload: { title?: string; system_prompt?: string; model?: string; mode?: ChatRequest["mode"] }) =>

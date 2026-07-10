@@ -15,6 +15,7 @@ export type CallContextValue = {
   speakerEnabled: boolean;
   networkQuality: "good" | "fair" | "poor" | "unknown";
   error: string;
+  refreshRealtime: () => Promise<CallFeatureConfig>;
   startCall: (user: PublicCallUser, callType?: CallType) => Promise<void>;
   acceptCall: (audioOnly?: boolean) => Promise<void>;
   rejectCall: () => Promise<void>;

@@ -14,9 +14,9 @@ class UserCallSettings(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
     )
-    is_discoverable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    show_online_status: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    show_last_seen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_discoverable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    show_online_status: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    show_last_seen: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     allow_audio_calls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     allow_video_calls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     call_permission: Mapped[str] = mapped_column(String(32), default="previous_contacts", nullable=False)
@@ -44,6 +44,8 @@ class UserDevice(Base):
     device_id: Mapped[str] = mapped_column(String(128), nullable=False)
     platform: Mapped[str] = mapped_column(String(32), default="web", index=True, nullable=False)
     fcm_token: Mapped[str] = mapped_column(String(512), nullable=True)
+    fcm_token_ciphertext: Mapped[str] = mapped_column(Text, nullable=True)
+    fcm_token_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=True)
     app_version: Mapped[str] = mapped_column(String(64), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, nullable=False)
     last_registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

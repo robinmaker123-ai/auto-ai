@@ -89,7 +89,7 @@ class CallService:
         state = str(presence.get("state") or "offline")
         if not record.show_online_status and viewer_id != user.id:
             public.presence = "hidden"
-            public.availability = "Available" if record.call_permission != "nobody" else "Unavailable"
+            public.availability = "Calls disabled" if record.call_permission == "nobody" or not (record.allow_audio_calls or record.allow_video_calls) else "Available"
         else:
             public.presence = state if state in {"online", "away", "background", "busy", "offline"} else "offline"
             public.availability = {
@@ -99,6 +99,8 @@ class CallService:
                 "busy": "In another call",
                 "offline": "Offline",
             }.get(public.presence, "Available")
+            if record.call_permission == "nobody" or not (record.allow_audio_calls or record.allow_video_calls):
+                public.availability = "Calls disabled"
         if record.show_last_seen and presence.get("last_seen_at") and viewer_id != user.id:
             try:
                 public.last_seen_at = datetime.fromisoformat(str(presence["last_seen_at"]).replace("Z", "+00:00"))

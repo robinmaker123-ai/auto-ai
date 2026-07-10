@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, exists, or_, select
@@ -16,6 +17,7 @@ from app.schemas.call import (
     CallActionRequest,
     CallCreateRequest,
     CallFeatureConfig,
+    CallHealth,
     CallHistoryPage,
     CallRead,
     CallSettingsRead,
@@ -29,12 +31,14 @@ from app.schemas.call import (
 )
 from app.services.call_permission_service import call_allowed, get_or_create_call_settings
 from app.services.call_service import base_public_user, call_service
+from app.services.device_token_security import encrypt_token, token_hash
 from app.services.firebase_notifications import firebase_notification_service
-from app.services.presence_service import presence_service
+from app.services.presence_service import RealtimeUnavailable, presence_service
 from app.services.turn_credentials_service import create_turn_credentials
 
 
 router = APIRouter(prefix="/calls", tags=["calls"])
+logger = logging.getLogger("auto_ai.calls.api")
 
 
 def discoverable_users_query(current_user_id: str):
@@ -46,6 +50,12 @@ def discoverable_users_query(current_user_id: str):
             )
         )
     )
+    registered_device = exists(
+        select(UserDevice.id).where(
+            UserDevice.user_id == User.id,
+            UserDevice.is_active == True,  # noqa: E712
+        )
+    )
     return (
         select(User, UserCallSettings)
         .join(UserCallSettings, UserCallSettings.user_id == User.id)
@@ -53,6 +63,10 @@ def discoverable_users_query(current_user_id: str):
             User.id != current_user_id,
             User.is_active == True,  # noqa: E712
             UserCallSettings.is_discoverable == True,  # noqa: E712
+            User.username.is_not(None),
+            User.username != "",
+            User.name != "",
+            registered_device,
             ~blocked,
         )
     )
@@ -60,8 +74,8 @@ def discoverable_users_query(current_user_id: str):
 
 async def public_search_result(db: Session, user: User, record: UserCallSettings, viewer_id: str):
     public = await call_service.public_user(db, user, viewer_id=viewer_id, settings_record=record)
-    public.can_audio_call = call_allowed(db, viewer_id, user.id, "audio")[0]
-    public.can_video_call = call_allowed(db, viewer_id, user.id, "video")[0]
+    public.can_audio_call = public.presence != "busy" and call_allowed(db, viewer_id, user.id, "audio")[0]
+    public.can_video_call = public.presence != "busy" and call_allowed(db, viewer_id, user.id, "video")[0]
     return public
 
 
@@ -71,7 +85,7 @@ async def call_feature_config(current_user: User = Depends(get_current_user)) ->
     realtime_ready = await presence_service.check() if settings.CALL_FEATURE_ENABLED else False
     diagnostic = None
     if settings.CALL_FEATURE_ENABLED and not realtime_ready:
-        diagnostic = "Realtime calling is unavailable until Redis is configured and reachable."
+        diagnostic = "Realtime calling is temporarily unavailable."
     elif settings.is_production and not settings.turn_configured:
         diagnostic = "TURN is required before production calls are reliable."
     return CallFeatureConfig(
@@ -85,6 +99,18 @@ async def call_feature_config(current_user: User = Depends(get_current_user)) ->
     )
 
 
+@router.get("/health", response_model=CallHealth)
+async def call_health() -> CallHealth:
+    redis_configured = presence_service.configured
+    redis_reachable = await presence_service.check() if redis_configured else False
+    return CallHealth(
+        calling_enabled=settings.CALL_FEATURE_ENABLED,
+        redis_configured=redis_configured,
+        redis_reachable=redis_reachable,
+        websocket_ready=settings.CALL_FEATURE_ENABLED and redis_reachable,
+    )
+
+
 @router.get("/users", response_model=CallUserPage)
 async def search_users(
     query: str = Query(default="", max_length=80),
@@ -94,21 +120,25 @@ async def search_users(
     current_user: User = Depends(get_current_user),
 ) -> CallUserPage:
     normalized = " ".join(query.strip().split())
-    if len(normalized) < 2:
+    if len(normalized) == 1:
         return CallUserPage(items=[], page=page, limit=limit, has_more=False)
-    if not await presence_service.allow_rate(
-        "search", current_user.id, settings.CALL_SEARCH_MAX_PER_MINUTE
-    ):
+    try:
+        allowed = await presence_service.allow_rate(
+            "search", current_user.id, settings.CALL_SEARCH_MAX_PER_MINUTE
+        )
+    except RealtimeUnavailable:
+        allowed = True
+        logger.warning("call_user_search_rate_limit_unavailable redis_reachable=false")
+    if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many user searches.")
-    escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    pattern = f"%{escaped}%"
-    statement = (
-        discoverable_users_query(current_user.id)
-        .where(or_(User.name.ilike(pattern, escape="\\"), User.username.ilike(pattern, escape="\\")))
-        .order_by(User.name.asc(), User.id.asc())
-        .offset((page - 1) * limit)
-        .limit(limit + 1)
-    )
+    statement = discoverable_users_query(current_user.id)
+    if normalized:
+        escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        statement = statement.where(
+            or_(User.name.ilike(pattern, escape="\\"), User.username.ilike(pattern, escape="\\"))
+        )
+    statement = statement.order_by(User.name.asc(), User.id.asc()).offset((page - 1) * limit).limit(limit + 1)
     rows = list(db.execute(statement).all())
     items = [
         await public_search_result(db, user, record, current_user.id)
@@ -137,7 +167,7 @@ async def online_users(
     items = []
     for user, record in rows:
         public = await public_search_result(db, user, record, current_user.id)
-        if public.presence in {"online", "away"}:
+        if public.presence in {"online", "away", "busy"}:
             items.append(public)
         if len(items) >= limit + 1:
             break
@@ -182,8 +212,13 @@ def register_call_device(
         )
     )
     token_record = None
+    fcm_hash = token_hash(payload.fcm_token)
     if payload.fcm_token:
-        token_record = db.scalar(select(UserDevice).where(UserDevice.fcm_token == payload.fcm_token))
+        token_record = db.scalar(
+            select(UserDevice).where(
+                or_(UserDevice.fcm_token_hash == fcm_hash, UserDevice.fcm_token == payload.fcm_token)
+            )
+        )
     if token_record and token_record is not record:
         if record:
             db.delete(record)
@@ -195,7 +230,9 @@ def register_call_device(
         record = UserDevice(user_id=current_user.id, device_id=payload.device_id)
         db.add(record)
     record.platform = payload.platform
-    record.fcm_token = payload.fcm_token
+    record.fcm_token = None
+    record.fcm_token_ciphertext = encrypt_token(payload.fcm_token)
+    record.fcm_token_hash = fcm_hash
     record.app_version = payload.app_version
     record.is_active = True
     record.last_registered_at = now
@@ -223,6 +260,8 @@ def remove_call_device(
     if record:
         record.is_active = False
         record.fcm_token = None
+        record.fcm_token_ciphertext = None
+        record.fcm_token_hash = None
         record.updated_at = datetime.utcnow()
         db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -391,6 +430,18 @@ async def accept_call(
     current_user: User = Depends(get_current_user),
 ) -> CallRead:
     call = await call_service.accept(db, call_id, current_user.id, payload.device_id)
+    return await call_service.serialize_call(db, call, current_user.id)
+
+
+@router.post("/{call_id}/ringing", response_model=CallRead)
+async def ringing_call(
+    call_id: str,
+    payload: CallActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CallRead:
+    del payload
+    call = await call_service.ringing(db, call_id, current_user.id)
     return await call_service.serialize_call(db, call, current_user.id)
 
 

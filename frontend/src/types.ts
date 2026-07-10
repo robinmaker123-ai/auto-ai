@@ -4,6 +4,10 @@ export type User = {
   mobile?: string | null;
   name: string;
   username?: string | null;
+  phone_number?: string | null;
+  phone_country_code?: string | null;
+  phone_verified?: boolean;
+  phone_verified_at?: string | null;
   picture?: string | null;
   avatar?: string | null;
   provider: string;
@@ -13,6 +17,14 @@ export type User = {
   subscription_status: string;
   created_at: string;
   updated_at: string;
+  profile_updated_at?: string | null;
+};
+
+export type UsernameAvailability = {
+  username: string;
+  available: boolean;
+  valid: boolean;
+  message: string;
 };
 
 export type UserRole = "user" | "admin" | "super_admin";

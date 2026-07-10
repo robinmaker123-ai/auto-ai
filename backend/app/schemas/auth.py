@@ -35,6 +35,10 @@ class UserRead(BaseModel):
     mobile: str | None = None
     name: str
     username: str | None = None
+    phone_number: str | None = None
+    phone_country_code: str | None = None
+    phone_verified: bool = False
+    phone_verified_at: datetime | None = None
     picture: str | None = None
     avatar: str | None = None
     provider: str = "email"
@@ -44,8 +48,23 @@ class UserRead(BaseModel):
     subscription_status: str = "free"
     created_at: datetime
     updated_at: datetime
+    profile_updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class UserProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    username: str | None = Field(default=None, min_length=3, max_length=30)
+    phone_country_code: str | None = Field(default=None, max_length=8)
+    phone_number: str | None = Field(default=None, max_length=32)
+
+
+class UsernameAvailability(BaseModel):
+    username: str
+    available: bool
+    valid: bool
+    message: str
 
 
 class Token(BaseModel):

@@ -1,5 +1,6 @@
 import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, RefreshCw, Settings, SwitchCamera, Volume2, VolumeX, Wifi } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { resolveApiAssetUrl } from "../../api/client";
 import { callNative } from "./services/callNative";
 import { useCallSession } from "./hooks/useCallSession";
 
@@ -10,12 +11,14 @@ function VideoSurface({ stream, muted, className }: { stream: MediaStream | null
 }
 
 function Avatar({ name, url }: { name: string; url?: string | null }) {
-  return <span className="call-screen-avatar">{url ? <img src={url} alt="" /> : name.slice(0, 1).toUpperCase()}</span>;
+  const avatarUrl = resolveApiAssetUrl(url);
+  return <span className="call-screen-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}</span>;
 }
 
 function statusLabel(state: ReturnType<typeof useCallSession>["sessionState"]) {
   if (state === "preparing") return "Preparing…";
   if (state === "dialing") return "Calling…";
+  if (state === "notifying") return "Notifying…";
   if (state === "ringing") return "Ringing…";
   if (state === "accepting") return "Accepting…";
   if (state === "connecting") return "Connecting…";

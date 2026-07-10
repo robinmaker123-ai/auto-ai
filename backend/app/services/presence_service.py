@@ -35,19 +35,24 @@ class PresenceService:
         if not settings.redis_url:
             raise RealtimeUnavailable("Redis is required for calls and online presence.")
         if self._redis is None:
-            self._redis = Redis.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                health_check_interval=30,
-                socket_connect_timeout=5,
-                socket_timeout=5,
-            )
+            try:
+                self._redis = Redis.from_url(
+                    settings.redis_url,
+                    decode_responses=True,
+                    health_check_interval=30,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+            except (TypeError, ValueError) as exc:
+                raise RealtimeUnavailable("Redis configuration is invalid.") from exc
         return self._redis
 
-    async def check(self) -> bool:
+    async def check(self, *, log_failure: bool = False) -> bool:
         try:
             return bool(await self.client().ping())
-        except (RedisError, RealtimeUnavailable):
+        except (RedisError, RealtimeUnavailable, OSError) as exc:
+            if log_failure:
+                logger.warning("redis_ping_failed error=%s", type(exc).__name__)
             return False
 
     async def close(self) -> None:
@@ -60,7 +65,7 @@ class PresenceService:
         key = self._ticket_key(ticket)
         try:
             await self.client().set(key, user_id, ex=settings.CALL_WS_TICKET_TTL_SECONDS)
-        except RedisError as exc:
+        except (RedisError, RealtimeUnavailable) as exc:
             raise RealtimeUnavailable("Realtime authentication is temporarily unavailable.") from exc
         return ticket
 
@@ -69,7 +74,7 @@ class PresenceService:
             return None
         try:
             result = await self.client().getdel(self._ticket_key(ticket))
-        except RedisError:
+        except (RedisError, RealtimeUnavailable):
             return None
         return str(result) if result else None
 
@@ -83,7 +88,8 @@ class PresenceService:
                 pipe.sadd(self._connections_key(user_id), connection_id)
                 pipe.expire(self._connections_key(user_id), settings.CALL_PRESENCE_TTL_SECONDS * 2)
                 await pipe.execute()
-        except RedisError as exc:
+            await self._publish_presence_update(redis)
+        except (RedisError, RealtimeUnavailable) as exc:
             raise RealtimeUnavailable("Presence storage is temporarily unavailable.") from exc
 
     async def heartbeat(self, user_id: str, connection_id: str, state: str | None = None) -> None:
@@ -97,13 +103,16 @@ class PresenceService:
             data = json.loads(raw)
             if data.get("user_id") != user_id:
                 raise RealtimeUnavailable("Invalid presence connection ownership.")
-            data["state"] = state or data.get("state") or "online"
+            previous_state = data.get("state") or "online"
+            data["state"] = state or previous_state
             data["last_seen_at"] = datetime.now(timezone.utc).isoformat()
             async with redis.pipeline(transaction=True) as pipe:
                 pipe.set(key, json.dumps(data), ex=settings.CALL_PRESENCE_TTL_SECONDS)
                 pipe.expire(self._connections_key(user_id), settings.CALL_PRESENCE_TTL_SECONDS * 2)
                 await pipe.execute()
-        except (RedisError, ValueError, TypeError) as exc:
+            if data["state"] != previous_state:
+                await self._publish_presence_update(redis)
+        except (RedisError, RealtimeUnavailable, ValueError, TypeError) as exc:
             raise RealtimeUnavailable("Presence heartbeat failed.") from exc
 
     async def unregister_connection(self, user_id: str, connection_id: str) -> None:
@@ -111,7 +120,9 @@ class PresenceService:
             async with self.client().pipeline(transaction=True) as pipe:
                 pipe.delete(self._connection_key(connection_id))
                 pipe.srem(self._connections_key(user_id), connection_id)
-                await pipe.execute()
+                deleted, _ = await pipe.execute()
+            if deleted:
+                await self._publish_presence_update(self.client())
         except (RedisError, RealtimeUnavailable):
             return
 
@@ -143,7 +154,7 @@ class PresenceService:
                 state = max((str(item.get("state") or "offline") for item in states), key=lambda item: order.get(item, 0))
             last_seen = max((str(item.get("last_seen_at") or "") for item in states), default="") or None
             return {"state": state, "last_seen_at": last_seen, "reachable": True}
-        except RedisError as exc:
+        except (RedisError, RealtimeUnavailable) as exc:
             raise RealtimeUnavailable("Presence lookup failed.") from exc
 
     async def presence_for_users(self, user_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -204,7 +215,7 @@ class PresenceService:
                 script, 2, self._busy_key(caller_id), self._busy_key(callee_id), call_id, ttl
             )
             return bool(value)
-        except RedisError as exc:
+        except (RedisError, RealtimeUnavailable) as exc:
             logger.warning("call_lock_acquire_failed error=%s detail=%s", type(exc).__name__, str(exc)[:200])
             raise RealtimeUnavailable("Call locking failed.") from exc
 
@@ -232,13 +243,13 @@ class PresenceService:
             if value == 1:
                 await self.client().expire(key, window_seconds)
             return value <= limit
-        except RedisError as exc:
+        except (RedisError, RealtimeUnavailable) as exc:
             raise RealtimeUnavailable("Rate limiting is temporarily unavailable.") from exc
 
     async def claim_event(self, user_id: str, event_id: str) -> bool:
         try:
             return bool(await self.client().set(f"calls:event:{user_id}:{event_id}", "1", ex=300, nx=True))
-        except RedisError as exc:
+        except (RedisError, RealtimeUnavailable) as exc:
             raise RealtimeUnavailable("Signaling deduplication failed.") from exc
 
     async def count_ice_candidate(self, call_id: str, user_id: str) -> bool:
@@ -248,6 +259,18 @@ class PresenceService:
 
     def pubsub(self):
         return self.client().pubsub(ignore_subscribe_messages=True)
+
+    async def _publish_presence_update(self, redis: Redis) -> None:
+        event = {
+            "schema_version": 1,
+            "event_id": secrets.token_urlsafe(18),
+            "type": "presence.user_updated",
+            "call_id": None,
+            "sender_user_id": None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "payload": {},
+        }
+        await redis.publish(self._presence_channel(), json.dumps(event, separators=(",", ":")))
 
     @staticmethod
     def _ticket_key(ticket: str) -> str:
@@ -269,6 +292,10 @@ class PresenceService:
     @staticmethod
     def _user_channel(user_id: str) -> str:
         return f"calls:user:{user_id}"
+
+    @staticmethod
+    def _presence_channel() -> str:
+        return "calls:presence"
 
 
 presence_service = PresenceService()

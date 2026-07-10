@@ -65,6 +65,7 @@ async def forward_user_events(websocket: WebSocket, user_id: str, ready: asyncio
     local_queue = presence_service.subscribe_local(user_id)
     outbound_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=128)
     channel = f"calls:user:{user_id}"
+    presence_channel = "calls:presence"
     subscribed = False
 
     async def enqueue(data: str) -> None:
@@ -93,7 +94,7 @@ async def forward_user_events(websocket: WebSocket, user_id: str, ready: asyncio
                 await enqueue(data)
 
     try:
-        await pubsub.subscribe(channel)
+        await pubsub.subscribe(channel, presence_channel)
         subscribed = True
         ready.set()
         local_task = asyncio.create_task(forward_local())
@@ -125,7 +126,7 @@ async def forward_user_events(websocket: WebSocket, user_id: str, ready: asyncio
             return_exceptions=True,
         )
         if subscribed:
-            await pubsub.unsubscribe(channel)
+            await pubsub.unsubscribe(channel, presence_channel)
         await pubsub.aclose()
 
 

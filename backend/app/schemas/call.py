@@ -128,6 +128,13 @@ class CallFeatureConfig(BaseModel):
     diagnostic: str | None = None
 
 
+class CallHealth(BaseModel):
+    calling_enabled: bool
+    redis_configured: bool
+    redis_reachable: bool
+    websocket_ready: bool
+
+
 class BlockRequest(BaseModel):
     user_id: str = Field(min_length=8, max_length=64)
 

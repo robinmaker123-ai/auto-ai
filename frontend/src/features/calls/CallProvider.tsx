@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { CallContext, type CallContextValue } from "./CallContext";
 import { callApi } from "./services/callApi";
@@ -72,6 +73,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
     () => new CallSignaling((event) => eventHandlerRef.current(event), setSignalingState),
     [],
   );
+
+  const refreshRealtime = useCallback(async () => {
+    if (!token) throw new Error("Not authenticated");
+    const nextConfig = await callApi.config(token);
+    setConfig(nextConfig);
+    if (nextConfig.enabled && nextConfig.realtime_configured) {
+      await signaling.retry(token);
+    } else {
+      signaling.close();
+    }
+    return nextConfig;
+  }, [signaling, token]);
 
   const stopRingtone = useCallback(() => {
     window.clearInterval(ringtoneTimerRef.current);
@@ -338,7 +351,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const silent = Boolean(payload?.silent ?? incomingCall.silent);
       startRingtone(silent);
       if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") {
-        const notification = new Notification(`Incoming ${incomingCall.call_type} call`, { body: incomingCall.peer.display_name, icon: incomingCall.peer.avatar_url || "/icons/icon-192.png", tag: `call-${callId}`, requireInteraction: true });
+        const notification = new Notification(`Incoming ${incomingCall.call_type} call`, { body: incomingCall.peer.display_name, icon: resolveApiAssetUrl(incomingCall.peer.avatar_url) || "/icons/icon-192.png", tag: `call-${callId}`, requireInteraction: true });
         notification.onclick = () => { window.focus(); notification.close(); };
       }
       window.clearTimeout(ringTimerRef.current);
@@ -349,6 +362,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [cleanup, signaling, startRingtone, token]);
 
   const handleSignalEvent = useCallback((event: SignalEnvelope) => {
+    if (event.type === "presence.user_updated" || event.type === "presence.snapshot") {
+      window.dispatchEvent(new CustomEvent("auto-ai-presence-updated", { detail: event.payload }));
+    }
     if (event.type === "call.incoming" && event.call_id) {
       void receiveIncomingCall(event.call_id, event.payload as unknown as IncomingCallPayload);
       return;
@@ -380,7 +396,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       setConfig(nextConfig);
       callSettingsRef.current = callSettings;
-      if (!nextConfig.enabled) return;
+      if (!nextConfig.enabled || !nextConfig.realtime_configured) {
+        signaling.close();
+        return;
+      }
       deviceIdRef.current = registration.device_id;
       await callApi.registerDevice(token, registration).catch(() => undefined);
       await signaling.connect(token);
@@ -434,8 +453,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const created = await callApi.initiate(token, peer.id, callType, deviceIdRef.current);
       callRef.current = created;
       setCall(created);
-      setSessionState("dialing");
-      sessionStateRef.current = "dialing";
+      setSessionState("notifying");
+      sessionStateRef.current = "notifying";
       if (created.delivery === "unreachable") {
         await callApi.cancel(token, created.id).catch(() => undefined);
         await cleanup("failed", "User is unavailable");
@@ -443,7 +462,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       window.clearTimeout(ringTimerRef.current);
       ringTimerRef.current = window.setTimeout(async () => {
-        if (callRef.current?.id === created.id && ["dialing", "ringing"].includes(sessionStateRef.current)) {
+        if (callRef.current?.id === created.id && ["dialing", "notifying", "ringing"].includes(sessionStateRef.current)) {
           await callApi.cancel(token, created.id).catch(() => undefined);
           await cleanup("missed", "No answer");
         }
@@ -492,7 +511,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const currentCall = callRef.current;
     if (!currentCall || !token) { await cleanup("ended"); return; }
     transition("ending");
-    if (["dialing", "ringing", "preparing"].includes(sessionStateRef.current)) await callApi.cancel(token, currentCall.id).catch(() => undefined);
+    if (["dialing", "notifying", "ringing", "preparing"].includes(sessionStateRef.current)) await callApi.cancel(token, currentCall.id).catch(() => undefined);
     else await callApi.end(token, currentCall.id, reason).catch(() => undefined);
     await cleanup("ended");
   }, [cleanup, token, transition]);
@@ -555,6 +574,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     speakerEnabled,
     networkQuality,
     error,
+    refreshRealtime,
     startCall,
     acceptCall,
     rejectCall,
@@ -564,7 +584,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     switchCamera,
     toggleSpeaker,
     clearError: () => setError(""),
-  }), [acceptCall, call, cameraEnabled, config, endCall, error, localStream, muted, networkQuality, pendingPeer, rejectCall, remoteCameraEnabled, remoteStream, sessionState, signalingState, speakerEnabled, startCall, switchCamera, toggleCamera, toggleMute, toggleSpeaker]);
+  }), [acceptCall, call, cameraEnabled, config, endCall, error, localStream, muted, networkQuality, pendingPeer, refreshRealtime, rejectCall, remoteCameraEnabled, remoteStream, sessionState, signalingState, speakerEnabled, startCall, switchCamera, toggleCamera, toggleMute, toggleSpeaker]);
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 }

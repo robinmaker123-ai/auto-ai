@@ -5,6 +5,7 @@ export type CallSessionState =
   | "idle"
   | "preparing"
   | "dialing"
+  | "notifying"
   | "ringing"
   | "incoming"
   | "accepting"

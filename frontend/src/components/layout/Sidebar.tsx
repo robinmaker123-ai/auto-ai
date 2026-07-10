@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Bot, CreditCard, Eraser, LogOut, MessageSquarePlus, PanelLeftClose, Pencil, Search, Settings, Shield, Trash2, UserCircle2, X } from "lucide-react";
 import clsx from "clsx";
+import { resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
 import { useShell } from "../../contexts/ShellContext";
@@ -33,6 +34,7 @@ export function Sidebar() {
   const displayName = user?.name?.trim() || "Account";
   const displayEmail = user?.email?.trim() || "";
   const profileInitial = (displayName || displayEmail || "A").charAt(0).toUpperCase();
+  const profileAvatar = resolveApiAssetUrl(user?.avatar || user?.picture);
 
   useEffect(() => {
     if (!isSidebarOpen) return;
@@ -297,7 +299,7 @@ export function Sidebar() {
           )}
           <button
             className={clsx(
-              "grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-sm font-bold text-white transition hover:border-cyan-200/40 hover:bg-cyan-200/12",
+              "profileicon grid h-11 w-11 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] text-sm font-bold text-white transition hover:border-cyan-200/40 hover:bg-cyan-200/12",
               isAccountMenuOpen && "border-cyan-200/50 bg-cyan-200/15 text-cyan-50"
             )}
             aria-expanded={isAccountMenuOpen}
@@ -307,7 +309,7 @@ export function Sidebar() {
             title="Profile menu"
             type="button"
           >
-            {profileInitial}
+            {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="" /> : profileInitial}
           </button>
         </div>
       </aside>

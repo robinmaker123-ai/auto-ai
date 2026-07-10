@@ -10,15 +10,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.routes.calls import discoverable_users_query
+from app.api.routes.calls import call_health, discoverable_users_query, ringing_call, search_users
 from app.core.config import settings
 from app.db.base import Base
-from app.models.call import BlockedUser, Call, UserCallSettings
+from app.models.call import BlockedUser, Call, UserCallSettings, UserDevice
 from app.models.user import User
-from app.schemas.call import PublicCallUser, SignalEvent
-from app.services.call_permission_service import call_allowed, users_blocked
+from app.schemas.call import CallActionRequest, PublicCallUser, SignalEvent
+from app.services.call_permission_service import call_allowed, get_or_create_call_settings, users_blocked
 from app.services.call_service import CallService
-from app.services.presence_service import PresenceService
+from app.services.device_token_security import decrypt_token, encrypt_token, token_hash
+from app.services.presence_service import PresenceService, RealtimeUnavailable
 from app.services.presence_service import presence_service as global_presence_service
 from app.websockets import call_signaling
 
@@ -53,6 +54,7 @@ def test_discovery_requires_opt_in_and_excludes_blocked_users(db: Session) -> No
         [
             UserCallSettings(user_id=visible.id, is_discoverable=True, call_permission="everyone"),
             UserCallSettings(user_id=hidden.id, is_discoverable=False, call_permission="everyone"),
+            UserDevice(user_id=visible.id, device_id="visible-web", platform="web"),
         ]
     )
     db.commit()
@@ -93,6 +95,49 @@ def test_public_profile_never_contains_private_identity_fields() -> None:
     assert "email" not in fields
     assert "mobile" not in fields
     assert "fcm_token" not in fields
+
+
+def test_new_call_settings_default_privacy_toggles_on(db: Session) -> None:
+    user = create_user(db, "settings_user", "Settings User")
+    settings_record = get_or_create_call_settings(db, user.id)
+
+    assert settings_record.is_discoverable is True
+    assert settings_record.show_online_status is True
+    assert settings_record.show_last_seen is True
+
+
+def test_fcm_token_encryption_roundtrip() -> None:
+    raw = "fcm-token-value-123456"
+    encrypted = encrypt_token(raw)
+
+    assert encrypted
+    assert encrypted != raw
+    assert decrypt_token(encrypted) == raw
+    assert token_hash(raw) == token_hash(raw)
+
+
+@pytest.mark.parametrize(
+    "redis_url",
+    [
+        "redis://default:password@redis.railway.internal:6379",
+        "rediss://default:password@redis.railway.internal:6379",
+    ],
+)
+def test_railway_redis_urls_are_forwarded_to_redis_client(
+    redis_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, str] = {}
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    def fake_from_url(value: str, **_: object):
+        captured["url"] = value
+        return fake_redis
+
+    monkeypatch.setattr(settings, "REDIS_URL", redis_url)
+    monkeypatch.setattr("app.services.presence_service.Redis.from_url", fake_from_url)
+
+    assert PresenceService().client() is fake_redis
+    assert captured["url"] == redis_url
 
 
 def test_signaling_schema_rejects_unknown_and_oversized_events() -> None:
@@ -137,6 +182,80 @@ async def test_redis_ticket_presence_deduplication_and_busy_locks(monkeypatch: p
     await service.close()
 
 
+@pytest.mark.asyncio
+async def test_call_health_reports_reachable_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://default:secret@redis.internal:6379")
+    monkeypatch.setattr(settings, "CALL_FEATURE_ENABLED", True)
+    monkeypatch.setattr(global_presence_service, "_redis", fake_redis)
+
+    health = await call_health()
+
+    assert health.calling_enabled is True
+    assert health.redis_configured is True
+    assert health.redis_reachable is True
+    assert health.websocket_ready is True
+
+
+@pytest.mark.asyncio
+async def test_discoverable_user_search_works_without_redis(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    viewer = create_user(db, "viewer_user", "Viewer")
+    visible = create_user(db, "visible_user", "Visible")
+    db.add_all(
+        [
+            UserCallSettings(
+                user_id=visible.id,
+                is_discoverable=True,
+                show_online_status=True,
+                call_permission="everyone",
+            ),
+            UserDevice(user_id=visible.id, device_id="visible-web", platform="web"),
+        ]
+    )
+    db.commit()
+    monkeypatch.setattr(
+        global_presence_service,
+        "allow_rate",
+        AsyncMock(side_effect=RealtimeUnavailable("Redis unavailable")),
+    )
+    monkeypatch.setattr(
+        global_presence_service,
+        "presence_for_user",
+        AsyncMock(side_effect=RealtimeUnavailable("Redis unavailable")),
+    )
+
+    page = await search_users(query="", page=1, limit=20, db=db, current_user=viewer)
+
+    assert [item.id for item in page.items] == [visible.id]
+    assert page.items[0].presence == "offline"
+    assert page.items[0].availability == "Offline"
+
+
+@pytest.mark.asyncio
+async def test_presence_requires_live_connection_and_expires_after_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = PresenceService()
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    service._redis = fake_redis
+    monkeypatch.setattr(settings, "REDIS_URL", "rediss://default:secret@redis.internal:6379")
+
+    await service.register_connection("user-a", "connection-a", "online")
+    await service.register_connection("user-b", "connection-b", "online")
+    await fake_redis.set("calls:busy:user-b", "call-1", ex=60)
+
+    assert (await service.presence_for_user("user-a"))["state"] == "online"
+    assert (await service.presence_for_user("user-b"))["state"] == "busy"
+
+    await fake_redis.delete("calls:connection:connection-a")
+    expired = await service.presence_for_user("user-a")
+    assert expired["state"] == "offline"
+    assert expired["reachable"] is False
+    await service.close()
+
+
 def test_authenticated_websocket_ticket_and_ping(monkeypatch: pytest.MonkeyPatch) -> None:
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -170,3 +289,18 @@ def test_authenticated_websocket_ticket_and_ping(monkeypatch: pytest.MonkeyPatch
                 }
             )
             assert websocket.receive_json()["type"] == "pong"
+
+
+@pytest.mark.asyncio
+async def test_ringing_ack_endpoint_marks_call_ringing(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    caller = create_user(db, "caller_user", "Caller")
+    callee = create_user(db, "callee_user", "Callee")
+    call = Call(caller_id=caller.id, callee_id=callee.id, call_type="video", status="initiated")
+    db.add(call)
+    db.commit()
+    monkeypatch.setattr(global_presence_service, "publish", AsyncMock(return_value=0))
+
+    result = await ringing_call(call.id, payload=CallActionRequest(), db=db, current_user=callee)
+
+    assert result.status == "ringing"
+    assert result.ringing_at is not None

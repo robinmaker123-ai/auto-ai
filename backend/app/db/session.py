@@ -83,6 +83,14 @@ def ensure_runtime_schema() -> None:
             add_column("users", "mobile", "VARCHAR(32)")
         if "username" not in user_columns:
             add_column("users", "username", "VARCHAR(48)")
+        if "phone_number" not in user_columns:
+            add_column("users", "phone_number", "VARCHAR(32)")
+        if "phone_country_code" not in user_columns:
+            add_column("users", "phone_country_code", "VARCHAR(8)")
+        if "phone_verified" not in user_columns:
+            add_column("users", "phone_verified", "BOOLEAN NOT NULL DEFAULT FALSE")
+        if "phone_verified_at" not in user_columns:
+            add_column("users", "phone_verified_at", "datetime")
         if "picture" not in user_columns:
             add_column("users", "picture", "VARCHAR(500)")
         if "avatar" not in user_columns:
@@ -99,6 +107,8 @@ def ensure_runtime_schema() -> None:
             add_column("users", "created_at", "datetime")
         if "updated_at" not in user_columns:
             add_column("users", "updated_at", "datetime")
+        if "profile_updated_at" not in user_columns:
+            add_column("users", "profile_updated_at", "datetime")
         ensure_mobile_index = True
 
     if "user_subscriptions" in table_names:
@@ -127,6 +137,13 @@ def ensure_runtime_schema() -> None:
         for column_name, definition in quota_columns.items():
             if column_name not in subscription_columns:
                 add_column("user_subscriptions", column_name, definition)
+
+    if "user_devices" in table_names:
+        device_columns = {column["name"] for column in inspector.get_columns("user_devices")}
+        if "fcm_token_ciphertext" not in device_columns:
+            add_column("user_devices", "fcm_token_ciphertext", "TEXT")
+        if "fcm_token_hash" not in device_columns:
+            add_column("user_devices", "fcm_token_hash", "VARCHAR(64)")
 
     if "payment_records" in table_names:
         payment_columns = {column["name"] for column in inspector.get_columns("payment_records")}
@@ -229,6 +246,12 @@ def ensure_runtime_schema() -> None:
             )
             connection.execute(
                 text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower ON {quote('users')} "
+                    f"(LOWER({quote('username')})) WHERE {quote('username')} IS NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
                     f"CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON {quote('users')} "
                     f"({quote('google_id')}) WHERE {quote('google_id')} IS NOT NULL"
                 )
@@ -236,6 +259,13 @@ def ensure_runtime_schema() -> None:
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_role ON {quote('users')} ({quote('role')})"))
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_provider ON {quote('users')} ({quote('provider')})"))
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_subscription_status ON {quote('users')} ({quote('subscription_status')})"))
+        if "user_devices" in table_names and dialect in {"sqlite", "postgresql"}:
+            connection.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS ix_user_devices_fcm_token_hash ON {quote('user_devices')} "
+                    f"({quote('fcm_token_hash')}) WHERE {quote('fcm_token_hash')} IS NOT NULL"
+                )
+            )
         if ensure_mobile_index and dialect == "mysql":
             if "ix_users_username" not in user_indexes:
                 connection.execute(text(f"CREATE UNIQUE INDEX ix_users_username ON {quote('users')} ({quote('username')})"))
@@ -278,6 +308,10 @@ def ensure_runtime_schema() -> None:
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('is_admin')} = TRUE WHERE {quote('role')} IN ('admin', 'super_admin') AND {quote('is_admin')} = FALSE"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('created_at')} = CURRENT_TIMESTAMP WHERE {quote('created_at')} IS NULL"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('updated_at')} = {quote('created_at')} WHERE {quote('updated_at')} IS NULL"))
+            if "phone_number" in user_columns or any("phone_number" in statement for statement in statements):
+                connection.execute(text(f"UPDATE {quote('users')} SET {quote('phone_number')} = {quote('mobile')} WHERE ({quote('phone_number')} IS NULL OR TRIM({quote('phone_number')}) = '') AND {quote('mobile')} IS NOT NULL"))
+            if "profile_updated_at" in user_columns or any("profile_updated_at" in statement for statement in statements):
+                connection.execute(text(f"UPDATE {quote('users')} SET {quote('profile_updated_at')} = {quote('updated_at')} WHERE {quote('profile_updated_at')} IS NULL"))
         if "user_subscriptions" in table_names:
             subscriptions = quote("user_subscriptions")
             connection.execute(text(f"UPDATE {subscriptions} SET {quote('plan_id')} = {quote('plan')} WHERE {quote('plan_id')} IS NULL OR TRIM({quote('plan_id')}) = ''"))

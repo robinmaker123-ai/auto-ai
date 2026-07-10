@@ -46,6 +46,7 @@ public class IncomingCallActivity extends Activity {
         expiresAt = callIntent.getLongExtra(CallNotificationManager.EXTRA_EXPIRES_AT, 0L);
         String callerId = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID));
         String callerName = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_NAME));
+        String callerUsername = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_USERNAME));
         String avatarUrl = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_AVATAR));
         String callType = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE));
         String initialAction = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION));
@@ -79,6 +80,10 @@ public class IncomingCallActivity extends Activity {
         TextView name = label(callerName, 26, Color.WHITE);
         name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(name);
+        if (callerUsername != null) {
+            TextView username = label("@" + callerUsername, 15, Color.rgb(148, 163, 184));
+            root.addView(username);
+        }
 
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);

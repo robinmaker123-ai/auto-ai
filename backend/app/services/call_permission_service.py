@@ -11,7 +11,12 @@ def get_or_create_call_settings(db: Session, user_id: str) -> UserCallSettings:
     record = db.scalar(select(UserCallSettings).where(UserCallSettings.user_id == user_id))
     if record:
         return record
-    record = UserCallSettings(user_id=user_id)
+    record = UserCallSettings(
+        user_id=user_id,
+        is_discoverable=True,
+        show_online_status=True,
+        show_last_seen=True,
+    )
     db.add(record)
     db.flush()
     return record

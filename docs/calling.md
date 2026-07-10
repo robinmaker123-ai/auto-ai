@@ -39,6 +39,8 @@ FCM_SERVICE_ACCOUNT_JSON=<service-account-json>
 
 FCM sends a short-lived data message. Android validates its expiration before showing `Notification.CallStyle` or the compatible fallback. Accept opens the authenticated WebView call; Reject and notification Hang Up use the encrypted access token to call the authorized backend action. Active calls run a camera/microphone foreground service and restore the previous audio mode after cleanup.
 
+If a user manually presses Force Stop from Android App Settings, Android may block Firebase messages until the user opens Auto-AI again. Background calls are expected to work when the app is backgrounded, swiped from recents, normally closed, or the phone is locked, subject to a valid FCM token, internet connectivity, notification permission, battery/vendor restrictions, backend availability, Firebase availability, and the app still being installed.
+
 ## Deployment checks
 
 1. Verify two discoverable test accounts can find each other.
