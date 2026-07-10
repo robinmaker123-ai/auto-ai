@@ -31,7 +31,10 @@ class FirebaseNotificationService:
 
     @property
     def configured(self) -> bool:
-        return bool(self._service_account())
+        try:
+            return bool(self._service_account())
+        except (ValueError, TypeError, KeyError):
+            return False
 
     def send_update_notification(
         self,
@@ -41,13 +44,6 @@ class FirebaseNotificationService:
         version_name: str,
         changelog: str | None = None,
     ) -> FcmSendResult:
-        service_account = self._service_account()
-        if not service_account:
-            return FcmSendResult(ok=False, detail="Firebase service account is not configured.")
-        project_id = settings.FIREBASE_PROJECT_ID or str(service_account.get("project_id") or "")
-        if not project_id:
-            return FcmSendResult(ok=False, detail="Firebase project id is missing.")
-
         title = "Auto-AI update available"
         body = f"Version {version_name} is ready to install."
         if changelog:
@@ -78,6 +74,32 @@ class FirebaseNotificationService:
                 },
             }
         }
+        return self._send(message)
+
+    def send_call_data(self, token: str, data: dict[str, str], ttl_seconds: int) -> FcmSendResult:
+        message = {
+            "message": {
+                "token": token,
+                "data": data,
+                "android": {
+                    "priority": "HIGH",
+                    "ttl": f"{max(1, ttl_seconds)}s",
+                    "direct_boot_ok": False,
+                },
+            }
+        }
+        return self._send(message)
+
+    def _send(self, message: dict[str, Any]) -> FcmSendResult:
+        try:
+            service_account = self._service_account()
+        except (ValueError, TypeError, KeyError):
+            return FcmSendResult(ok=False, detail="Firebase service account configuration is invalid.")
+        if not service_account:
+            return FcmSendResult(ok=False, detail="Firebase service account is not configured.")
+        project_id = settings.FIREBASE_PROJECT_ID or str(service_account.get("project_id") or "")
+        if not project_id:
+            return FcmSendResult(ok=False, detail="Firebase project id is missing.")
         try:
             response = httpx.post(
                 f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send",

@@ -15,6 +15,9 @@ Auto-AI is a ChatGPT-style AI assistant built with React, TypeScript, Tailwind C
 - Chat with selected uploaded documents
 - Browser voice input with Groq speech-to-text
 - Browser text-to-speech for assistant messages
+- Privacy-safe registered-user discovery and real WebRTC audio/video calls
+- Redis-backed multi-instance presence, secure signaling tickets and busy locks
+- Android incoming-call FCM notifications and active-call foreground service
 - Ultra Human Mode adaptive conversation layer with emotion, tone, memory, personality, and relationship engines
 - User-owned memory APIs for inspectable, editable long-term personalization
 - Web search mode through Groq Compound
@@ -111,6 +114,9 @@ Important environment variables:
 - `SQLITE_PATH`: SQLite database path; production SQLite must use a mounted volume path
 - `BACKEND_CORS_ORIGINS`: frontend origins allowed by FastAPI
 - `PASSWORD_RESET_*`, `SMTP_*`: forgot-password reset token lifetime and SMTP email delivery settings
+- `CALL_FEATURE_ENABLED`, `REDIS_URL`: calling feature switch and shared realtime state
+- `TURN_SERVER_URLS`, `TURN_SHARED_SECRET`, `TURN_REALM`, `TURN_CREDENTIAL_TTL`: short-lived Coturn relay credentials
+- `FCM_PROJECT_ID`, `FCM_SERVICE_ACCOUNT_JSON`: Android background incoming-call delivery
 
 ## Production Data Persistence
 
@@ -201,6 +207,8 @@ Optional secrets:
 SQLite under `database/auto_ai.db` is for local development only. Production must use a Railway volume-backed SQLite file at `/data/auto_ai.db` or a managed database URL.
 
 See `docs/human-mode.md` for the adaptive conversation architecture, database schema, APIs, prompts, and memory design.
+
+See `docs/calling.md` for calling architecture, privacy boundaries, Redis/TURN/FCM deployment, Android behavior, and cross-device verification.
 
 Provider endpoints used by this build:
 

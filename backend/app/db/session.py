@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+import re
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -80,6 +81,8 @@ def ensure_runtime_schema() -> None:
         user_indexes = {index["name"] for index in inspector.get_indexes("users")}
         if "mobile" not in user_columns:
             add_column("users", "mobile", "VARCHAR(32)")
+        if "username" not in user_columns:
+            add_column("users", "username", "VARCHAR(48)")
         if "picture" not in user_columns:
             add_column("users", "picture", "VARCHAR(500)")
         if "avatar" not in user_columns:
@@ -220,6 +223,12 @@ def ensure_runtime_schema() -> None:
             )
             connection.execute(
                 text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON {quote('users')} "
+                    f"({quote('username')}) WHERE {quote('username')} IS NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
                     f"CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON {quote('users')} "
                     f"({quote('google_id')}) WHERE {quote('google_id')} IS NOT NULL"
                 )
@@ -228,6 +237,8 @@ def ensure_runtime_schema() -> None:
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_provider ON {quote('users')} ({quote('provider')})"))
             connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_subscription_status ON {quote('users')} ({quote('subscription_status')})"))
         if ensure_mobile_index and dialect == "mysql":
+            if "ix_users_username" not in user_indexes:
+                connection.execute(text(f"CREATE UNIQUE INDEX ix_users_username ON {quote('users')} ({quote('username')})"))
             if "ix_users_google_id" not in user_indexes:
                 connection.execute(text(f"CREATE UNIQUE INDEX ix_users_google_id ON {quote('users')} ({quote('google_id')})"))
             if "ix_users_provider" not in user_indexes:
@@ -235,6 +246,31 @@ def ensure_runtime_schema() -> None:
             if "ix_users_subscription_status" not in user_indexes:
                 connection.execute(text(f"CREATE INDEX ix_users_subscription_status ON {quote('users')} ({quote('subscription_status')})"))
         if ensure_mobile_index:
+            rows = connection.execute(
+                text(f"SELECT {quote('id')}, {quote('name')}, {quote('username')} FROM {quote('users')}")
+            ).mappings()
+            assigned: set[str] = set()
+            pending: list[tuple[str, str]] = []
+            for row in rows:
+                current = str(row["username"] or "").strip().lower()
+                if current:
+                    assigned.add(current)
+                    continue
+                base = re.sub(r"[^a-z0-9]+", "_", str(row["name"] or "user").lower()).strip("_")[:30] or "user"
+                suffix = re.sub(r"[^a-z0-9]", "", str(row["id"]).lower())[:8] or "account"
+                candidate = f"{base}_{suffix}"[:48]
+                counter = 2
+                while candidate in assigned:
+                    tail = f"_{counter}"
+                    candidate = f"{base[:48 - len(tail)]}{tail}"
+                    counter += 1
+                assigned.add(candidate)
+                pending.append((str(row["id"]), candidate))
+            for user_id, username in pending:
+                connection.execute(
+                    text(f"UPDATE {quote('users')} SET {quote('username')} = :username WHERE {quote('id')} = :user_id"),
+                    {"username": username, "user_id": user_id},
+                )
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('provider')} = 'email' WHERE {quote('provider')} IS NULL OR TRIM({quote('provider')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('subscription_status')} = 'free' WHERE {quote('subscription_status')} IS NULL OR TRIM({quote('subscription_status')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'user' WHERE {quote('role')} IS NULL OR TRIM({quote('role')}) = ''"))

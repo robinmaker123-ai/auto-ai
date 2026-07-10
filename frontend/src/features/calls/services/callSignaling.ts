@@ -1,0 +1,118 @@
+import { API_BASE_URL } from "../../../api/client";
+import { callApi } from "./callApi";
+import type { SignalEnvelope } from "../types";
+
+type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
+
+function websocketUrl(ticket: string) {
+  const base = new URL(API_BASE_URL, window.location.origin);
+  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  base.pathname = `${base.pathname.replace(/\/$/, "")}/calls/ws`;
+  base.search = new URLSearchParams({ ticket }).toString();
+  return base.toString();
+}
+
+export class CallSignaling {
+  private socket: WebSocket | null = null;
+  private heartbeatTimer = 0;
+  private reconnectTimer = 0;
+  private reconnectAttempt = 0;
+  private token = "";
+  private closed = false;
+  private seenEvents = new Set<string>();
+
+  constructor(
+    private readonly onEvent: (event: SignalEnvelope) => void,
+    private readonly onState: (state: ConnectionState) => void,
+  ) {}
+
+  async connect(token: string) {
+    this.token = token;
+    this.closed = false;
+    if (this.socket && (this.socket.readyState === WebSocket.CONNECTING || this.socket.readyState === WebSocket.OPEN)) return;
+    window.clearTimeout(this.reconnectTimer);
+    this.onState("connecting");
+    try {
+      const { ticket } = await callApi.wsTicket(token);
+      if (this.closed || token !== this.token) return;
+      const socket = new WebSocket(websocketUrl(ticket));
+      this.socket = socket;
+      socket.onopen = () => {
+        if (socket !== this.socket) return;
+        this.reconnectAttempt = 0;
+        this.onState("connected");
+        this.send("presence.ready", null, { state: document.visibilityState === "hidden" ? "background" : "online" });
+        this.startHeartbeat();
+      };
+      socket.onmessage = (message) => {
+        if (typeof message.data !== "string" || message.data.length > 65_536) return;
+        try {
+          const event = JSON.parse(message.data) as SignalEnvelope;
+          if (!event.event_id || this.seenEvents.has(event.event_id)) return;
+          this.seenEvents.add(event.event_id);
+          if (this.seenEvents.size > 500) this.seenEvents.delete(this.seenEvents.values().next().value as string);
+          this.onEvent(event);
+        } catch {
+          // The server validates all events; malformed responses are ignored client-side.
+        }
+      };
+      socket.onerror = () => this.onState("error");
+      socket.onclose = () => {
+        if (socket !== this.socket) return;
+        this.socket = null;
+        this.stopHeartbeat();
+        this.onState("disconnected");
+        if (!this.closed) this.scheduleReconnect();
+      };
+    } catch {
+      this.onState("error");
+      if (!this.closed) this.scheduleReconnect();
+    }
+  }
+
+  send(type: string, callId: string | null, payload: Record<string, unknown> = {}) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    const event = {
+      schema_version: 1,
+      event_id: crypto.randomUUID(),
+      type,
+      call_id: callId,
+      timestamp: new Date().toISOString(),
+      payload,
+    };
+    this.socket.send(JSON.stringify(event));
+    return true;
+  }
+
+  updatePresence(state: "online" | "away" | "background") {
+    this.send("presence.status", null, { state });
+  }
+
+  close() {
+    this.closed = true;
+    window.clearTimeout(this.reconnectTimer);
+    this.stopHeartbeat();
+    const socket = this.socket;
+    this.socket = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Signed out");
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      this.send("presence.heartbeat", null, { state: document.visibilityState === "hidden" ? "background" : "online" });
+    }, 20_000);
+  }
+
+  private stopHeartbeat() {
+    window.clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = 0;
+  }
+
+  private scheduleReconnect() {
+    window.clearTimeout(this.reconnectTimer);
+    const delay = Math.min(15_000, 750 * 2 ** Math.min(this.reconnectAttempt, 5));
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = window.setTimeout(() => void this.connect(this.token), delay);
+  }
+}

@@ -1,0 +1,172 @@
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock
+
+import fakeredis.aioredis
+import pytest
+from pydantic import ValidationError
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.api.routes.calls import discoverable_users_query
+from app.core.config import settings
+from app.db.base import Base
+from app.models.call import BlockedUser, Call, UserCallSettings
+from app.models.user import User
+from app.schemas.call import PublicCallUser, SignalEvent
+from app.services.call_permission_service import call_allowed, users_blocked
+from app.services.call_service import CallService
+from app.services.presence_service import PresenceService
+from app.services.presence_service import presence_service as global_presence_service
+from app.websockets import call_signaling
+
+
+@pytest.fixture()
+def db() -> Session:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+
+def create_user(db: Session, user_id: str, name: str) -> User:
+    user = User(
+        id=user_id,
+        email=f"{user_id}@example.test",
+        name=name,
+        username=user_id,
+        hashed_password="unused",
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+def test_discovery_requires_opt_in_and_excludes_blocked_users(db: Session) -> None:
+    viewer = create_user(db, "viewer_user", "Viewer")
+    visible = create_user(db, "visible_user", "Visible")
+    hidden = create_user(db, "hidden_user", "Hidden")
+    db.add_all(
+        [
+            UserCallSettings(user_id=visible.id, is_discoverable=True, call_permission="everyone"),
+            UserCallSettings(user_id=hidden.id, is_discoverable=False, call_permission="everyone"),
+        ]
+    )
+    db.commit()
+    rows = db.execute(discoverable_users_query(viewer.id)).all()
+    assert [user.id for user, _ in rows] == [visible.id]
+
+    db.add(BlockedUser(blocker_id=viewer.id, blocked_user_id=visible.id))
+    db.commit()
+    assert db.execute(discoverable_users_query(viewer.id)).all() == []
+    assert users_blocked(db, viewer.id, visible.id)
+
+
+def test_call_permissions_respect_type_contact_and_block(db: Session) -> None:
+    caller = create_user(db, "caller_user", "Caller")
+    callee = create_user(db, "callee_user", "Callee")
+    db.add(
+        UserCallSettings(
+            user_id=callee.id,
+            is_discoverable=True,
+            allow_audio_calls=True,
+            allow_video_calls=False,
+            call_permission="previous_contacts",
+        )
+    )
+    db.commit()
+    assert call_allowed(db, caller.id, callee.id, "audio") == (False, False)
+    db.add(Call(caller_id=caller.id, callee_id=callee.id, call_type="audio", status="ended"))
+    db.commit()
+    assert call_allowed(db, caller.id, callee.id, "audio") == (True, True)
+    assert call_allowed(db, caller.id, callee.id, "video") == (False, False)
+    db.add(BlockedUser(blocker_id=callee.id, blocked_user_id=caller.id))
+    db.commit()
+    assert call_allowed(db, caller.id, callee.id, "audio") == (False, False)
+
+
+def test_public_profile_never_contains_private_identity_fields() -> None:
+    fields = set(PublicCallUser.model_fields)
+    assert "email" not in fields
+    assert "mobile" not in fields
+    assert "fcm_token" not in fields
+
+
+def test_signaling_schema_rejects_unknown_and_oversized_events() -> None:
+    base = {
+        "schema_version": 1,
+        "event_id": "event-123456",
+        "timestamp": datetime.now(timezone.utc),
+        "payload": {},
+    }
+    with pytest.raises(ValidationError):
+        SignalEvent.model_validate({**base, "type": "arbitrary.forward"})
+    with pytest.raises(ValidationError):
+        SignalEvent.model_validate({**base, "type": "ping", "payload": {str(index): index for index in range(40)}})
+
+
+def test_call_state_machine_rejects_late_accept_state() -> None:
+    call = Call(caller_id="caller", callee_id="callee", call_type="video", status="cancelled")
+    with pytest.raises(Exception):
+        CallService._require_state(call, {"initiated", "ringing"})
+
+
+@pytest.mark.asyncio
+async def test_redis_ticket_presence_deduplication_and_busy_locks(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = PresenceService()
+    service._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://fake/0")
+    ticket = await service.create_ticket("user-a")
+    assert await service.consume_ticket(ticket) == "user-a"
+    assert await service.consume_ticket(ticket) is None
+
+    await service.register_connection("user-a", "connection-a", "online")
+    presence = await service.presence_for_user("user-a")
+    assert presence["state"] == "online"
+    assert presence["reachable"] is True
+
+    assert await service.claim_event("user-a", "event-a") is True
+    assert await service.claim_event("user-a", "event-a") is False
+    assert await service.acquire_call_locks("call-a", "user-a", "user-b") is True
+    assert await service.acquire_call_locks("call-b", "user-a", "user-c") is False
+    await service.release_call_locks("call-a", ["user-a", "user-b"])
+    assert await service.acquire_call_locks("call-b", "user-a", "user-c") is True
+    await service.close()
+
+
+def test_authenticated_websocket_ticket_and_ping(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    test_sessions = sessionmaker(bind=engine)
+    with test_sessions() as db:
+        create_user(db, "socket_user", "Socket User")
+        db.commit()
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(settings, "REDIS_URL", "redis://fake/0")
+    monkeypatch.setattr(call_signaling, "SessionLocal", test_sessions)
+    monkeypatch.setattr(global_presence_service, "_redis", fake_redis)
+    monkeypatch.setattr(global_presence_service, "consume_ticket", AsyncMock(return_value="socket_user"))
+    ticket = "single-use-test-ticket"
+
+    app = FastAPI()
+    app.include_router(call_signaling.router)
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/calls/ws?ticket={ticket}") as websocket:
+            snapshot = websocket.receive_json()
+            assert snapshot["type"] == "presence.snapshot"
+            websocket.send_json(
+                {
+                    "schema_version": 1,
+                    "event_id": "ping-event-1",
+                    "type": "ping",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "payload": {},
+                }
+            )
+            assert websocket.receive_json()["type"] == "pong"

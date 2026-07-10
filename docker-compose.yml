@@ -5,12 +5,16 @@ services:
       dockerfile: backend/Dockerfile
     env_file:
       - .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
     volumes:
       - ./database:/app/database
       - ./backend/uploads:/app/backend/uploads
     restart: unless-stopped
+    depends_on:
+      - redis
 
   frontend:
     build:
@@ -23,3 +27,13 @@ services:
     ports:
       - "5173:80"
     restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - auto_ai_redis:/data
+    restart: unless-stopped
+
+volumes:
+  auto_ai_redis:

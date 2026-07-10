@@ -48,6 +48,7 @@ from app.services.google_auth import (
     GoogleIdentity,
     verify_google_id_token,
 )
+from app.services.user_identity import generate_username
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -194,6 +195,7 @@ def create_google_user(identity: GoogleIdentity) -> User:
     return User(
         email=identity.email,
         name=identity.name or identity.email.split("@", 1)[0],
+        username=generate_username(identity.name or "user"),
         hashed_password=get_password_hash(secrets.token_urlsafe(48)),
         picture=identity.picture,
         avatar=identity.picture,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowDown, Bot, Brain, CornerDownRight, Menu, MessageSquarePlus, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowDown, Bot, Brain, CornerDownRight, Menu, MessageSquarePlus, PhoneCall, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
 import { ApiClientError, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -14,6 +15,8 @@ import { useAppSettings } from "../../contexts/AppSettingsContext";
 import { useShell } from "../../contexts/ShellContext";
 import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
 import { LiveCallMode } from "../live/LiveCallMode";
+import { mediaResourceCoordinator } from "../../features/calls/services/mediaResourceCoordinator";
+import { useCallSession } from "../../features/calls/hooks/useCallSession";
 
 const DEFAULT_OPTIONS: ComposerOptions = {
   searchMode: "auto",
@@ -142,6 +145,8 @@ function thinkingPhase(options: ComposerOptions, attachments: ChatAttachment[], 
 }
 
 export function ChatPage() {
+  const navigate = useNavigate();
+  const { config: callConfig } = useCallSession();
   const { token } = useAuth();
   const { settings } = useAppSettings();
   const { activeChat, createChat, openChat, refreshChats, setActiveChat } = useChat();
@@ -175,6 +180,15 @@ export function ChatPage() {
   const generationPollTimerRef = useRef<number | null>(null);
   const lastOptionsRef = useRef<ComposerOptions>(DEFAULT_OPTIONS);
   const localRetryRef = useRef<Record<string, LocalRetryRequest>>({});
+
+  const openLiveMode = useCallback(async () => {
+    try {
+      await mediaResourceCoordinator.acquire("ai-live");
+      setLiveModeOpen(true);
+    } catch (mediaError) {
+      setChatNotice(mediaError instanceof Error ? mediaError.message : "Camera and microphone are currently being used by a call");
+    }
+  }, []);
 
   useEffect(() => {
     setMessages(activeChat?.messages ?? []);
@@ -919,6 +933,15 @@ export function ChatPage() {
           </button>
           <span className="truncate text-sm font-medium">{activeTitle}</span>
           <div className="flex items-center gap-1.5">
+            {callConfig?.enabled !== false && <button
+              className="icon-button-dark"
+              onClick={() => navigate("/calls")}
+              title="Calls"
+              aria-label="Open calls"
+              type="button"
+            >
+              <PhoneCall size={18} className="text-cyan-200" />
+            </button>}
             <button
               className="icon-button-dark"
               onClick={() => {
@@ -1082,7 +1105,7 @@ export function ChatPage() {
           onUploadDocuments={uploadDocuments}
           onSend={handleSend}
           onStop={handleStopGeneration}
-          onOpenLiveMode={() => setLiveModeOpen(true)}
+          onOpenLiveMode={() => void openLiveMode()}
         />
       </section>
 

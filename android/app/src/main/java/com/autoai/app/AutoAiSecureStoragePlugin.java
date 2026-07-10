@@ -75,6 +75,16 @@ public class AutoAiSecureStoragePlugin extends Plugin {
         return getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
+    public static String readStoredValue(Context context, String key) {
+        if (context == null || key == null || key.trim().isEmpty()) return null;
+        try {
+            String encrypted = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(key, null);
+            return encrypted == null ? null : decrypt(encrypted);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private String encrypt(String value) throws Exception {
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey());
@@ -83,7 +93,7 @@ public class AutoAiSecureStoragePlugin extends Plugin {
         return iv + ":" + payload;
     }
 
-    private String decrypt(String encrypted) throws Exception {
+    private static String decrypt(String encrypted) throws Exception {
         String[] parts = encrypted.split(":", 2);
         if (parts.length != 2) throw new IllegalArgumentException("Invalid encrypted value.");
         byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
@@ -93,7 +103,7 @@ public class AutoAiSecureStoragePlugin extends Plugin {
         return new String(cipher.doFinal(payload), StandardCharsets.UTF_8);
     }
 
-    private SecretKey secretKey() throws Exception {
+    private static SecretKey secretKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         if (keyStore.containsAlias(KEY_ALIAS)) {

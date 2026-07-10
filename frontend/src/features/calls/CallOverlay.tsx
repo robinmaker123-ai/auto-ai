@@ -1,0 +1,109 @@
+import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, RefreshCw, Settings, SwitchCamera, Volume2, VolumeX, Wifi } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { callNative } from "./services/callNative";
+import { useCallSession } from "./hooks/useCallSession";
+
+function VideoSurface({ stream, muted, className }: { stream: MediaStream | null; muted?: boolean; className: string }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
+  return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
+}
+
+function Avatar({ name, url }: { name: string; url?: string | null }) {
+  return <span className="call-screen-avatar">{url ? <img src={url} alt="" /> : name.slice(0, 1).toUpperCase()}</span>;
+}
+
+function statusLabel(state: ReturnType<typeof useCallSession>["sessionState"]) {
+  if (state === "preparing") return "Preparing…";
+  if (state === "dialing") return "Calling…";
+  if (state === "ringing") return "Ringing…";
+  if (state === "accepting") return "Accepting…";
+  if (state === "connecting") return "Connecting…";
+  if (state === "reconnecting") return "Reconnecting…";
+  if (state === "rejected") return "Call rejected";
+  if (state === "cancelled") return "Call cancelled";
+  if (state === "missed") return "No answer";
+  if (state === "busy") return "User is on another call";
+  if (state === "failed") return "Call failed";
+  if (state === "ended") return "Call ended";
+  return "Connected";
+}
+
+export function CallOverlay() {
+  const callSession = useCallSession();
+  const { sessionState, call, peer, localStream, remoteStream, cameraEnabled, remoteCameraEnabled, muted, speakerEnabled, networkQuality, error } = callSession;
+  const [seconds, setSeconds] = useState(0);
+  const [pipPosition, setPipPosition] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
+
+  useEffect(() => {
+    if (sessionState !== "active") { setSeconds(0); return; }
+    const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [sessionState]);
+
+  if (sessionState === "idle" || !peer) return null;
+  const time = `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  const incoming = sessionState === "incoming";
+  const activeLike = ["connecting", "active", "reconnecting", "ending"].includes(sessionState);
+
+  function movePip(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return;
+    const maxX = Math.max(0, window.innerWidth - 150);
+    const maxY = Math.max(0, window.innerHeight - 230);
+    setPipPosition({
+      x: Math.max(-maxX, Math.min(maxX, dragRef.current.originX + event.clientX - dragRef.current.x)),
+      y: Math.max(-maxY, Math.min(maxY, dragRef.current.originY + event.clientY - dragRef.current.y)),
+    });
+  }
+
+  if (incoming) {
+    return (
+      <div className="incoming-call-screen" role="dialog" aria-modal="true" aria-label={`Incoming call from ${peer.display_name}`}>
+        <div className="incoming-call-content">
+          <Avatar name={peer.display_name} url={peer.avatar_url} />
+          <p>Incoming {call?.call_type === "audio" ? "audio" : "video"} call</p>
+          <h2>{peer.display_name}</h2>
+          <span>@{peer.username}</span>
+          {error && <div className="call-screen-error">{error}</div>}
+          <div className="incoming-call-actions">
+            <button type="button" className="reject" onClick={() => void callSession.rejectCall()} aria-label="Reject call"><PhoneOff size={23} /><span>Reject</span></button>
+            {call?.call_type === "video" && <button type="button" className="audio-only" onClick={() => void callSession.acceptCall(true)} aria-label="Accept as audio only"><Mic size={22} /><span>Audio only</span></button>}
+            <button type="button" className="accept" onClick={() => void callSession.acceptCall(false)} aria-label="Accept call"><Phone size={23} /><span>Accept</span></button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="active-call-screen" role="dialog" aria-modal="true" aria-label={`Call with ${peer.display_name}`}>
+      {activeLike && remoteStream && remoteCameraEnabled ? <VideoSurface stream={remoteStream} className="remote-call-video" /> : <div className="remote-call-placeholder"><Avatar name={peer.display_name} url={peer.avatar_url} /></div>}
+      <div className="call-screen-shade" />
+      <header className="active-call-header">
+        <span><strong>{peer.display_name}</strong><small>{sessionState === "active" ? time : statusLabel(sessionState)}</small></span>
+        <span className={`call-quality ${networkQuality}`} title={`${networkQuality} network quality`}><Wifi size={16} /> {networkQuality === "unknown" ? "Connecting" : networkQuality}</span>
+      </header>
+      {!activeLike && <div className="outgoing-call-identity"><Avatar name={peer.display_name} url={peer.avatar_url} /><h2>{peer.display_name}</h2><p>{statusLabel(sessionState)}</p></div>}
+      {localStream && cameraEnabled && (
+        <div
+          className="local-call-preview"
+          style={{ transform: `translate(${pipPosition.x}px, ${pipPosition.y}px)` }}
+          onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { x: event.clientX, y: event.clientY, originX: pipPosition.x, originY: pipPosition.y }; }}
+          onPointerMove={movePip}
+          onPointerUp={(event) => { event.currentTarget.releasePointerCapture(event.pointerId); dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+        ><VideoSurface stream={localStream} muted className="local-call-video" /></div>
+      )}
+      {error && <div className="call-screen-error floating"><span>{error}</span>{callNative.isAndroid() && /permission/i.test(error) && <button type="button" onClick={() => void callNative.openAppSettings()}><Settings size={14} /> Settings</button>}</div>}
+      <nav className="active-call-controls" aria-label="Call controls">
+        <button type="button" className={muted ? "inactive" : ""} onClick={callSession.toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff size={21} /> : <Mic size={21} />}<span>{muted ? "Unmute" : "Mute"}</span></button>
+        {call?.call_type === "video" && <button type="button" className={!cameraEnabled ? "inactive" : ""} onClick={() => void callSession.toggleCamera()} aria-label={cameraEnabled ? "Turn camera off" : "Turn camera on"}>{cameraEnabled ? <Camera size={21} /> : <CameraOff size={21} />}<span>Camera</span></button>}
+        {call?.call_type === "video" && <button type="button" disabled={!cameraEnabled} onClick={() => void callSession.switchCamera()} aria-label="Switch camera"><SwitchCamera size={21} /><span>Flip</span></button>}
+        <button type="button" className={!speakerEnabled ? "inactive" : ""} onClick={() => void callSession.toggleSpeaker()} aria-label={speakerEnabled ? "Use earpiece" : "Use speaker"}>{speakerEnabled ? <Volume2 size={21} /> : <VolumeX size={21} />}<span>Audio</span></button>
+        {sessionState === "failed" && <button type="button" onClick={() => void callSession.endCall()} aria-label="Close failed call"><RefreshCw size={21} /><span>Close</span></button>}
+        <button type="button" className="hangup" onClick={() => void callSession.endCall()} aria-label="End call"><PhoneOff size={23} /><span>End</span></button>
+      </nav>
+    </div>
+  );
+}

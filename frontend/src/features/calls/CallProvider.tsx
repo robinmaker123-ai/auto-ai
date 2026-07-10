@@ -1,0 +1,572 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import { CallContext, type CallContextValue } from "./CallContext";
+import { callApi } from "./services/callApi";
+import { callNative } from "./services/callNative";
+import { CallSignaling } from "./services/callSignaling";
+import { mediaResourceCoordinator } from "./services/mediaResourceCoordinator";
+import { nextCallState } from "./state/callStateMachine";
+import type { CallRecord, CallSessionState, CallSettings, CallType, IncomingCallPayload, PublicCallUser, SignalEnvelope } from "./types";
+
+const TERMINAL_EVENT_STATES: Record<string, CallSessionState> = {
+  "call.rejected": "rejected",
+  "call.cancelled": "cancelled",
+  "call.missed": "missed",
+  "call.busy": "busy",
+  "call.ended": "ended",
+};
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message.replace(/^Request failed \(\d+\):\s*/, "") : fallback;
+}
+
+export function CallProvider({ children }: { children: ReactNode }) {
+  const { token, user } = useAuth();
+  const [config, setConfig] = useState<CallContextValue["config"]>(null);
+  const [signalingState, setSignalingState] = useState<CallContextValue["signalingState"]>("disconnected");
+  const [sessionState, setSessionState] = useState<CallSessionState>("idle");
+  const [call, setCall] = useState<CallRecord | null>(null);
+  const [pendingPeer, setPendingPeer] = useState<PublicCallUser | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [remoteCameraEnabled, setRemoteCameraEnabled] = useState(true);
+  const [speakerEnabled, setSpeakerEnabled] = useState(true);
+  const [networkQuality, setNetworkQuality] = useState<CallContextValue["networkQuality"]>("unknown");
+  const [error, setError] = useState("");
+  const configRef = useRef(config);
+  const callSettingsRef = useRef<CallSettings | null>(null);
+  const sessionStateRef = useRef(sessionState);
+  const callRef = useRef(call);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const peerCallIdRef = useRef<string | null>(null);
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
+  const makingOfferRef = useRef(false);
+  const ignoreOfferRef = useRef(false);
+  const settingRemoteAnswerRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef(0);
+  const ringTimerRef = useRef(0);
+  const terminalTimerRef = useRef(0);
+  const statsTimerRef = useRef(0);
+  const ringtoneTimerRef = useRef(0);
+  const ringtoneContextRef = useRef<AudioContext | null>(null);
+  const eventHandlerRef = useRef<(event: SignalEnvelope) => void>(() => undefined);
+  const cleanupRef = useRef<(terminalState?: CallSessionState, detail?: string) => Promise<void>>(async () => undefined);
+  const deviceIdRef = useRef<string | null>(null);
+  const startPendingRef = useRef(false);
+  const originalTitleRef = useRef(document.title);
+
+  const transition = useCallback((next: CallSessionState) => {
+    setSessionState((current) => nextCallState(current, next));
+  }, []);
+
+  useEffect(() => { sessionStateRef.current = sessionState; }, [sessionState]);
+  useEffect(() => { callRef.current = call; }, [call]);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
+  useEffect(() => { configRef.current = config; }, [config]);
+
+  const signaling = useMemo(
+    () => new CallSignaling((event) => eventHandlerRef.current(event), setSignalingState),
+    [],
+  );
+
+  const stopRingtone = useCallback(() => {
+    window.clearInterval(ringtoneTimerRef.current);
+    ringtoneTimerRef.current = 0;
+    void ringtoneContextRef.current?.close().catch(() => undefined);
+    ringtoneContextRef.current = null;
+    navigator.vibrate?.(0);
+    document.title = originalTitleRef.current;
+  }, []);
+
+  const startRingtone = useCallback((silent: boolean) => {
+    stopRingtone();
+    document.title = "Incoming call - Auto-AI";
+    if (silent) return;
+    navigator.vibrate?.([500, 350, 500]);
+    const beep = () => {
+      try {
+        const context = ringtoneContextRef.current ?? new AudioContext();
+        ringtoneContextRef.current = context;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.frequency.value = 720;
+        gain.gain.value = 0.035;
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.22);
+      } catch {
+        // Browser autoplay policies can prevent ringtone until the page is interacted with.
+      }
+    };
+    beep();
+    ringtoneTimerRef.current = window.setInterval(beep, 1700);
+  }, [stopRingtone]);
+
+  const requestLocalMedia = useCallback(async (callType: CallType, audioOnly = false) => {
+    await mediaResourceCoordinator.acquire("person-call");
+    const audio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    const dataSaving = Boolean(callSettingsRef.current?.data_saving_mode);
+    const video: MediaTrackConstraints | false = callType === "video" && !audioOnly
+      ? { width: { ideal: dataSaving ? 640 : 1280, max: dataSaving ? 640 : 1280 }, height: { ideal: dataSaving ? 360 : 720, max: dataSaving ? 360 : 720 }, frameRate: { ideal: dataSaving ? 18 : 24, max: dataSaving ? 20 : 30 }, facingMode: "user" }
+      : false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      setMuted(false);
+      setCameraEnabled(stream.getVideoTracks().some((track) => track.enabled));
+      return stream;
+    } catch (mediaError) {
+      if (video) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+          localStreamRef.current = stream;
+          setLocalStream(stream);
+          setCameraEnabled(false);
+          setError("Camera permission was not granted. Continuing with audio only.");
+          return stream;
+        } catch {
+          mediaResourceCoordinator.release("person-call");
+        }
+      } else {
+        mediaResourceCoordinator.release("person-call");
+      }
+      throw mediaError;
+    }
+  }, []);
+
+  const collectStats = useCallback(async () => {
+    const peer = peerConnectionRef.current;
+    if (!peer || peer.connectionState !== "connected") return;
+    const reports = await peer.getStats().catch(() => null);
+    if (!reports) return;
+    let loss = 0;
+    let received = 0;
+    let rtt = 0;
+    reports.forEach((report) => {
+      if (report.type === "inbound-rtp" && report.kind === "video") {
+        loss += Number(report.packetsLost || 0);
+        received += Number(report.packetsReceived || 0);
+      }
+      if (report.type === "candidate-pair" && report.state === "succeeded") rtt = Number(report.currentRoundTripTime || 0);
+    });
+    const lossRate = received + loss > 0 ? loss / (received + loss) : 0;
+    const quality = lossRate > 0.08 || rtt > 0.55 ? "poor" : lossRate > 0.03 || rtt > 0.28 ? "fair" : "good";
+    setNetworkQuality(quality);
+    const maxBitrate = quality === "poor" ? 300_000 : quality === "fair" ? 650_000 : 1_200_000;
+    const sender = peer.getSenders().find((item) => item.track?.kind === "video");
+    if (sender) {
+      const parameters = sender.getParameters();
+      parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
+      parameters.encodings[0].maxBitrate = maxBitrate;
+      await sender.setParameters(parameters).catch(() => undefined);
+      await sender.track?.applyConstraints(
+        quality === "poor" ? { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { max: 18 } } : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { max: 30 } }
+      ).catch(() => undefined);
+    }
+  }, []);
+
+  const beginStats = useCallback(() => {
+    window.clearInterval(statsTimerRef.current);
+    statsTimerRef.current = window.setInterval(() => void collectStats(), 3000);
+  }, [collectStats]);
+
+  const attemptReconnect = useCallback(async () => {
+    const peer = peerConnectionRef.current;
+    const currentCall = callRef.current;
+    if (!peer || !currentCall) return;
+    if (reconnectAttemptsRef.current >= 3) {
+      await cleanupRef.current("failed", "The call could not reconnect.");
+      return;
+    }
+    reconnectAttemptsRef.current += 1;
+    transition("reconnecting");
+    try {
+      peer.restartIce();
+      makingOfferRef.current = true;
+      await peer.setLocalDescription(await peer.createOffer({ iceRestart: true }));
+      signaling.send("webrtc.offer", currentCall.id, { ...(peer.localDescription?.toJSON() ?? {}) });
+    } catch {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = window.setTimeout(() => void attemptReconnect(), 2500 * reconnectAttemptsRef.current);
+    } finally {
+      makingOfferRef.current = false;
+    }
+  }, [signaling, transition]);
+
+  const ensurePeerConnection = useCallback(async (currentCall: CallRecord) => {
+    if (peerConnectionRef.current && peerCallIdRef.current === currentCall.id) return peerConnectionRef.current;
+    peerConnectionRef.current?.close();
+    const credentials = await callApi.turnCredentials(token || "");
+    const peer = new RTCPeerConnection({
+      iceServers: credentials.ice_servers,
+      iceTransportPolicy: localStorage.getItem("auto-ai-force-relay") === "true" ? "relay" : "all",
+      bundlePolicy: "max-bundle",
+    });
+    peerConnectionRef.current = peer;
+    peerCallIdRef.current = currentCall.id;
+    pendingIceRef.current = [];
+    localStreamRef.current?.getTracks().forEach((track) => peer.addTrack(track, localStreamRef.current!));
+    peer.ontrack = (event) => {
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      setRemoteStream(stream);
+      if (event.track.kind === "video") {
+        setRemoteCameraEnabled(!event.track.muted);
+        event.track.onmute = () => setRemoteCameraEnabled(false);
+        event.track.onunmute = () => setRemoteCameraEnabled(true);
+      }
+    };
+    peer.onicecandidate = (event) => {
+      if (event.candidate) signaling.send("webrtc.ice_candidate", currentCall.id, { ...event.candidate.toJSON() });
+    };
+    peer.onnegotiationneeded = async () => {
+      try {
+        makingOfferRef.current = true;
+        await peer.setLocalDescription();
+        if (peer.localDescription) signaling.send(`webrtc.${peer.localDescription.type}`, currentCall.id, { ...peer.localDescription.toJSON() });
+      } catch (offerError) {
+        setError(errorMessage(offerError, "Unable to negotiate the call."));
+      } finally {
+        makingOfferRef.current = false;
+      }
+    };
+    peer.onconnectionstatechange = () => {
+      window.clearTimeout(reconnectTimerRef.current);
+      if (peer.connectionState === "connected") {
+        reconnectAttemptsRef.current = 0;
+        transition("active");
+        signaling.send("call.connected", currentCall.id);
+        beginStats();
+        void callNative.startActiveCall({ callId: currentCall.id, displayName: currentCall.peer.display_name, startedAt: Date.now(), video: currentCall.call_type === "video" });
+      } else if (peer.connectionState === "disconnected") {
+        transition("reconnecting");
+        reconnectTimerRef.current = window.setTimeout(() => void attemptReconnect(), (configRef.current?.reconnect_grace_seconds ?? 18) * 1000);
+      } else if (peer.connectionState === "failed") {
+        void attemptReconnect();
+      } else if (peer.connectionState === "closed" && !["ending", "ended", "idle"].includes(sessionStateRef.current)) {
+        void cleanupRef.current("failed", "Call connection closed.");
+      }
+    };
+    return peer;
+  }, [attemptReconnect, beginStats, signaling, token, transition]);
+
+  const applyDescription = useCallback(async (event: SignalEnvelope) => {
+    const currentCall = callRef.current;
+    if (!currentCall || event.call_id !== currentCall.id) return;
+    const peer = await ensurePeerConnection(currentCall);
+    const description = event.payload as unknown as RTCSessionDescriptionInit;
+    const polite = Boolean(user && user.id.localeCompare(currentCall.peer.id) > 0);
+    const readyForOffer = !makingOfferRef.current && (peer.signalingState === "stable" || settingRemoteAnswerRef.current);
+    const offerCollision = description.type === "offer" && !readyForOffer;
+    ignoreOfferRef.current = !polite && offerCollision;
+    if (ignoreOfferRef.current) return;
+    settingRemoteAnswerRef.current = description.type === "answer";
+    try {
+      await peer.setRemoteDescription(description);
+      settingRemoteAnswerRef.current = false;
+      const queued = pendingIceRef.current.splice(0);
+      for (const candidate of queued) await peer.addIceCandidate(candidate).catch(() => undefined);
+      if (description.type === "offer") {
+        await peer.setLocalDescription(await peer.createAnswer());
+        if (peer.localDescription) signaling.send("webrtc.answer", currentCall.id, { ...peer.localDescription.toJSON() });
+      }
+    } catch (descriptionError) {
+      settingRemoteAnswerRef.current = false;
+      setError(errorMessage(descriptionError, "WebRTC negotiation failed."));
+    }
+  }, [ensurePeerConnection, signaling, user]);
+
+  const applyIceCandidate = useCallback(async (event: SignalEnvelope) => {
+    if (ignoreOfferRef.current || event.call_id !== callRef.current?.id) return;
+    const candidate = event.payload as RTCIceCandidateInit;
+    const peer = peerConnectionRef.current;
+    if (!peer?.remoteDescription) pendingIceRef.current.push(candidate);
+    else await peer.addIceCandidate(candidate).catch(() => undefined);
+  }, []);
+
+  const cleanup = useCallback(async (terminalState: CallSessionState = "ended", detail = "") => {
+    if (sessionStateRef.current === "idle" && !callRef.current && !localStreamRef.current) return;
+    stopRingtone();
+    window.clearTimeout(ringTimerRef.current);
+    window.clearTimeout(reconnectTimerRef.current);
+    window.clearInterval(statsTimerRef.current);
+    peerConnectionRef.current?.getSenders().forEach((sender) => { sender.track?.stop(); });
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    peerCallIdRef.current = null;
+    pendingIceRef.current = [];
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setLocalStream(null);
+    setRemoteStream(null);
+    setCameraEnabled(false);
+    setRemoteCameraEnabled(true);
+    setMuted(false);
+    setNetworkQuality("unknown");
+    reconnectAttemptsRef.current = 0;
+    mediaResourceCoordinator.release("person-call");
+    await callNative.stopActiveCall().catch(() => undefined);
+    if (detail) setError(detail);
+    setSessionState(terminalState);
+    sessionStateRef.current = terminalState;
+    window.clearTimeout(terminalTimerRef.current);
+    terminalTimerRef.current = window.setTimeout(() => {
+      setSessionState("idle");
+      sessionStateRef.current = "idle";
+      setCall(null);
+      callRef.current = null;
+      setPendingPeer(null);
+    }, terminalState === "ended" ? 900 : 2200);
+  }, [stopRingtone]);
+  cleanupRef.current = cleanup;
+
+  const receiveIncomingCall = useCallback(async (callId: string, payload?: IncomingCallPayload) => {
+    if (!token || (sessionStateRef.current !== "idle" && callRef.current?.id !== callId)) return;
+    try {
+      const incomingCall = await callApi.get(token, callId);
+      if (!["initiated", "ringing"].includes(incomingCall.status)) return;
+      callRef.current = incomingCall;
+      setCall(incomingCall);
+      setPendingPeer(incomingCall.peer);
+      setSessionState("incoming");
+      sessionStateRef.current = "incoming";
+      signaling.send("call.ringing", callId);
+      const silent = Boolean(payload?.silent ?? incomingCall.silent);
+      startRingtone(silent);
+      if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") {
+        const notification = new Notification(`Incoming ${incomingCall.call_type} call`, { body: incomingCall.peer.display_name, icon: incomingCall.peer.avatar_url || "/icons/icon-192.png", tag: `call-${callId}`, requireInteraction: true });
+        notification.onclick = () => { window.focus(); notification.close(); };
+      }
+      window.clearTimeout(ringTimerRef.current);
+      ringTimerRef.current = window.setTimeout(() => void cleanup("missed", "Missed call"), (configRef.current?.ring_timeout_seconds ?? 30) * 1000);
+    } catch {
+      // Expired or cancelled native notifications are dismissed without showing a stale call.
+    }
+  }, [cleanup, signaling, startRingtone, token]);
+
+  const handleSignalEvent = useCallback((event: SignalEnvelope) => {
+    if (event.type === "call.incoming" && event.call_id) {
+      void receiveIncomingCall(event.call_id, event.payload as unknown as IncomingCallPayload);
+      return;
+    }
+    if (!event.call_id || event.call_id !== callRef.current?.id) return;
+    if (event.type === "call.ringing") transition("ringing");
+    else if (event.type === "call.accepted") {
+      stopRingtone();
+      transition("connecting");
+      if (callRef.current) {
+        callRef.current = { ...callRef.current, status: "accepted" };
+        setCall(callRef.current);
+        void ensurePeerConnection(callRef.current);
+      }
+    } else if (event.type === "webrtc.offer" || event.type === "webrtc.answer") void applyDescription(event);
+    else if (event.type === "webrtc.ice_candidate") void applyIceCandidate(event);
+    else if (event.type === "webrtc.restart_required") void attemptReconnect();
+    else if (event.type === "call.active") transition("active");
+    else if (event.type === "call.media_state") setRemoteCameraEnabled(event.payload.camera_enabled !== false);
+    else if (TERMINAL_EVENT_STATES[event.type]) void cleanup(TERMINAL_EVENT_STATES[event.type], String(event.payload.end_reason || ""));
+    else if (event.type === "call.error") setError(String(event.payload.detail || "Call error"));
+  }, [applyDescription, applyIceCandidate, attemptReconnect, cleanup, ensurePeerConnection, receiveIncomingCall, stopRingtone, transition]);
+  eventHandlerRef.current = handleSignalEvent;
+
+  useEffect(() => {
+    if (!token || !user) return;
+    let active = true;
+    void Promise.all([callApi.config(token), callApi.settings(token), callNative.registration()]).then(async ([nextConfig, callSettings, registration]) => {
+      if (!active) return;
+      setConfig(nextConfig);
+      callSettingsRef.current = callSettings;
+      if (!nextConfig.enabled) return;
+      deviceIdRef.current = registration.device_id;
+      await callApi.registerDevice(token, registration).catch(() => undefined);
+      await signaling.connect(token);
+      const nativeCall: { callId?: string | null; action?: "accept" | "reject" | null } = await callNative.consumeIncomingCall().catch(() => ({}));
+      if (nativeCall.callId) {
+        if (nativeCall.action === "reject") await callApi.reject(token, nativeCall.callId).catch(() => undefined);
+        else await receiveIncomingCall(nativeCall.callId);
+      }
+    }).catch((configError) => {
+      if (active) setError(errorMessage(configError, "Calling setup is unavailable."));
+    });
+    const visibility = () => signaling.updatePresence(document.visibilityState === "hidden" ? "background" : "online");
+    const nativeIncoming = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail as NativeIncomingCallEvent : null;
+      if (detail?.callId) void receiveIncomingCall(detail.callId);
+    };
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("auto-ai-incoming-call", nativeIncoming);
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("auto-ai-incoming-call", nativeIncoming);
+      signaling.close();
+      if (deviceIdRef.current) void callApi.removeDevice(token, deviceIdRef.current).catch(() => undefined);
+      void cleanup("ended");
+    };
+  }, [cleanup, receiveIncomingCall, signaling, token, user]);
+
+  useEffect(() => {
+    const unload = () => {
+      if (callRef.current && !["idle", "ended"].includes(sessionStateRef.current)) {
+        signaling.send("call.end", callRef.current.id, { end_reason: "app_closed" });
+      }
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+    window.addEventListener("beforeunload", unload);
+    return () => window.removeEventListener("beforeunload", unload);
+  }, [signaling]);
+
+  const startCall = useCallback(async (peer: PublicCallUser, callType: CallType = "video") => {
+    if (!token || startPendingRef.current || sessionStateRef.current !== "idle") return;
+    if (callType === "video" && !peer.can_video_call) { setError("This user is not accepting video calls."); return; }
+    if (callType === "audio" && !peer.can_audio_call) { setError("This user is not accepting audio calls."); return; }
+    startPendingRef.current = true;
+    setError("");
+    setPendingPeer(peer);
+    setSessionState("preparing");
+    sessionStateRef.current = "preparing";
+    try {
+      await requestLocalMedia(callType);
+      const created = await callApi.initiate(token, peer.id, callType, deviceIdRef.current);
+      callRef.current = created;
+      setCall(created);
+      setSessionState("dialing");
+      sessionStateRef.current = "dialing";
+      if (created.delivery === "unreachable") {
+        await callApi.cancel(token, created.id).catch(() => undefined);
+        await cleanup("failed", "User is unavailable");
+        return;
+      }
+      window.clearTimeout(ringTimerRef.current);
+      ringTimerRef.current = window.setTimeout(async () => {
+        if (callRef.current?.id === created.id && ["dialing", "ringing"].includes(sessionStateRef.current)) {
+          await callApi.cancel(token, created.id).catch(() => undefined);
+          await cleanup("missed", "No answer");
+        }
+      }, (configRef.current?.ring_timeout_seconds ?? 30) * 1000);
+    } catch (startError) {
+      await cleanup("failed", errorMessage(startError, "Unable to start the call."));
+    } finally {
+      startPendingRef.current = false;
+    }
+  }, [cleanup, requestLocalMedia, token]);
+
+  const acceptCall = useCallback(async (audioOnly = false) => {
+    const currentCall = callRef.current;
+    if (!token || !currentCall || sessionStateRef.current !== "incoming" || startPendingRef.current) return;
+    startPendingRef.current = true;
+    stopRingtone();
+    setSessionState("accepting");
+    sessionStateRef.current = "accepting";
+    try {
+      const fresh = await callApi.get(token, currentCall.id);
+      if (!["initiated", "ringing"].includes(fresh.status)) throw new Error("This call is no longer available.");
+      await requestLocalMedia(fresh.call_type, audioOnly);
+      const accepted = await callApi.accept(token, fresh.id, deviceIdRef.current);
+      callRef.current = accepted;
+      setCall(accepted);
+      setSessionState("connecting");
+      sessionStateRef.current = "connecting";
+      await ensurePeerConnection(accepted);
+    } catch (acceptError) {
+      await callApi.end(token, currentCall.id, "permission_denied").catch(() => callApi.reject(token, currentCall.id).catch(() => undefined));
+      await cleanup("failed", errorMessage(acceptError, "Unable to accept the call."));
+    } finally {
+      startPendingRef.current = false;
+    }
+  }, [cleanup, ensurePeerConnection, requestLocalMedia, stopRingtone, token]);
+
+  const rejectCall = useCallback(async () => {
+    const currentCall = callRef.current;
+    if (!token || !currentCall) return;
+    stopRingtone();
+    await callApi.reject(token, currentCall.id).catch(() => undefined);
+    await cleanup("rejected");
+  }, [cleanup, stopRingtone, token]);
+
+  const endCall = useCallback(async (reason?: string) => {
+    const currentCall = callRef.current;
+    if (!currentCall || !token) { await cleanup("ended"); return; }
+    transition("ending");
+    if (["dialing", "ringing", "preparing"].includes(sessionStateRef.current)) await callApi.cancel(token, currentCall.id).catch(() => undefined);
+    else await callApi.end(token, currentCall.id, reason).catch(() => undefined);
+    await cleanup("ended");
+  }, [cleanup, token, transition]);
+
+  const toggleMute = useCallback(() => {
+    const track = localStreamRef.current?.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setMuted(!track.enabled);
+  }, []);
+
+  const toggleCamera = useCallback(async () => {
+    const currentCall = callRef.current;
+    if (!currentCall || currentCall.call_type !== "video") return;
+    let track = localStreamRef.current?.getVideoTracks()[0];
+    if (!track) {
+      const cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false });
+      track = cameraStream.getVideoTracks()[0];
+      localStreamRef.current?.addTrack(track);
+      await peerConnectionRef.current?.getSenders().find((sender) => sender.track?.kind === "video")?.replaceTrack(track);
+      setLocalStream(localStreamRef.current ? new MediaStream(localStreamRef.current.getTracks()) : cameraStream);
+      setCameraEnabled(true);
+    } else {
+      track.enabled = !track.enabled;
+      setCameraEnabled(track.enabled);
+    }
+    signaling.send("call.media_state", currentCall.id, { camera_enabled: Boolean(track?.enabled), muted });
+  }, [muted, signaling]);
+
+  const switchCamera = useCallback(async () => {
+    const oldTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (!oldTrack) return;
+    const currentFacing = oldTrack.getSettings().facingMode;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacing === "environment" ? "user" : { exact: "environment" } }, audio: false });
+    const newTrack = stream.getVideoTracks()[0];
+    await peerConnectionRef.current?.getSenders().find((sender) => sender.track?.kind === "video")?.replaceTrack(newTrack);
+    localStreamRef.current?.removeTrack(oldTrack);
+    oldTrack.stop();
+    localStreamRef.current?.addTrack(newTrack);
+    setLocalStream(localStreamRef.current ? new MediaStream(localStreamRef.current.getTracks()) : stream);
+  }, []);
+
+  const toggleSpeaker = useCallback(async () => {
+    const next = !speakerEnabled;
+    await callNative.setSpeaker(next).catch(() => undefined);
+    setSpeakerEnabled(next);
+  }, [speakerEnabled]);
+
+  const value = useMemo<CallContextValue>(() => ({
+    config,
+    signalingState,
+    sessionState,
+    call,
+    peer: call?.peer ?? pendingPeer,
+    localStream,
+    remoteStream,
+    muted,
+    cameraEnabled,
+    remoteCameraEnabled,
+    speakerEnabled,
+    networkQuality,
+    error,
+    startCall,
+    acceptCall,
+    rejectCall,
+    endCall,
+    toggleMute,
+    toggleCamera,
+    switchCamera,
+    toggleSpeaker,
+    clearError: () => setError(""),
+  }), [acceptCall, call, cameraEnabled, config, endCall, error, localStream, muted, networkQuality, pendingPeer, rejectCall, remoteCameraEnabled, remoteStream, sessionState, signalingState, speakerEnabled, startCall, switchCamera, toggleCamera, toggleMute, toggleSpeaker]);
+
+  return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
+}
+
+type NativeIncomingCallEvent = { callId?: string };

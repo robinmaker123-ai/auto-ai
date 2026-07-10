@@ -14,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     mobile: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    username: Mapped[str] = mapped_column(String(48), unique=True, index=True, nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     picture: Mapped[str] = mapped_column(String(500), nullable=True)
     avatar: Mapped[str] = mapped_column(String(500), nullable=True)
@@ -49,6 +50,10 @@ class User(Base):
     memories = relationship("UserMemory", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+    call_settings = relationship(
+        "UserCallSettings", back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+    call_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
     turn_analyses = relationship(
         "ConversationTurnAnalysis",
         back_populates="user",

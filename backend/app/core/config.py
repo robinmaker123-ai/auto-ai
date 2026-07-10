@@ -47,14 +47,34 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_ANDROID_CLIENT_ID: str | None = None
     GOOGLE_WEB_CLIENT_ID: str | None = None
-    FIREBASE_PROJECT_ID: str | None = None
-    FIREBASE_SERVICE_ACCOUNT_JSON: SecretStr | None = None
+    FIREBASE_PROJECT_ID: str | None = Field(
+        default=None, validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "FCM_PROJECT_ID")
+    )
+    FIREBASE_SERVICE_ACCOUNT_JSON: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FIREBASE_SERVICE_ACCOUNT_JSON", "FCM_SERVICE_ACCOUNT_JSON"),
+    )
     FIREBASE_SERVICE_ACCOUNT_JSON_BASE64: SecretStr | None = None
     FIREBASE_SERVICE_ACCOUNT_FILE: str | None = None
     UPDATE_NOTIFY_SECRET: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("UPDATE_NOTIFY_SECRET", "AUTO_AI_UPDATE_NOTIFY_SECRET"),
     )
+
+    CALL_FEATURE_ENABLED: bool = True
+    REDIS_URL: str | None = None
+    TURN_SERVER_URLS: list[str] = []
+    TURN_SHARED_SECRET: SecretStr | None = None
+    TURN_REALM: str | None = None
+    TURN_CREDENTIAL_TTL: int = 3600
+    CALL_RING_TIMEOUT_SECONDS: int = 30
+    CALL_RECONNECT_GRACE_SECONDS: int = 18
+    CALL_MAX_ATTEMPTS_PER_MINUTE: int = 8
+    CALL_SEARCH_MAX_PER_MINUTE: int = 30
+    CALL_SIGNAL_MAX_PER_MINUTE: int = 360
+    CALL_ICE_MAX_PER_CALL: int = 256
+    CALL_WS_TICKET_TTL_SECONDS: int = 60
+    CALL_PRESENCE_TTL_SECONDS: int = 55
 
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "https://autoai.site.je",
@@ -188,6 +208,13 @@ class Settings(BaseSettings):
     def parse_model_list(cls, value: Any) -> list[str] | Any:
         if isinstance(value, str):
             return [model.strip() for model in value.split(",") if model.strip()]
+        return value
+
+    @field_validator("TURN_SERVER_URLS", mode="before")
+    @classmethod
+    def parse_turn_urls(cls, value: Any) -> list[str] | Any:
+        if isinstance(value, str):
+            return [url.strip() for url in value.split(",") if url.strip()]
         return value
 
     @model_validator(mode="after")
@@ -485,6 +512,19 @@ class Settings(BaseSettings):
     @property
     def password_reset_email_enabled(self) -> bool:
         return bool((self.SMTP_HOST or "").strip() and self.password_reset_from_email)
+
+    @property
+    def redis_url(self) -> str | None:
+        value = (self.REDIS_URL or "").strip()
+        return value or None
+
+    @property
+    def turn_shared_secret(self) -> str | None:
+        return self.TURN_SHARED_SECRET.get_secret_value() if self.TURN_SHARED_SECRET else None
+
+    @property
+    def turn_configured(self) -> bool:
+        return bool(self.TURN_SERVER_URLS and self.turn_shared_secret and (self.TURN_REALM or "").strip())
 
     @property
     def google_client_ids(self) -> list[str]:

@@ -1,0 +1,90 @@
+package com.autoai.app;
+
+import android.content.Context;
+import android.content.Intent;
+import android.media.AudioManager;
+import android.net.Uri;
+import android.provider.Settings;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.google.firebase.messaging.FirebaseMessaging;
+import androidx.core.content.ContextCompat;
+
+@CapacitorPlugin(name = "AutoAiCalls")
+public class AutoAiCallsPlugin extends Plugin {
+    @PluginMethod
+    public void getDeviceRegistration(PluginCall call) {
+        FirebaseMessaging.getInstance().getToken()
+            .addOnSuccessListener(token -> {
+                JSObject result = new JSObject();
+                result.put("deviceId", Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ANDROID_ID));
+                result.put("fcmToken", token);
+                result.put("appVersion", BuildConfig.VERSION_NAME);
+                call.resolve(result);
+            })
+            .addOnFailureListener(error -> call.reject("Unable to register this device for calls.", error));
+    }
+
+    @PluginMethod
+    public void consumeIncomingCall(PluginCall call) {
+        Context context = getContext();
+        String callId = CallNotificationManager.pendingCallId(context);
+        String action = CallNotificationManager.pendingAction(context);
+        JSObject result = new JSObject();
+        result.put("callId", callId);
+        result.put("action", action);
+        CallNotificationManager.clearPendingAction(context);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void startActiveCall(PluginCall call) {
+        String callId = call.getString("callId");
+        String displayName = call.getString("displayName", "Auto-AI call");
+        boolean video = Boolean.TRUE.equals(call.getBoolean("video", false));
+        if (callId == null || callId.trim().isEmpty()) {
+            call.reject("Call id is required.");
+            return;
+        }
+        Intent intent = new Intent(getContext(), CallForegroundService.class);
+        intent.setAction(CallForegroundService.ACTION_START);
+        intent.putExtra(CallNotificationManager.EXTRA_CALL_ID, callId);
+        intent.putExtra(CallNotificationManager.EXTRA_CALLER_NAME, displayName);
+        intent.putExtra(CallNotificationManager.EXTRA_CALL_TYPE, video ? "video" : "audio");
+        ContextCompat.startForegroundService(getContext(), intent);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void stopActiveCall(PluginCall call) {
+        Intent intent = new Intent(getContext(), CallForegroundService.class);
+        intent.setAction(CallForegroundService.ACTION_STOP);
+        getContext().startService(intent);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setSpeaker(PluginCall call) {
+        boolean enabled = Boolean.TRUE.equals(call.getBoolean("enabled", true));
+        AudioManager audioManager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            call.reject("Audio routing is unavailable.");
+            return;
+        }
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        audioManager.setSpeakerphoneOn(enabled);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getContext().getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
+    }
+}

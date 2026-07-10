@@ -1,15 +1,20 @@
+import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, ai, auth, chat_sessions, chats, documents, download, health, human, live, memory, notifications, payments, search, voice
+from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, voice
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
 from app.db.session import SessionLocal, init_db
 from app.services.admin_seed import create_admin_from_env
 from app.services.apk_service import apk_service
+from app.services.call_service import call_timeout_worker
+from app.services.presence_service import RealtimeUnavailable, presence_service
+from app.websockets import call_signaling
 
 
 logger = logging.getLogger("auto_ai.startup")
@@ -48,6 +53,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(InMemoryRateLimitMiddleware)
 
+    @app.exception_handler(RealtimeUnavailable)
+    async def realtime_unavailable_handler(request: Request, exc: RealtimeUnavailable) -> JSONResponse:
+        del request
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
     @app.on_event("startup")
     def on_startup() -> None:
         logger.info(
@@ -56,12 +66,35 @@ def create_app() -> FastAPI:
             settings.backend_url,
             settings.razorpay_failure_url,
         )
+        if settings.CALL_FEATURE_ENABLED:
+            if not settings.redis_url:
+                logger.warning("calling_configuration Redis is not configured; Calls remains isolated from unrelated app features.")
+            if settings.is_production and not settings.turn_configured:
+                logger.warning("calling_configuration TURN is not configured; production calls are not relay-ready.")
+            if settings.is_production and not settings.FIREBASE_PROJECT_ID:
+                logger.warning("calling_configuration Firebase is not configured; killed Android apps cannot receive calls.")
         Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
         Path(settings.APK_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
         init_db()
         with SessionLocal() as db:
             create_admin_from_env(db)
             apk_service.sync_filesystem_release(db)
+
+    @app.on_event("startup")
+    async def start_call_workers() -> None:
+        stop_event = asyncio.Event()
+        app.state.call_stop_event = stop_event
+        app.state.call_timeout_task = asyncio.create_task(call_timeout_worker(stop_event))
+
+    @app.on_event("shutdown")
+    async def stop_call_workers() -> None:
+        stop_event = getattr(app.state, "call_stop_event", None)
+        task = getattr(app.state, "call_timeout_task", None)
+        if stop_event:
+            stop_event.set()
+        if task:
+            await asyncio.gather(task, return_exceptions=True)
+        await presence_service.close()
 
 
     app.include_router(health.router)
@@ -73,10 +106,13 @@ def create_app() -> FastAPI:
     app.include_router(documents.router, prefix=settings.API_V1_STR)
     app.include_router(voice.router, prefix=settings.API_V1_STR)
     app.include_router(live.router, prefix=settings.API_V1_STR)
+    app.include_router(live_websocket.router, prefix=settings.API_V1_STR)
     app.include_router(memory.router, prefix=settings.API_V1_STR)
     app.include_router(human.router, prefix=settings.API_V1_STR)
     app.include_router(search.router, prefix=settings.API_V1_STR)
     app.include_router(notifications.router, prefix=settings.API_V1_STR)
+    app.include_router(calls.router, prefix=settings.API_V1_STR)
+    app.include_router(call_signaling.router, prefix=settings.API_V1_STR)
     app.include_router(download.router, prefix="/api")
     app.include_router(download.router, prefix=settings.API_V1_STR)
     app.include_router(payments.router, prefix="/api")

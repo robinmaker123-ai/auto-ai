@@ -33,6 +33,15 @@ public class AutoAiFirebaseMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(@NonNull RemoteMessage message) {
         super.onMessageReceived(message);
         Map<String, String> data = message.getData();
+        String messageType = data.get("type");
+        if ("incoming_call".equals(messageType)) {
+            CallNotificationManager.showIncoming(this, data);
+            return;
+        }
+        if (messageType != null && messageType.startsWith("call_")) {
+            CallNotificationManager.cancel(this, data.get("call_id"));
+            return;
+        }
         int versionCode = parseInt(data.get("version_code"));
         if (versionCode > 0 && versionCode <= BuildConfig.VERSION_CODE) return;
 

@@ -26,6 +26,7 @@ from app.schemas.live import (
 )
 from app.services.admin_control import enforce_user_quota, infer_provider_from_model
 from app.services.groq_service import groq_service
+from app.services.live_vision_service import live_vision_service
 
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -233,29 +234,19 @@ async def analyze_live_vision(
     if session.status != "active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Live session is not active")
     data = await file.read()
-    extension = validate_image_upload(file, data)
+    validate_image_upload(file, data)
     enforce_user_quota(db, current_user, estimated_input_tokens=max(1, len(prompt) // 4))
-
-    frame_id = ""
-    frame = VisionFrame(session_id=session.id, user_id=current_user.id, image_url="", analysis_summary="")
-    db.add(frame)
-    db.flush()
-    frame_id = frame.id
-    frame_dir = Path(settings.UPLOAD_DIR) / "vision_frames" / current_user.id
-    frame_dir.mkdir(parents=True, exist_ok=True)
-    file_name = f"{frame_id}{extension}"
-    frame_path = frame_dir / file_name
-    frame_path.write_bytes(data)
-
-    analysis = groq_service.analyze_image(data, file.filename or file_name, prompt).strip()
-    frame.image_url = f"/uploads/vision_frames/{current_user.id}/{file_name}"
-    frame.analysis_summary = analysis
-    db.add(frame)
-    db.commit()
+    context = live_vision_service.analyze_frame(
+        db,
+        session_id=session.id,
+        user_id=current_user.id,
+        image_base64=base64.b64encode(data).decode("ascii"),
+        prompt=prompt,
+    )
     return VisionAnalyzeResponse(
-        frame_id=frame_id,
-        analysis_summary=analysis,
-        image_url=frame.image_url,
+        frame_id=context.frame_id,
+        analysis_summary=context.summary,
+        image_url="",
         model=settings.GROQ_VISION_MODEL,
     )
 

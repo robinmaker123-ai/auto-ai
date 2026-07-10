@@ -20,6 +20,7 @@ public class AutoAiLiveSpeechPlugin extends Plugin {
     private String pendingSpeakText;
     private String pendingSpeakLanguage;
     private float pendingSpeakRate = 1.0f;
+    private float pendingSpeakVolume = 1.0f;
 
     @Override
     public void load() {
@@ -35,15 +36,17 @@ public class AutoAiLiveSpeechPlugin extends Plugin {
         }
         String language = normalizeLanguage(call.getString("language", "hi-IN"));
         float rate = call.getFloat("rate", 1.0f);
+        float volume = call.getFloat("volume", 1.0f);
         if (textToSpeech == null) initTts();
         if (!ttsReady) {
             pendingSpeakCall = call;
             pendingSpeakText = text;
             pendingSpeakLanguage = language;
             pendingSpeakRate = rate;
+            pendingSpeakVolume = volume;
             return;
         }
-        speakNow(call, text, language, rate);
+        speakNow(call, text, language, rate, volume);
     }
 
     @PluginMethod
@@ -55,6 +58,22 @@ public class AutoAiLiveSpeechPlugin extends Plugin {
             pendingSpeakCall.resolve();
             pendingSpeakCall = null;
         }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void release(PluginCall call) {
+        if (textToSpeech != null) {
+            textToSpeech.stop();
+            textToSpeech.shutdown();
+            textToSpeech = null;
+        }
+        ttsReady = false;
+        if (pendingSpeakCall != null) {
+            pendingSpeakCall.resolve();
+            pendingSpeakCall = null;
+        }
+        pendingSpeakText = null;
         call.resolve();
     }
 
@@ -93,18 +112,19 @@ public class AutoAiLiveSpeechPlugin extends Plugin {
                 }
             });
             if (pendingSpeakCall != null && pendingSpeakText != null) {
-                speakNow(pendingSpeakCall, pendingSpeakText, pendingSpeakLanguage, pendingSpeakRate);
+                speakNow(pendingSpeakCall, pendingSpeakText, pendingSpeakLanguage, pendingSpeakRate, pendingSpeakVolume);
                 pendingSpeakText = null;
             }
         });
     }
 
-    private void speakNow(PluginCall call, String text, String language, float rate) {
+    private void speakNow(PluginCall call, String text, String language, float rate, float volume) {
         pendingSpeakCall = call;
         textToSpeech.stop();
         textToSpeech.setLanguage(localeFor(language));
         textToSpeech.setSpeechRate(Math.max(0.7f, Math.min(1.4f, rate)));
         Bundle params = new Bundle();
+        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, Math.max(0.0f, Math.min(1.0f, volume)));
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, UTTERANCE_ID);
     }
 

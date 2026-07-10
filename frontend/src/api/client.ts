@@ -422,7 +422,7 @@ async function fetchWithNetworkMessage(input: string, init: RequestInit = {}, me
   }
 }
 
-async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const { token, operation, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers);
   const method = requestOptions.method ?? "GET";

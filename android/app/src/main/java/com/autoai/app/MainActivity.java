@@ -85,6 +85,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AutoAiSecureStoragePlugin.class);
         registerPlugin(AutoAiGoogleAuthPlugin.class);
         registerPlugin(AutoAiLiveSpeechPlugin.class);
+        registerPlugin(LiveAudioPlugin.class);
+        registerPlugin(LiveVisionPlugin.class);
+        registerPlugin(AutoAiCallsPlugin.class);
         super.onCreate(savedInstanceState);
 
         WebView webView = getBridge().getWebView();
@@ -105,11 +108,38 @@ public class MainActivity extends BridgeActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         createUpdateNotificationChannel();
+        CallNotificationManager.createChannels(this);
         requestNotificationPermissionIfNeeded();
         registerFirebaseMessagingToken();
         UpdateCheckScheduler.schedule(this);
         checkForUpdate(true);
         startUpdatePolling();
+        dispatchIncomingCallIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        dispatchIncomingCallIntent(intent);
+    }
+
+    private void dispatchIncomingCallIntent(Intent intent) {
+        if (intent == null) return;
+        String callId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
+        if (callId == null || callId.trim().isEmpty()) return;
+        String action = intent.getStringExtra(CallNotificationManager.EXTRA_ACTION);
+        CallNotificationManager.savePending(this, callId, action, System.currentTimeMillis() + 60000L);
+        mainHandler.postDelayed(() -> {
+            try {
+                JSONObject detail = new JSONObject();
+                detail.put("callId", callId);
+                detail.put("action", action == null ? JSONObject.NULL : action);
+                if (getBridge() != null) getBridge().triggerWindowJSEvent("auto-ai-incoming-call", detail.toString());
+            } catch (Exception ignored) {
+                // The web layer also consumes the pending call after startup.
+            }
+        }, 350L);
     }
 
     @Override

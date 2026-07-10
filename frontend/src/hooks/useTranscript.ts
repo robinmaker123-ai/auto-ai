@@ -24,10 +24,6 @@ export function useTranscript() {
     ]);
   }, []);
 
-  const clearTranscripts = useCallback(() => {
-    setLines([]);
-  }, []);
-
   // Auto scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
@@ -38,7 +34,6 @@ export function useTranscript() {
   return {
     lines,
     addLine,
-    clearTranscripts,
     scrollRef,
   };
 }

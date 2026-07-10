@@ -34,6 +34,7 @@ class UserRead(BaseModel):
     email: EmailStr
     mobile: str | None = None
     name: str
+    username: str | None = None
     picture: str | None = None
     avatar: str | None = None
     provider: str = "email"

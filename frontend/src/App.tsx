@@ -20,6 +20,7 @@ const PricingPage = lazy(() => import("./components/pricing/PricingPage").then((
 const RegisterPage = lazy(() => import("./components/auth/RegisterPage").then((module) => ({ default: module.RegisterPage })));
 const ResetPasswordPage = lazy(() => import("./components/auth/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })));
 const SettingsPage = lazy(() => import("./components/settings/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const CallsPage = lazy(() => import("./features/calls/CallsPage").then((module) => ({ default: module.CallsPage })));
 
 /** Shows LandingPage for guests, redirects logged-in users to /chat */
 function RootRedirect() {
@@ -77,6 +78,7 @@ export default function App() {
                   <Route element={<AppShell />}>
                     <Route path="/chat" element={<ChatPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/calls" element={<CallsPage />} />
                   </Route>
                 </Route>
                 <Route element={<AdminRoute />}>

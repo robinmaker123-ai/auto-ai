@@ -6,6 +6,9 @@ import { ChatProvider } from "../../contexts/ChatContext";
 import { useShell } from "../../contexts/ShellContext";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
+import { CallProvider } from "../../features/calls/CallProvider";
+import { CallOverlay } from "../../features/calls/CallOverlay";
+import "../../features/calls/calls.css";
 
 export function AppShell() {
   const location = useLocation();
@@ -21,25 +24,28 @@ export function AppShell() {
 
   return (
     <AppSettingsProvider>
-      <ChatProvider>
-        <div className="app-shell">
-          <Sidebar />
-          {isSidebarCollapsed && (
-            <button
-              className="sidebar-restore-button hidden md:inline-flex"
-              onClick={expandSidebar}
-              title="Show chat history"
-              type="button"
-            >
-              <PanelLeftOpen size={17} />
-            </button>
-          )}
-          <main className="flex min-w-0 flex-1 flex-col">
-            <Header />
-            <Outlet />
-          </main>
-        </div>
-      </ChatProvider>
+      <CallProvider>
+        <ChatProvider>
+          <div className="app-shell">
+            <Sidebar />
+            {isSidebarCollapsed && (
+              <button
+                className="sidebar-restore-button hidden md:inline-flex"
+                onClick={expandSidebar}
+                title="Show chat history"
+                type="button"
+              >
+                <PanelLeftOpen size={17} />
+              </button>
+            )}
+            <main className="flex min-w-0 flex-1 flex-col">
+              <Header />
+              <Outlet />
+            </main>
+            <CallOverlay />
+          </div>
+        </ChatProvider>
+      </CallProvider>
     </AppSettingsProvider>
   );
 }

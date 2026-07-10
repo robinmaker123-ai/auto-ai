@@ -23,6 +23,7 @@ import {
   Sun,
   Trash2,
   UserCircle2,
+  PhoneCall,
   type LucideIcon
 } from "lucide-react";
 import { api } from "../../api/client";
@@ -36,6 +37,7 @@ import { useChat } from "../../contexts/ChatContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { AiProvider, ResearchProvider } from "../../types";
 import { SubscriptionBillingCenter } from "./SubscriptionBillingCenter";
+import { CallSettings } from "../../features/calls/CallSettings";
 
 const APP_VERSION = "1.0.2";
 
@@ -59,7 +61,7 @@ const PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: "Gemini"
 };
 
-type SettingsSection = "main" | "general" | "subscription" | "privacy";
+type SettingsSection = "main" | "general" | "subscription" | "privacy" | "calls";
 type Accent = "cyan" | "violet" | "amber" | "green" | "rose" | "red";
 
 function SettingsIcon({ icon: Icon, accent = "cyan" }: { icon: LucideIcon; accent?: Accent }) {
@@ -219,7 +221,7 @@ export function SettingsPage() {
 
   const section = useMemo<SettingsSection>(() => {
     const current = new URLSearchParams(location.search).get("section");
-    return current === "general" || current === "subscription" || current === "privacy" ? current : "main";
+    return current === "general" || current === "subscription" || current === "privacy" || current === "calls" ? current : "main";
   }, [location.search]);
 
   const providerModels = useMemo(
@@ -228,7 +230,7 @@ export function SettingsPage() {
   );
   const selectedModelLabel = providerModels.find((item) => item.value === settings.defaultModel)?.label ?? settings.defaultModel;
   const accountCreated = user?.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown";
-  const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : "Settings";
+  const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : "Settings";
 
   useEffect(() => {
     setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
@@ -345,6 +347,13 @@ export function SettingsPage() {
           title="Privacy & Security"
           description="Chat cleanup and data controls"
           onClick={() => openSection("privacy")}
+        />
+        <SettingsRow
+          icon={PhoneCall}
+          accent="cyan"
+          title="Calls"
+          description="Discoverability, call privacy, sound and blocked users"
+          onClick={() => openSection("calls")}
         />
         <SettingsRow
           icon={Bot}
@@ -558,6 +567,7 @@ export function SettingsPage() {
           {section === "general" && renderGeneralSettings()}
           {section === "subscription" && <SubscriptionBillingCenter />}
           {section === "privacy" && renderPrivacySettings()}
+          {section === "calls" && <CallSettings />}
         </div>
       </div>
     </motion.div>

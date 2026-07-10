@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.chat import Chat
 from app.models.user import User
+from app.services.user_identity import generate_username
 
 
 class SQLAlchemyUserRepository:
@@ -29,6 +30,7 @@ class SQLAlchemyUserRepository:
             email=email.strip().lower(),
             mobile=mobile.strip() if mobile else None,
             name=name.strip(),
+            username=generate_username(name),
             hashed_password=hashed_password,
             is_admin=is_admin,
             role=role,
