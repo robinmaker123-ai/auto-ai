@@ -26,6 +26,19 @@ CALL_RECONNECT_GRACE_SECONDS=18
 
 Coturn must expose UDP and TCP relay traffic, TLS on `turns:`, a restricted relay port range, a valid certificate, `use-auth-secret`, the same shared secret and realm, and the correct public/external IP. The frontend receives only time-limited HMAC credentials from the authenticated API.
 
+Minimum Coturn requirements:
+
+- Public DNS hostname that resolves from mobile networks.
+- `listening-port=3478` reachable over UDP and TCP.
+- `tls-listening-port=5349` reachable over TCP when using `turns:`.
+- Firewall allows the configured relay UDP port range.
+- `realm` equals `TURN_REALM`.
+- `static-auth-secret` equals `TURN_SHARED_SECRET`.
+- `use-auth-secret` is enabled.
+- `external-ip` or cloud public IP mapping is correct.
+- TLS certificate hostname matches the `turns:` hostname.
+- The server is not bound only to localhost or a private interface.
+
 For Android background calls, add `android/app/google-services.json` through secure build configuration and set one service-account option:
 
 ```env

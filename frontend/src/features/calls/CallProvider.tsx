@@ -17,8 +17,11 @@ const TERMINAL_EVENT_STATES: Record<string, CallSessionState> = {
   "call.ended": "ended",
 };
 const CALL_RECONNECT_GRACE_MS = 15_000;
+const CALL_RELAY_UNAVAILABLE_MESSAGE = "Calling network relay is temporarily unavailable.";
+const DEFAULT_STUN_SERVERS: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
 function callDebug(label: string, details: Record<string, unknown> = {}) {
+  if (!import.meta.env.DEV && localStorage.getItem("auto-ai-call-debug") !== "true") return;
   console.debug(`[AutoAI Call] ${label}`, details);
 }
 
@@ -48,6 +51,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const peerCallIdRef = useRef<string | null>(null);
+  const turnCredentialsRef = useRef<{ iceServers: RTCIceServer[]; relayConfigured: boolean; warning?: string | null; expiresAtMs: number } | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
@@ -176,13 +180,28 @@ export function CallProvider({ children }: { children: ReactNode }) {
     let loss = 0;
     let received = 0;
     let rtt = 0;
+    let selectedLocalCandidateId = "";
+    let selectedRemoteCandidateId = "";
     reports.forEach((report) => {
       if (report.type === "inbound-rtp" && report.kind === "video") {
         loss += Number(report.packetsLost || 0);
         received += Number(report.packetsReceived || 0);
       }
-      if (report.type === "candidate-pair" && report.state === "succeeded") rtt = Number(report.currentRoundTripTime || 0);
+      if (report.type === "candidate-pair" && report.state === "succeeded" && (report.nominated || !selectedLocalCandidateId)) {
+        rtt = Number(report.currentRoundTripTime || 0);
+        selectedLocalCandidateId = String(report.localCandidateId || "");
+        selectedRemoteCandidateId = String(report.remoteCandidateId || "");
+      }
     });
+    const localCandidate = selectedLocalCandidateId ? reports.get(selectedLocalCandidateId) : null;
+    const remoteCandidate = selectedRemoteCandidateId ? reports.get(selectedRemoteCandidateId) : null;
+    if (localCandidate || remoteCandidate) {
+      callDebug("selected_candidate_pair", {
+        call_id: callRef.current?.id,
+        local_type: localCandidate?.candidateType,
+        remote_type: remoteCandidate?.candidateType,
+      });
+    }
     const lossRate = received + loss > 0 ? loss / (received + loss) : 0;
     const quality = lossRate > 0.08 || rtt > 0.55 ? "poor" : lossRate > 0.03 || rtt > 0.28 ? "fair" : "good";
     setNetworkQuality(quality);
@@ -203,6 +222,38 @@ export function CallProvider({ children }: { children: ReactNode }) {
     window.clearInterval(statsTimerRef.current);
     statsTimerRef.current = window.setInterval(() => void collectStats(), 3000);
   }, [collectStats]);
+
+  const loadIceConfiguration = useCallback(async () => {
+    const cached = turnCredentialsRef.current;
+    if (cached && cached.expiresAtMs - Date.now() > 60_000) return cached;
+    try {
+      const credentials = await callApi.turnCredentials(token || "");
+      const returnedServers = credentials.iceServers ?? credentials.ice_servers ?? [];
+      const expiresValue = credentials.expiresAt ?? credentials.expires_at;
+      const expiresAtMs = expiresValue ? Date.parse(expiresValue) : Date.now() + 5 * 60_000;
+      const relayConfigured = Boolean(credentials.relayConfigured ?? credentials.relay_configured);
+      const iceServers = [...DEFAULT_STUN_SERVERS, ...returnedServers];
+      if (!iceServers.length) throw new Error(CALL_RELAY_UNAVAILABLE_MESSAGE);
+      if (!relayConfigured && configRef.current?.diagnostic === CALL_RELAY_UNAVAILABLE_MESSAGE) {
+        throw new Error(CALL_RELAY_UNAVAILABLE_MESSAGE);
+      }
+      const next = {
+        iceServers,
+        relayConfigured,
+        warning: credentials.warning,
+        expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : Date.now() + 5 * 60_000,
+      };
+      turnCredentialsRef.current = next;
+      if (credentials.warning) setError(CALL_RELAY_UNAVAILABLE_MESSAGE);
+      callDebug("turn_credentials_loaded", { relay_configured: relayConfigured, ice_servers: iceServers.length, credential_endpoint: "ok" });
+      return next;
+    } catch (turnError) {
+      turnCredentialsRef.current = null;
+      callDebug("turn_credentials_failed", { credential_endpoint: "failed" });
+      const message = errorMessage(turnError, CALL_RELAY_UNAVAILABLE_MESSAGE);
+      throw new Error(/turn|relay|503|not configured/i.test(message) ? CALL_RELAY_UNAVAILABLE_MESSAGE : message);
+    }
+  }, [token]);
 
   const attemptReconnect = useCallback(async () => {
     const peer = peerConnectionRef.current;
@@ -234,13 +285,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
     intentionalPeerCloseRef.current = true;
     peerConnectionRef.current?.close();
     intentionalPeerCloseRef.current = false;
-    const credentials = await callApi.turnCredentials(token || "");
-    if (credentials.warning) setError(credentials.warning);
-    callDebug("turn_credentials_loaded", { call_id: currentCall.id, relay_configured: credentials.relay_configured, ice_servers: credentials.ice_servers.length });
+    const iceConfig = await loadIceConfiguration();
     const peer = new RTCPeerConnection({
-      iceServers: credentials.ice_servers,
+      iceServers: iceConfig.iceServers,
       iceTransportPolicy: localStorage.getItem("auto-ai-force-relay") === "true" ? "relay" : "all",
       bundlePolicy: "max-bundle",
+    });
+    callDebug("peer_connection_created", {
+      call_id: currentCall.id,
+      role: currentCall.direction,
+      relay_configured: iceConfig.relayConfigured,
+      ice_transport_policy: localStorage.getItem("auto-ai-force-relay") === "true" ? "relay" : "all",
     });
     peerConnectionRef.current = peer;
     peerCallIdRef.current = currentCall.id;
@@ -299,8 +354,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
     peer.oniceconnectionstatechange = () => {
       callDebug("ice_connection_state", { call_id: currentCall.id, role: currentCall.direction, state: peer.iceConnectionState });
     };
+    peer.onicegatheringstatechange = () => {
+      callDebug("ice_gathering_state", { call_id: currentCall.id, role: currentCall.direction, state: peer.iceGatheringState });
+    };
+    peer.onicecandidateerror = (event) => {
+      callDebug("ice_candidate_error", { call_id: currentCall.id, role: currentCall.direction, error_code: event.errorCode });
+    };
     return peer;
-  }, [attemptReconnect, beginStats, clearRingTimer, signaling, token, transition]);
+  }, [attemptReconnect, beginStats, clearRingTimer, loadIceConfiguration, signaling, transition]);
 
   const applyDescription = useCallback(async (event: SignalEnvelope) => {
     const currentCall = callRef.current;
@@ -515,6 +576,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!token || startPendingRef.current || sessionStateRef.current !== "idle") return;
     if (callType === "video" && !peer.can_video_call) { setError("This user is not accepting video calls."); return; }
     if (callType === "audio" && !peer.can_audio_call) { setError("This user is not accepting audio calls."); return; }
+    if (configRef.current?.diagnostic === CALL_RELAY_UNAVAILABLE_MESSAGE) {
+      setError(CALL_RELAY_UNAVAILABLE_MESSAGE);
+      return;
+    }
     startPendingRef.current = true;
     setError("");
     setPendingPeer(peer);
@@ -558,6 +623,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       const fresh = await callApi.get(token, currentCall.id);
       if (!["initiated", "ringing"].includes(fresh.status)) throw new Error("This call is no longer available.");
+      if (configRef.current?.diagnostic === CALL_RELAY_UNAVAILABLE_MESSAGE) throw new Error(CALL_RELAY_UNAVAILABLE_MESSAGE);
       callDebug("accepting", { call_id: fresh.id, role: "incoming", state: fresh.status, signaling_connected: signaling.isConnected() });
       await signaling.connect(token);
       if (!await signaling.waitUntilConnected()) throw new Error("Call signaling is not connected.");

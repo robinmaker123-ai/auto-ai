@@ -77,9 +77,12 @@ export type CallFeatureConfig = {
   diagnostic?: string | null;
 };
 export type TurnCredentials = {
-  ice_servers: RTCIceServer[];
+  ice_servers?: RTCIceServer[];
+  iceServers?: RTCIceServer[];
   expires_at?: string | null;
-  relay_configured: boolean;
+  expiresAt?: string | null;
+  relay_configured?: boolean;
+  relayConfigured?: boolean;
   warning?: string | null;
 };
 export type BlockedCallUser = {

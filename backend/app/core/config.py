@@ -1,4 +1,5 @@
 from functools import lru_cache
+import ipaddress
 from pathlib import Path
 import re
 from typing import Any
@@ -219,15 +220,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_payment_urls(self) -> "Settings":
-        if not self.is_production:
-            return self
-        for name, value in (
-            ("FRONTEND_URL", self.frontend_url),
-            ("BACKEND_URL", self.backend_url),
-            ("RAZORPAY_FAILURE_URL", self.razorpay_failure_url),
-            ("RAZORPAY_SUCCESS_URL", self.razorpay_success_url),
-        ):
-            self._validate_production_payment_url(name, value)
+        if self.is_production:
+            for name, value in (
+                ("FRONTEND_URL", self.frontend_url),
+                ("BACKEND_URL", self.backend_url),
+                ("RAZORPAY_FAILURE_URL", self.razorpay_failure_url),
+                ("RAZORPAY_SUCCESS_URL", self.razorpay_success_url),
+            ):
+                self._validate_production_payment_url(name, value)
+            for value in self.TURN_SERVER_URLS:
+                self._validate_production_turn_url("TURN_SERVER_URLS", value)
         return self
 
     @property
@@ -433,6 +435,25 @@ class Settings(BaseSettings):
             raise ValueError(f"{name} must use HTTPS in production.")
         if local_host:
             raise ValueError(f"{name} cannot use localhost or loopback hosts in production.")
+
+    @staticmethod
+    def _validate_production_turn_url(name: str, value: str) -> None:
+        candidate = (value or "").strip()
+        parsed = urlsplit(candidate)
+        if parsed.scheme not in {"turn", "turns"}:
+            raise ValueError(f"{name} entries must use turn: or turns: URLs.")
+        host_port = parsed.netloc or parsed.path.split("?", 1)[0]
+        host = host_port.rsplit("@", 1)[-1].rsplit(":", 1)[0].strip("[]").lower()
+        if not host:
+            raise ValueError(f"{name} entries must include a public hostname.")
+        local_host = host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or host.endswith(".localhost")
+        try:
+            address = ipaddress.ip_address(host)
+            local_host = local_host or address.is_private or address.is_loopback or address.is_link_local
+        except ValueError:
+            pass
+        if local_host:
+            raise ValueError(f"{name} cannot use localhost or private hosts in production.")
 
     @property
     def frontend_url(self) -> str:

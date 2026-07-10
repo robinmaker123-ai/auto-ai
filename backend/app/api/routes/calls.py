@@ -34,7 +34,7 @@ from app.services.call_service import base_public_user, call_service
 from app.services.device_token_security import encrypt_token, token_hash
 from app.services.firebase_notifications import firebase_notification_service
 from app.services.presence_service import RealtimeUnavailable, presence_service
-from app.services.turn_credentials_service import create_turn_credentials
+from app.services.turn_credentials_service import TURN_UNAVAILABLE_MESSAGE, create_turn_credentials
 
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -87,7 +87,7 @@ async def call_feature_config(current_user: User = Depends(get_current_user)) ->
     if settings.CALL_FEATURE_ENABLED and not realtime_ready:
         diagnostic = "Realtime calling is temporarily unavailable."
     elif settings.is_production and not settings.turn_configured:
-        diagnostic = "TURN is required before production calls are reliable."
+        diagnostic = TURN_UNAVAILABLE_MESSAGE
     return CallFeatureConfig(
         enabled=settings.CALL_FEATURE_ENABLED,
         realtime_configured=realtime_ready,

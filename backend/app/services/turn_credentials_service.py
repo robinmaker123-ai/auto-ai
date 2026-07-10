@@ -7,15 +7,17 @@ from datetime import datetime, timezone
 from app.core.config import settings
 from app.schemas.call import TurnCredentials
 
+TURN_UNAVAILABLE_MESSAGE = "Calling network relay is temporarily unavailable."
+
 
 def create_turn_credentials(user_id: str) -> TurnCredentials:
     if not settings.turn_configured:
         if settings.is_production:
-            raise RuntimeError("TURN is not configured for production calling.")
+            raise RuntimeError(TURN_UNAVAILABLE_MESSAGE)
         return TurnCredentials(
             ice_servers=[{"urls": ["stun:stun.l.google.com:19302"]}],
             relay_configured=False,
-            warning="Development STUN fallback only. Configure TURN before production use.",
+            warning=TURN_UNAVAILABLE_MESSAGE,
         )
 
     expires_at = int(time.time()) + settings.TURN_CREDENTIAL_TTL
