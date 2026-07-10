@@ -12,7 +12,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.google.firebase.messaging.FirebaseMessaging;
-import androidx.core.content.ContextCompat;
 
 @CapacitorPlugin(name = "AutoAiCalls")
 public class AutoAiCallsPlugin extends Plugin {
@@ -55,15 +54,17 @@ public class AutoAiCallsPlugin extends Plugin {
         intent.putExtra(CallNotificationManager.EXTRA_CALL_ID, callId);
         intent.putExtra(CallNotificationManager.EXTRA_CALLER_NAME, displayName);
         intent.putExtra(CallNotificationManager.EXTRA_CALL_TYPE, video ? "video" : "audio");
-        ContextCompat.startForegroundService(getContext(), intent);
-        call.resolve();
+        try {
+            getContext().startService(intent);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Unable to start the call service.", error);
+        }
     }
 
     @PluginMethod
     public void stopActiveCall(PluginCall call) {
-        Intent intent = new Intent(getContext(), CallForegroundService.class);
-        intent.setAction(CallForegroundService.ACTION_STOP);
-        getContext().startService(intent);
+        getContext().stopService(new Intent(getContext(), CallForegroundService.class));
         call.resolve();
     }
 

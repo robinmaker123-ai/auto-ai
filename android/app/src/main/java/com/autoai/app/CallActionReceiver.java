@@ -18,9 +18,11 @@ public class CallActionReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (intent == null) return;
         String callId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
         String action = intent.getAction();
+        if (!CallNotificationManager.ACTION_REJECT.equals(action) && !CallNotificationManager.ACTION_END.equals(action)) return;
         String endpoint = CallNotificationManager.ACTION_REJECT.equals(action) ? "reject" : "end";
         CallNotificationManager.cancel(context, callId);
         context.stopService(new Intent(context, CallForegroundService.class));

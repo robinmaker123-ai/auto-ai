@@ -129,11 +129,14 @@ public class MainActivity extends BridgeActivity {
         String callId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
         String action = intent.getStringExtra(CallNotificationManager.EXTRA_ACTION);
+        if (action != null && !"accept".equals(action)) return;
+        callId = callId.trim();
+        final String pendingCallId = callId;
         CallNotificationManager.savePending(this, callId, action, System.currentTimeMillis() + 60000L);
         mainHandler.postDelayed(() -> {
             try {
                 JSONObject detail = new JSONObject();
-                detail.put("callId", callId);
+                detail.put("callId", pendingCallId);
                 detail.put("action", action == null ? JSONObject.NULL : action);
                 if (getBridge() != null) getBridge().triggerWindowJSEvent("auto-ai-incoming-call", detail.toString());
             } catch (Exception ignored) {

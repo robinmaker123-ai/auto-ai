@@ -20,6 +20,7 @@ public final class CallNotificationManager {
     public static final String CHANNEL_INCOMING = "auto_ai_incoming_calls";
     public static final String CHANNEL_ACTIVE = "auto_ai_active_calls";
     public static final String EXTRA_CALL_ID = "call_id";
+    public static final String EXTRA_CALLER_ID = "caller_id";
     public static final String EXTRA_CALLER_NAME = "caller_name";
     public static final String EXTRA_CALLER_AVATAR = "caller_avatar_url";
     public static final String EXTRA_CALL_TYPE = "call_type";
@@ -36,11 +37,13 @@ public final class CallNotificationManager {
     private CallNotificationManager() {}
 
     public static void showIncoming(Context context, Map<String, String> data) {
+        if (data == null) return;
         String callId = value(data, "call_id");
+        String callerId = value(data, "caller_id");
         String name = value(data, "caller_name");
         String callType = value(data, "call_type");
         long expiresAt = parseLong(data.get("expires_at_epoch_ms"));
-        if (callId.isEmpty() || expiresAt <= System.currentTimeMillis()) return;
+        if (callId.isEmpty() || (!"audio".equals(callType) && !"video".equals(callType)) || expiresAt <= System.currentTimeMillis()) return;
         boolean sound = Boolean.parseBoolean(data.get("sound"));
         boolean vibration = Boolean.parseBoolean(data.get("vibration"));
         savePending(context, callId, null, expiresAt);
@@ -48,6 +51,7 @@ public final class CallNotificationManager {
 
         Intent incomingIntent = new Intent(context, IncomingCallActivity.class);
         incomingIntent.putExtra(EXTRA_CALL_ID, callId);
+        if (!callerId.isEmpty()) incomingIntent.putExtra(EXTRA_CALLER_ID, callerId);
         incomingIntent.putExtra(EXTRA_CALLER_NAME, name);
         incomingIntent.putExtra(EXTRA_CALLER_AVATAR, value(data, "caller_avatar_url"));
         incomingIntent.putExtra(EXTRA_CALL_TYPE, callType);

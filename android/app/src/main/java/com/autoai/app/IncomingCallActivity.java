@@ -37,17 +37,28 @@ public class IncomingCallActivity extends Activity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        callId = getIntent().getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
-        expiresAt = getIntent().getLongExtra(CallNotificationManager.EXTRA_EXPIRES_AT, 0L);
-        if (callId == null || expiresAt <= System.currentTimeMillis()) {
+        Intent callIntent = getIntent();
+        if (callIntent == null) {
+            finish();
+            return;
+        }
+        callId = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID));
+        expiresAt = callIntent.getLongExtra(CallNotificationManager.EXTRA_EXPIRES_AT, 0L);
+        String callerId = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_ID));
+        String callerName = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_NAME));
+        String avatarUrl = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALLER_AVATAR));
+        String callType = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE));
+        String initialAction = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION));
+        boolean invalidCallerId = callIntent.hasExtra(CallNotificationManager.EXTRA_CALLER_ID) && callerId == null;
+        boolean invalidAction = initialAction != null && !"accept".equals(initialAction);
+        if (callId == null || invalidCallerId || invalidAction
+            || (!"audio".equals(callType) && !"video".equals(callType))
+            || expiresAt <= System.currentTimeMillis()) {
             CallNotificationManager.cancel(this, callId);
             finish();
             return;
         }
-        String callerName = getIntent().getStringExtra(CallNotificationManager.EXTRA_CALLER_NAME);
-        String avatarUrl = getIntent().getStringExtra(CallNotificationManager.EXTRA_CALLER_AVATAR);
-        String callType = getIntent().getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE);
-        if (callerName == null || callerName.trim().isEmpty()) callerName = "Auto-AI user";
+        if (callerName == null) callerName = "Auto-AI user";
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -81,7 +92,6 @@ public class IncomingCallActivity extends Activity {
 
         reject.setOnClickListener(view -> rejectCall());
         accept.setOnClickListener(view -> acceptCall());
-        String initialAction = getIntent().getStringExtra(CallNotificationManager.EXTRA_ACTION);
         if ("accept".equals(initialAction)) acceptCall();
     }
 
@@ -168,5 +178,10 @@ public class IncomingCallActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private String clean(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        return value.trim();
     }
 }

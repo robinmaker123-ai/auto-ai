@@ -1,11 +1,14 @@
 package com.autoai.app;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -24,29 +27,38 @@ public class CallForegroundService extends Service {
     public void onCreate() {
         super.onCreate();
         CallNotificationManager.createChannels(this);
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        if (audioManager != null) {
-            previousAudioMode = audioManager.getMode();
-            previousSpeakerState = audioManager.isSpeakerphoneOn();
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
-        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null || ACTION_STOP.equals(intent.getAction())) {
+        if (intent == null || !ACTION_START.equals(intent.getAction())) {
             stopSelf();
             return START_NOT_STICKY;
         }
-        activeCallId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
-        String displayName = intent.getStringExtra(CallNotificationManager.EXTRA_CALLER_NAME);
-        String callType = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE);
-        if (activeCallId == null) {
+        activeCallId = clean(intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID));
+        String displayName = clean(intent.getStringExtra(CallNotificationManager.EXTRA_CALLER_NAME));
+        String callType = clean(intent.getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE));
+        if (activeCallId == null || (!"audio".equals(callType) && !"video".equals(callType)) || !hasCallPermissions(callType)) {
+            activeCallId = null;
             stopSelf();
             return START_NOT_STICKY;
         }
-        startForeground(CallNotificationManager.notificationId(activeCallId) + 100000, buildNotification(displayName, callType));
+        Notification notification = buildNotification(displayName, callType);
+        int notificationId = CallNotificationManager.notificationId(activeCallId) + 100000;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                int serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+                if ("video".equals(callType)) serviceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+                startForeground(notificationId, notification, serviceType);
+            } else {
+                startForeground(notificationId, notification);
+            }
+        } catch (RuntimeException error) {
+            activeCallId = null;
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        initializeAudio();
         return START_NOT_STICKY;
     }
 
@@ -88,6 +100,26 @@ public class CallForegroundService extends Service {
             .setWhen(System.currentTimeMillis())
             .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Hang up", end).build())
             .build();
+    }
+
+    private boolean hasCallPermissions(String callType) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false;
+        return !"video".equals(callType)
+            || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void initializeAudio() {
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) return;
+        previousAudioMode = audioManager.getMode();
+        previousSpeakerState = audioManager.isSpeakerphoneOn();
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        audioManager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+    }
+
+    private String clean(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        return value.trim();
     }
 
     private int pendingFlags() {
