@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { PanelLeftOpen } from "lucide-react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsProvider } from "../../contexts/AppSettingsContext";
 import { ChatProvider } from "../../contexts/ChatContext";
 import { useShell } from "../../contexts/ShellContext";
@@ -12,6 +12,7 @@ import "../../features/calls/calls.css";
 
 export function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     closeSidebar,
     expandSidebar,
@@ -21,6 +22,20 @@ export function AppShell() {
   useEffect(() => {
     closeSidebar();
   }, [closeSidebar, location.pathname]);
+
+  useEffect(() => {
+    const openChatThread = (event: Event) => {
+      const rawDetail = event instanceof CustomEvent ? event.detail : null;
+      try {
+        const detail = typeof rawDetail === "string" ? JSON.parse(rawDetail) : rawDetail;
+        if (detail?.threadId) navigate(`/messages/${encodeURIComponent(detail.threadId)}`);
+      } catch {
+        return;
+      }
+    };
+    window.addEventListener("auto-ai-open-chat-thread", openChatThread);
+    return () => window.removeEventListener("auto-ai-open-chat-thread", openChatThread);
+  }, [navigate]);
 
   return (
     <AppSettingsProvider>

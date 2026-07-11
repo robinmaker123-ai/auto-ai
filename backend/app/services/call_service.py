@@ -290,6 +290,8 @@ class CallService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the receiver can reject this call.")
         if call.status == "rejected":
             return call
+        if call.status in {"accepted", "connecting", "active"}:
+            return call
         self._require_state(call, {"initiated", "ringing"})
         return await self._finish(
             db, call, user_id, "rejected", "callee_rejected", "call.rejected", {"initiated", "ringing"}

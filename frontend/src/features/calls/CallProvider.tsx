@@ -83,13 +83,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const cleanupRef = useRef<(terminalState?: CallSessionState, detail?: string) => Promise<void>>(async () => undefined);
   const deviceIdRef = useRef<string | null>(null);
   const startPendingRef = useRef(false);
+  const acceptInProgressRef = useRef(false);
+  const rejectInProgressRef = useRef(false);
+  const callEndedRef = useRef(false);
   const cleanupRunningRef = useRef(false);
   const intentionalPeerCloseRef = useRef(false);
   const acceptedCallIdsRef = useRef(new Set<string>());
   const connectedCallIdsRef = useRef(new Set<string>());
   const terminalCallIdsRef = useRef(new Set<string>());
   const nativeAcceptIdsRef = useRef(new Set<string>());
+  const processedNativeActionIdsRef = useRef(new Set<string>());
   const acceptCallRef = useRef<(audioOnly?: boolean) => Promise<void>>(async () => undefined);
+  const rejectCallRef = useRef<() => Promise<void>>(async () => undefined);
   const originalTitleRef = useRef(document.title);
 
   const localTrackStatus = useCallback(() => ({
@@ -497,6 +502,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (sessionStateRef.current === "idle" && !callRef.current && !localStreamRef.current) return;
     if (cleanupRunningRef.current) return;
     cleanupRunningRef.current = true;
+    callEndedRef.current = true;
     callDebug("cleanup", { call_id: callRef.current?.id, state: sessionStateRef.current, terminal_state: terminalState, reason: detail });
     stopRingtone();
     clearProgressTimers();
@@ -531,6 +537,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       callRef.current = null;
       setPendingPeer(null);
       cleanupRunningRef.current = false;
+      callEndedRef.current = false;
+      rejectInProgressRef.current = false;
+      acceptInProgressRef.current = false;
     }, terminalState === "ended" ? 900 : 2200);
   }, [clearProgressTimers, setCallTimer, stopRingtone]);
   cleanupRef.current = cleanup;
@@ -544,6 +553,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       const incomingCall = await callApi.get(token, callId);
       if (!["initiated", "ringing"].includes(incomingCall.status)) return;
+      callEndedRef.current = false;
+      rejectInProgressRef.current = false;
+      acceptInProgressRef.current = false;
       callRef.current = incomingCall;
       setCall(incomingCall);
       setPendingPeer(incomingCall.peer);
@@ -565,6 +577,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // Expired or cancelled native notifications are dismissed without showing a stale call.
     }
   }, [cleanup, clearRingTimer, setCallTimer, signaling, startRingtone, token]);
+
+  const processNativeCallAction = useCallback(async (callId: string, action?: NativeIncomingAction | null) => {
+    const normalizedAction = action === "accept" || action === "reject" || action === "audio_only" ? action : null;
+    if (!normalizedAction) {
+      await receiveIncomingCall(callId);
+      return;
+    }
+    const actionKey = `${callId}:${normalizedAction}`;
+    if (processedNativeActionIdsRef.current.has(actionKey)) return;
+    processedNativeActionIdsRef.current.add(actionKey);
+    await receiveIncomingCall(callId);
+    if (normalizedAction === "accept") {
+      if (nativeAcceptIdsRef.current.has(callId)) return;
+      nativeAcceptIdsRef.current.add(callId);
+      await acceptCallRef.current(false);
+    } else if (normalizedAction === "audio_only") {
+      if (nativeAcceptIdsRef.current.has(callId)) return;
+      nativeAcceptIdsRef.current.add(callId);
+      await acceptCallRef.current(true);
+    } else {
+      await rejectCallRef.current();
+    }
+  }, [receiveIncomingCall]);
 
   const handleSignalEvent = useCallback((event: SignalEnvelope) => {
     if (event.type === "presence.user_updated" || event.type === "presence.snapshot") {
@@ -619,17 +654,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       deviceIdRef.current = registration.device_id;
       await callApi.registerDevice(token, registration).catch(() => undefined);
       await signaling.connect(token);
-      const nativeCall: { callId?: string | null; action?: "accept" | "reject" | null } = await callNative.consumeIncomingCall().catch(() => ({}));
-      if (nativeCall.callId) {
-        if (nativeCall.action === "reject") await callApi.reject(token, nativeCall.callId).catch(() => undefined);
-        else {
-          await receiveIncomingCall(nativeCall.callId);
-          if (nativeCall.action === "accept" && !nativeAcceptIdsRef.current.has(nativeCall.callId)) {
-            nativeAcceptIdsRef.current.add(nativeCall.callId);
-            await acceptCallRef.current(false);
-          }
-        }
-      }
+      const nativeCall: { callId?: string | null; action?: NativeIncomingAction | null } = await callNative.consumeIncomingCall().catch(() => ({}));
+      if (nativeCall.callId) await processNativeCallAction(nativeCall.callId, nativeCall.action);
     }).catch((configError) => {
       if (active) setError(errorMessage(configError, "Calling setup is unavailable."));
     });
@@ -644,11 +670,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       if (!detail?.callId) return;
       void (async () => {
-        await receiveIncomingCall(detail.callId!);
-        if (detail.action === "accept" && !nativeAcceptIdsRef.current.has(detail.callId!)) {
-          nativeAcceptIdsRef.current.add(detail.callId!);
-          await acceptCallRef.current(false);
-        }
+        await processNativeCallAction(detail.callId!, detail.action);
       })();
     };
     document.addEventListener("visibilitychange", visibility);
@@ -661,7 +683,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (deviceIdRef.current) void callApi.removeDevice(token, deviceIdRef.current).catch(() => undefined);
       void cleanup("ended");
     };
-  }, [cleanup, receiveIncomingCall, signaling, token, user]);
+  }, [cleanup, processNativeCallAction, receiveIncomingCall, signaling, token, user]);
 
   useEffect(() => {
     const unload = () => {
@@ -684,6 +706,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       return;
     }
     startPendingRef.current = true;
+    callEndedRef.current = false;
+    rejectInProgressRef.current = false;
+    acceptInProgressRef.current = false;
     setError("");
     setPendingPeer(peer);
     setSessionState("preparing");
@@ -718,8 +743,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const acceptCall = useCallback(async (audioOnly = false) => {
     const currentCall = callRef.current;
-    if (!token || !currentCall || sessionStateRef.current !== "incoming" || startPendingRef.current) return;
+    if (!token || !currentCall || sessionStateRef.current !== "incoming" || startPendingRef.current || acceptInProgressRef.current || rejectInProgressRef.current || callEndedRef.current) return;
     startPendingRef.current = true;
+    acceptInProgressRef.current = true;
     stopRingtone();
     clearProgressTimers();
     setSessionState("accepting");
@@ -756,22 +782,33 @@ export function CallProvider({ children }: { children: ReactNode }) {
         callDebug("call_end_source", { call_id: currentCall.id, role: currentCall.direction, source: "accept_post_accept_failure", end_reason: "network_failed" });
         await callApi.end(token, currentCall.id, "network_failed").catch(() => undefined);
       } else {
-        await callApi.reject(token, currentCall.id).catch(() => undefined);
+        callDebug("accept_setup_failed_no_reject", { call_id: currentCall.id, role: currentCall.direction, state: sessionStateRef.current });
       }
       await cleanup("failed", errorMessage(acceptError, "Unable to accept the call."));
     } finally {
       startPendingRef.current = false;
+      acceptInProgressRef.current = false;
     }
   }, [cleanup, clearProgressTimers, ensurePeerConnection, loadIceConfiguration, requestLocalMedia, signaling, stopRingtone, token]);
   acceptCallRef.current = acceptCall;
 
   const rejectCall = useCallback(async () => {
     const currentCall = callRef.current;
-    if (!token || !currentCall) return;
-    stopRingtone();
-    await callApi.reject(token, currentCall.id).catch(() => undefined);
-    await cleanup("rejected");
-  }, [cleanup, stopRingtone, token]);
+    if (!token || !currentCall || rejectInProgressRef.current || acceptInProgressRef.current || cleanupRunningRef.current || callEndedRef.current) return;
+    if (!["incoming"].includes(sessionStateRef.current) && !["initiated", "ringing"].includes(currentCall.status)) return;
+    rejectInProgressRef.current = true;
+    callEndedRef.current = true;
+    try {
+      stopRingtone();
+      clearProgressTimers();
+      callDebug("call_reject_source", { call_id: currentCall.id, role: currentCall.direction, state: sessionStateRef.current, source: "user_or_native_reject" });
+      await callApi.reject(token, currentCall.id).catch(() => undefined);
+      await cleanup("rejected");
+    } finally {
+      rejectInProgressRef.current = false;
+    }
+  }, [cleanup, clearProgressTimers, stopRingtone, token]);
+  rejectCallRef.current = rejectCall;
 
   const endCall = useCallback(async (reason?: string) => {
     const currentCall = callRef.current;
@@ -860,4 +897,5 @@ export function CallProvider({ children }: { children: ReactNode }) {
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 }
 
-type NativeIncomingCallEvent = { callId?: string; action?: "accept" | "reject" | null };
+type NativeIncomingAction = "accept" | "reject" | "audio_only";
+type NativeIncomingCallEvent = { callId?: string; action?: NativeIncomingAction | null };

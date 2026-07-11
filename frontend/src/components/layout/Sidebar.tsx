@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, CreditCard, Eraser, LogOut, MessageSquarePlus, PanelLeftClose, Pencil, Search, Settings, Shield, Trash2, UserCircle2, X } from "lucide-react";
+import { Bot, CreditCard, Eraser, LogOut, MessageCircle, MessageSquarePlus, PanelLeftClose, Pencil, Search, Settings, Shield, Trash2, UserCircle2, X } from "lucide-react";
 import clsx from "clsx";
 import { resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
@@ -158,6 +158,14 @@ export function Sidebar() {
             <MessageSquarePlus size={17} />
             New chat
           </button>
+          <Link
+            className="compact-button flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.055] px-3 text-sm font-semibold text-cyan-50 transition hover:border-cyan-200/30 hover:bg-cyan-200/10"
+            onClick={closeSidebar}
+            to="/messages"
+          >
+            <MessageCircle size={16} />
+            User messages
+          </Link>
           <label className="compact-input flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.055] px-3 text-sm text-slate-300 focus-within:border-cyan-200/40">
             <Search size={15} className="shrink-0 text-slate-500" />
             <input

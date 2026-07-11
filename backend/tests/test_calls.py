@@ -402,3 +402,23 @@ async def test_accepted_call_is_not_expired_as_missed(db: Session, monkeypatch: 
 
     assert accepted.status == "accepted"
     assert expired.status == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_late_reject_after_accept_does_not_mark_callee_rejected(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    caller = create_user(db, "caller_user", "Caller")
+    callee = create_user(db, "callee_user", "Callee")
+    call = Call(caller_id=caller.id, callee_id=callee.id, call_type="video", status="ringing")
+    db.add(call)
+    db.commit()
+    monkeypatch.setattr(global_presence_service, "publish", AsyncMock(return_value=1))
+    monkeypatch.setattr(global_presence_service, "release_call_locks", AsyncMock(return_value=None))
+
+    accepted = await CallService().accept(db, call.id, callee.id)
+    late_reject = await CallService().reject(db, call.id, callee.id)
+
+    db.refresh(call)
+    assert accepted.status == "accepted"
+    assert late_reject.status == "accepted"
+    assert call.status == "accepted"
+    assert call.end_reason is None

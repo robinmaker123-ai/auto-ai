@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, users, voice
+from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, user_messages, users, voice
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
 from app.db.session import SessionLocal, init_db
@@ -15,7 +15,7 @@ from app.services.admin_seed import create_admin_from_env
 from app.services.apk_service import apk_service
 from app.services.call_service import call_timeout_worker
 from app.services.presence_service import RealtimeUnavailable, presence_service
-from app.websockets import call_signaling
+from app.websockets import call_signaling, user_chat
 
 
 logger = logging.getLogger("auto_ai.startup")
@@ -124,6 +124,8 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router, prefix=settings.API_V1_STR)
     app.include_router(calls.router, prefix=settings.API_V1_STR)
     app.include_router(call_signaling.router, prefix=settings.API_V1_STR)
+    app.include_router(user_messages.router, prefix=settings.API_V1_STR)
+    app.include_router(user_chat.router, prefix=settings.API_V1_STR)
     app.include_router(download.router, prefix="/api")
     app.include_router(download.router, prefix=settings.API_V1_STR)
     app.include_router(payments.router, prefix="/api")

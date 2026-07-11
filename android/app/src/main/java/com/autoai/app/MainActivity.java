@@ -115,6 +115,7 @@ public class MainActivity extends BridgeActivity {
         checkForUpdate(true);
         startUpdatePolling();
         dispatchIncomingCallIntent(getIntent());
+        dispatchOpenChatIntent(getIntent());
     }
 
     @Override
@@ -122,6 +123,23 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         dispatchIncomingCallIntent(intent);
+        dispatchOpenChatIntent(intent);
+    }
+
+    private void dispatchOpenChatIntent(Intent intent) {
+        if (intent == null) return;
+        String threadId = intent.getStringExtra("open_chat_thread_id");
+        if (threadId == null || threadId.trim().isEmpty()) return;
+        final String pendingThreadId = threadId.trim();
+        mainHandler.postDelayed(() -> {
+            try {
+                JSONObject detail = new JSONObject();
+                detail.put("threadId", pendingThreadId);
+                if (getBridge() != null) getBridge().triggerWindowJSEvent("auto-ai-open-chat-thread", detail.toString());
+            } catch (Exception ignored) {
+                // The web layer handles navigation after startup.
+            }
+        }, 350L);
     }
 
     private void dispatchIncomingCallIntent(Intent intent) {
@@ -129,7 +147,7 @@ public class MainActivity extends BridgeActivity {
         String callId = intent.getStringExtra(CallNotificationManager.EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
         String action = intent.getStringExtra(CallNotificationManager.EXTRA_ACTION);
-        if (action != null && !"accept".equals(action)) return;
+        if (action != null && !"accept".equals(action) && !"audio_only".equals(action)) return;
         callId = callId.trim();
         final String pendingCallId = callId;
         CallNotificationManager.savePending(this, callId, action, System.currentTimeMillis() + 60000L);

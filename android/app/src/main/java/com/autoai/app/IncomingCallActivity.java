@@ -52,7 +52,7 @@ public class IncomingCallActivity extends Activity {
         String callType = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_CALL_TYPE));
         String initialAction = clean(callIntent.getStringExtra(CallNotificationManager.EXTRA_ACTION));
         boolean invalidCallerId = callIntent.hasExtra(CallNotificationManager.EXTRA_CALLER_ID) && callerId == null;
-        boolean invalidAction = initialAction != null && !"accept".equals(initialAction);
+        boolean invalidAction = initialAction != null && !"accept".equals(initialAction) && !"audio_only".equals(initialAction);
         if (callId == null || invalidCallerId || invalidAction
             || (!"audio".equals(callType) && !"video".equals(callType))
             || expiresAt <= System.currentTimeMillis()) {
@@ -101,8 +101,9 @@ public class IncomingCallActivity extends Activity {
         setContentView(root);
 
         reject.setOnClickListener(view -> rejectCall());
-        accept.setOnClickListener(view -> acceptCall());
-        if ("accept".equals(initialAction)) acceptCall();
+        accept.setOnClickListener(view -> acceptCall(false));
+        if ("accept".equals(initialAction)) acceptCall(false);
+        else if ("audio_only".equals(initialAction)) acceptCall(true);
     }
 
     @Override
@@ -120,13 +121,14 @@ public class IncomingCallActivity extends Activity {
         super.onDestroy();
     }
 
-    private void acceptCall() {
-        CallNotificationManager.savePending(this, callId, "accept", expiresAt);
+    private void acceptCall(boolean audioOnly) {
+        String action = audioOnly ? "audio_only" : "accept";
+        CallNotificationManager.savePending(this, callId, action, expiresAt);
         CallNotificationManager.cancelNotification(this, callId);
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra(CallNotificationManager.EXTRA_CALL_ID, callId);
-        intent.putExtra(CallNotificationManager.EXTRA_ACTION, "accept");
+        intent.putExtra(CallNotificationManager.EXTRA_ACTION, action);
         startActivity(intent);
         finish();
     }

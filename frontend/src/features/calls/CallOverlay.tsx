@@ -1,5 +1,5 @@
 import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, RefreshCw, Settings, SwitchCamera, Volume2, VolumeX, Wifi } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { resolveApiAssetUrl } from "../../api/client";
 import { useCallSession } from "./hooks/useCallSession";
 import { callNative } from "./services/callNative";
@@ -52,6 +52,7 @@ export function CallOverlay() {
   const { sessionState, call, peer, localStream, remoteStream, cameraEnabled, remoteCameraEnabled, muted, speakerEnabled, networkQuality, error } = callSession;
   const [seconds, setSeconds] = useState(0);
   const [pipPosition, setPipPosition] = useState({ x: 0, y: 0 });
+  const [incomingActionPending, setIncomingActionPending] = useState(false);
   const dragRef = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
 
   useEffect(() => {
@@ -59,6 +60,10 @@ export function CallOverlay() {
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [sessionState]);
+
+  useEffect(() => {
+    if (sessionState === "incoming") setIncomingActionPending(false);
+  }, [call?.id, sessionState]);
 
   if (sessionState === "idle" || !peer) return null;
 
@@ -78,6 +83,14 @@ export function CallOverlay() {
     });
   }
 
+  function runIncomingAction(event: ReactMouseEvent<HTMLButtonElement>, action: () => Promise<void>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (incomingActionPending) return;
+    setIncomingActionPending(true);
+    void action().catch(() => setIncomingActionPending(false));
+  }
+
   if (incoming) {
     return (
       <div className="incoming-call-screen" role="dialog" aria-modal="true" aria-label={`Incoming call from ${peer.display_name}`}>
@@ -91,9 +104,9 @@ export function CallOverlay() {
           <small className="call-privacy-note">Your email and mobile number remain private.</small>
           {error && <div className="call-screen-error">{error}</div>}
           <div className="incoming-call-actions">
-            <button type="button" className="reject" onClick={() => void callSession.rejectCall()} aria-label="Reject call"><PhoneOff size={23} /><span>Reject</span></button>
-            {call?.call_type === "video" && <button type="button" className="audio-only" onClick={() => void callSession.acceptCall(true)} aria-label="Accept as audio only"><Mic size={22} /><span>Audio only</span></button>}
-            <button type="button" className="accept" onClick={() => void callSession.acceptCall(false)} aria-label="Accept call"><Phone size={23} /><span>Accept</span></button>
+            <button type="button" className="reject" disabled={incomingActionPending} onClick={(event) => runIncomingAction(event, callSession.rejectCall)} aria-label="Reject call"><PhoneOff size={23} /><span>Reject</span></button>
+            {call?.call_type === "video" && <button type="button" className="audio-only" disabled={incomingActionPending} onClick={(event) => runIncomingAction(event, () => callSession.acceptCall(true))} aria-label="Accept as audio only"><Mic size={22} /><span>Audio only</span></button>}
+            <button type="button" className="accept" disabled={incomingActionPending} onClick={(event) => runIncomingAction(event, () => callSession.acceptCall(false))} aria-label="Accept call"><Phone size={23} /><span>Accept</span></button>
           </div>
         </div>
       </div>

@@ -35,9 +35,10 @@ public final class CallNotificationManager {
     public static final String EXTRA_CALL_TYPE = "call_type";
     public static final String EXTRA_EXPIRES_AT = "expires_at_epoch_ms";
     public static final String EXTRA_ACTION = "call_action";
-    public static final String ACTION_ACCEPT = "com.autoai.app.call.ACCEPT";
-    public static final String ACTION_REJECT = "com.autoai.app.call.REJECT";
-    public static final String ACTION_END = "com.autoai.app.call.END";
+    public static final String ACTION_ACCEPT = "AUTOAI_CALL_ACCEPT";
+    public static final String ACTION_REJECT = "AUTOAI_CALL_REJECT";
+    public static final String ACTION_AUDIO_ONLY = "AUTOAI_CALL_AUDIO_ONLY";
+    public static final String ACTION_END = "AUTOAI_CALL_END";
     private static final String PREFS = "auto_ai_calls";
     private static final String PENDING_CALL_ID = "pending_call_id";
     private static final String PENDING_ACTION = "pending_action";
@@ -70,6 +71,7 @@ public final class CallNotificationManager {
         PendingIntent fullScreen = PendingIntent.getActivity(context, notificationId(callId), incomingIntent, pendingFlags());
 
         Intent acceptIntent = new Intent(incomingIntent);
+        acceptIntent.setAction(ACTION_ACCEPT);
         acceptIntent.putExtra(EXTRA_ACTION, "accept");
         PendingIntent accept = PendingIntent.getActivity(context, notificationId(callId) + 1, acceptIntent, pendingFlags());
         Intent rejectIntent = new Intent(context, CallActionReceiver.class).setAction(ACTION_REJECT).putExtra(EXTRA_CALL_ID, callId);

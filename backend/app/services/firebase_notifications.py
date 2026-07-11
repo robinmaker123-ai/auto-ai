@@ -90,6 +90,24 @@ class FirebaseNotificationService:
         }
         return self._send(message)
 
+    def send_chat_data(self, token: str, data: dict[str, str], title: str, body: str) -> FcmSendResult:
+        message = {
+            "message": {
+                "token": token,
+                "notification": {"title": title[:120], "body": body[:180]},
+                "data": data,
+                "android": {
+                    "priority": "HIGH",
+                    "notification": {
+                        "channel_id": "auto_ai_messages",
+                        "default_sound": True,
+                        "notification_priority": "PRIORITY_HIGH",
+                    },
+                },
+            }
+        }
+        return self._send(message)
+
     def _send(self, message: dict[str, Any]) -> FcmSendResult:
         try:
             service_account = self._service_account()

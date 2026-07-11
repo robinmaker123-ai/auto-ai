@@ -14,6 +14,7 @@ from app.models.message import Message
 from app.models.push import PushDeviceToken
 from app.models.search import SearchCache, SearchRun
 from app.models.user import User
+from app.models.user_chat import ChatMessage as UserChatMessage, ChatParticipant, ChatThread, MessageReceipt, UserChatSettings
 
 __all__ = [
     "APIUsage",
@@ -24,6 +25,8 @@ __all__ = [
     "ChatGeneration",
     "ChatMessage",
     "ChatSession",
+    "ChatParticipant",
+    "ChatThread",
     "BlockedUser",
     "Call",
     "CallReport",
@@ -43,10 +46,13 @@ __all__ = [
     "SearchRun",
     "UsageLog",
     "User",
+    "UserChatMessage",
+    "UserChatSettings",
     "UserCallSettings",
     "UserDevice",
     "UserInteractionProfile",
     "UserMemory",
     "UserSubscription",
     "VisionFrame",
+    "MessageReceipt",
 ]

@@ -7,12 +7,14 @@ import {
   Bell,
   Bot,
   BrainCircuit,
+  CheckCheck,
   ChevronRight,
   CreditCard,
   Globe2,
   LockKeyhole,
   LogOut,
   Mic,
+  MessageCircle,
   Monitor,
   Moon,
   Radio,
@@ -37,6 +39,8 @@ import type { AiProvider, ResearchProvider } from "../../types";
 import { SubscriptionBillingCenter } from "./SubscriptionBillingCenter";
 import { CallSettings } from "../../features/calls/CallSettings";
 import { ProfileAccountCard } from "./ProfileAccountCard";
+import { userMessagesApi } from "../../features/userMessages/userMessagesApi";
+import type { ChatSettings } from "../../features/userMessages/types";
 
 const APP_VERSION = "1.0.2";
 
@@ -60,7 +64,7 @@ const PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: "Gemini"
 };
 
-type SettingsSection = "main" | "general" | "subscription" | "privacy" | "calls";
+type SettingsSection = "main" | "general" | "subscription" | "privacy" | "calls" | "chat";
 type Accent = "cyan" | "violet" | "amber" | "green" | "rose" | "red";
 
 function SettingsIcon({ icon: Icon, accent = "cyan" }: { icon: LucideIcon; accent?: Accent }) {
@@ -217,10 +221,11 @@ export function SettingsPage() {
   } = useAppSettings();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [isClearingChats, setIsClearingChats] = useState(false);
+  const [chatSettings, setChatSettings] = useState<ChatSettings | null>(null);
 
   const section = useMemo<SettingsSection>(() => {
     const current = new URLSearchParams(location.search).get("section");
-    return current === "general" || current === "subscription" || current === "privacy" || current === "calls" ? current : "main";
+    return current === "general" || current === "subscription" || current === "privacy" || current === "calls" || current === "chat" ? current : "main";
   }, [location.search]);
 
   const providerModels = useMemo(
@@ -228,11 +233,16 @@ export function SettingsPage() {
     [settings.defaultProvider]
   );
   const selectedModelLabel = providerModels.find((item) => item.value === settings.defaultModel)?.label ?? settings.defaultModel;
-  const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : "Settings";
+  const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : section === "chat" ? "Chat" : "Settings";
 
   useEffect(() => {
     setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
   }, []);
+
+  useEffect(() => {
+    if (!token || section !== "chat") return;
+    void userMessagesApi.settings(token).then(setChatSettings).catch(() => undefined);
+  }, [section, token]);
 
   function openSection(nextSection: Exclude<SettingsSection, "main">) {
     navigate(`/settings?section=${nextSection}`);
@@ -323,6 +333,12 @@ export function SettingsPage() {
     }
   }
 
+  async function updateChatSettings(payload: Partial<ChatSettings>) {
+    if (!token) return;
+    const next = await userMessagesApi.updateSettings(token, payload);
+    setChatSettings(next);
+  }
+
   function renderMainSettings() {
     return (
       <SettingsCard>
@@ -352,6 +368,13 @@ export function SettingsPage() {
           title="Calls"
           description="Discoverability, call privacy, sound and blocked users"
           onClick={() => openSection("calls")}
+        />
+        <SettingsRow
+          icon={MessageCircle}
+          accent="violet"
+          title="Chat"
+          description="Message privacy, read receipts and typing"
+          onClick={() => openSection("chat")}
         />
         <SettingsRow
           icon={Bot}
@@ -531,6 +554,30 @@ export function SettingsPage() {
     );
   }
 
+  function renderChatSettings() {
+    const current = chatSettings;
+    return (
+      <SettingsCard>
+        <SettingsRow icon={MessageCircle} accent="violet" title="Message privacy" description="Who can start a user-to-user chat">
+          <Select value={current?.allow_messages_from || "everyone"} onChange={(value) => void updateChatSettings({ allow_messages_from: value as ChatSettings["allow_messages_from"] })} label="Allow messages from">
+            <option value="everyone">Everyone</option>
+            <option value="known_users">Known users</option>
+            <option value="nobody">Nobody</option>
+          </Select>
+        </SettingsRow>
+        <SettingsRow icon={CheckCheck} accent="cyan" title="Read receipts" description="Show when you read messages">
+          <Toggle checked={current?.read_receipts_enabled ?? true} onChange={(checked) => void updateChatSettings({ read_receipts_enabled: checked })} disabled={!current} />
+        </SettingsRow>
+        <SettingsRow icon={Radio} accent="green" title="Typing indicator" description="Show when you are typing">
+          <Toggle checked={current?.typing_indicator_enabled ?? true} onChange={(checked) => void updateChatSettings({ typing_indicator_enabled: checked })} disabled={!current} />
+        </SettingsRow>
+        <SettingsRow icon={Globe2} title="Last seen" description="Allow chat peers to see last seen">
+          <Toggle checked={current?.last_seen_enabled ?? true} onChange={(checked) => void updateChatSettings({ last_seen_enabled: checked })} disabled={!current} />
+        </SettingsRow>
+      </SettingsCard>
+    );
+  }
+
   return (
     <motion.div
       className="settings-page min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 text-white md:px-6 md:py-5"
@@ -554,6 +601,7 @@ export function SettingsPage() {
           {section === "subscription" && <SubscriptionBillingCenter />}
           {section === "privacy" && renderPrivacySettings()}
           {section === "calls" && <CallSettings />}
+          {section === "chat" && renderChatSettings()}
         </div>
       </div>
     </motion.div>

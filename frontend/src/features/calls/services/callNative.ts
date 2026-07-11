@@ -2,7 +2,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 
 type NativeIncomingCall = {
   callId?: string | null;
-  action?: "accept" | "reject" | null;
+  action?: "accept" | "reject" | "audio_only" | null;
 };
 
 type NativeCallPlugin = {
