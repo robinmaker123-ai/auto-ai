@@ -1,6 +1,6 @@
 import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, HashRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ShellProvider } from "./contexts/ShellContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -56,11 +56,12 @@ function AdminRoute() {
 }
 
 export default function App() {
+  const Router = isMobileAppRuntime() ? HashRouter : BrowserRouter;
   return (
     <ThemeProvider>
       <AuthProvider>
         <ShellProvider>
-          <BrowserRouter>
+          <Router>
             <SeoManager />
             <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
               <Routes>
@@ -92,7 +93,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
-          </BrowserRouter>
+          </Router>
         </ShellProvider>
       </AuthProvider>
     </ThemeProvider>

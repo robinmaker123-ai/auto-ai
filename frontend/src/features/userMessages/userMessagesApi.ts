@@ -2,16 +2,16 @@ import { apiFetch, createWebSocketUrl } from "../../api/client";
 import type { ChatRealtimeEvent, ChatSettings, ChatUserPage, MessagePage, ThreadPage, UserMessage, UserThread } from "./types";
 
 export const userMessagesApi = {
-  listThreads: (token: string, archived?: boolean) =>
-    apiFetch<ThreadPage>(`/messages${archived === undefined ? "" : `?archived=${archived}`}`, { token, operation: "messages.threads.list" }),
-  searchUsers: (token: string, query: string, page = 1) =>
-    apiFetch<ChatUserPage>(`/messages/search-users?query=${encodeURIComponent(query)}&page=${page}`, { token, operation: "messages.users.search" }),
-  createThread: (token: string, peerUserId: string) =>
-    apiFetch<UserThread>("/messages/threads", { method: "POST", token, operation: "messages.threads.create", body: JSON.stringify({ peer_user_id: peerUserId }) }),
-  getThread: (token: string, threadId: string) =>
-    apiFetch<UserThread>(`/messages/threads/${threadId}`, { token, operation: "messages.threads.get" }),
-  listMessages: (token: string, threadId: string, before?: string) =>
-    apiFetch<MessagePage>(`/messages/threads/${threadId}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`, { token, operation: "messages.list" }),
+  listThreads: (token: string, archived?: boolean, signal?: AbortSignal) =>
+    apiFetch<ThreadPage>(`/messages${archived === undefined ? "" : `?archived=${archived}`}`, { token, signal, operation: "messages.threads.list" }),
+  searchUsers: (token: string, query: string, page = 1, signal?: AbortSignal) =>
+    apiFetch<ChatUserPage>(`/messages/search-users?query=${encodeURIComponent(query)}&page=${page}`, { token, signal, operation: "messages.users.search" }),
+  createThread: (token: string, peerUserId: string, signal?: AbortSignal) =>
+    apiFetch<UserThread>("/messages/threads", { method: "POST", token, signal, operation: "messages.threads.create", body: JSON.stringify({ peer_user_id: peerUserId }) }),
+  getThread: (token: string, threadId: string, signal?: AbortSignal) =>
+    apiFetch<UserThread>(`/messages/threads/${encodeURIComponent(threadId)}`, { token, signal, operation: "messages.threads.get" }),
+  listMessages: (token: string, threadId: string, before?: string, signal?: AbortSignal) =>
+    apiFetch<MessagePage>(`/messages/threads/${encodeURIComponent(threadId)}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`, { token, signal, operation: "messages.list" }),
   sendMessage: (token: string, threadId: string, payload: { text_content: string; client_message_id: string }) =>
     apiFetch<UserMessage>(`/messages/threads/${threadId}/messages`, { method: "POST", token, operation: "messages.send", body: JSON.stringify(payload) }),
   sendAttachment: (token: string, threadId: string, file: File, textContent: string, clientMessageId: string) => {

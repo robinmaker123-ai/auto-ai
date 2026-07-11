@@ -65,8 +65,8 @@
 .um-composer button,
 .um-attach,
 .um-voice {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   display: grid;
   place-items: center;
@@ -75,7 +75,9 @@
 }
 
 .um-chat-head button:disabled,
-.um-composer button:disabled {
+.um-composer button:disabled,
+.um-thread:disabled,
+.um-search-results button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -351,7 +353,8 @@
 }
 
 .um-attachment-preview,
-.um-error {
+.um-error,
+.um-list-error {
   margin: 0 12px 8px;
   border-radius: 12px;
   padding: 8px 10px;
@@ -363,7 +366,8 @@
 }
 
 .um-attachment-preview span,
-.um-error span {
+.um-error span,
+.um-list-error span {
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -371,7 +375,8 @@
   white-space: nowrap;
 }
 
-.um-error {
+.um-error,
+.um-list-error {
   color: #fecaca;
   border-color: rgba(248, 113, 113, 0.28);
   background: rgba(127, 29, 29, 0.28);

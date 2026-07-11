@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useNavigate, useParams } from "react-router-dom";
 import { resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
+import { isMobileAppRuntime } from "../../utils/runtime";
 import { useCallSession } from "../calls/hooks/useCallSession";
 import type { ChatPublicUser, ChatRealtimeEvent, UserMessage, UserThread } from "./types";
 import { UserMessageSocket, userMessagesApi } from "./userMessagesApi";
@@ -54,6 +55,8 @@ export function UserMessagesPage() {
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [searchResults, setSearchResults] = useState<ChatPublicUser[]>([]);
   const [openingPeerId, setOpeningPeerId] = useState("");
+  const [openingThreadId, setOpeningThreadId] = useState("");
+  const [loadingThreadId, setLoadingThreadId] = useState("");
   const [composer, setComposer] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({});
@@ -65,6 +68,14 @@ export function UserMessagesPage() {
   const socketRef = useRef<UserMessageSocket | null>(null);
   const retryingMessagesRef = useRef<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const savedListScrollRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const activeThreadIdRef = useRef<string | null>(null);
+  const routeThreadIdRef = useRef<string | undefined>(threadId);
+  const attachmentRef = useRef<File | null>(null);
+  const openGuardRef = useRef("");
+  const returnToListRef = useRef<() => void>(() => undefined);
 
   const upsertThread = useCallback((thread: UserThread) => {
     setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]
@@ -81,8 +92,26 @@ export function UserMessagesPage() {
 
   const loadThread = useCallback(async (id: string) => {
     if (!token) return;
+    if (!id) {
+      setError("Conversation is unavailable.");
+      setActiveThread(null);
+      setMessages([]);
+      return;
+    }
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    setLoadingThreadId(id);
+    setOpeningThreadId(id);
+    setActiveThread(null);
+    setMessages([]);
+    setError("");
     try {
-      const [thread, messagePage] = await Promise.all([userMessagesApi.getThread(token, id), userMessagesApi.listMessages(token, id)]);
+      const [thread, messagePage] = await Promise.all([
+        userMessagesApi.getThread(token, id, controller.signal),
+        userMessagesApi.listMessages(token, id, undefined, controller.signal),
+      ]);
+      if (controller.signal.aborted || loadAbortRef.current !== controller) return;
       setActiveThread(thread);
       upsertThread(thread);
       setMessages(messagePage.items);
@@ -90,30 +119,40 @@ export function UserMessagesPage() {
       await userMessagesApi.markRead(token, id).catch(() => undefined);
       setThreads((current) => current.map((item) => item.id === id ? { ...item, unread_count: 0 } : item));
     } catch (loadError) {
+      if (controller.signal.aborted) return;
       setError(loadError instanceof Error ? loadError.message : "Unable to open chat.");
       setActiveThread(null);
       setMessages([]);
+      navigate("/messages", { replace: true });
+    } finally {
+      if (loadAbortRef.current === controller) {
+        setLoadingThreadId("");
+        setOpeningThreadId("");
+        openGuardRef.current = "";
+      }
     }
-  }, [token, upsertThread]);
+  }, [navigate, token, upsertThread]);
 
   const handleRealtime = useCallback((event: ChatRealtimeEvent) => {
     if (event.type === "message.new" || event.type === "message.sent_ack") {
       const message = event.payload.message as UserMessage | undefined;
       if (!message) return;
-      setMessages((current) => {
-        const filtered = current.filter((item) => item.id !== message.id && item.client_message_id !== message.client_message_id);
-        return [...filtered, message].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
-      });
-      if (event.thread_id && event.thread_id === activeThread?.id && token) {
+      if (message.thread_id === activeThreadIdRef.current) {
+        setMessages((current) => {
+          const filtered = current.filter((item) => item.id !== message.id && item.client_message_id !== message.client_message_id);
+          return [...filtered, message].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+        });
+      }
+      if (event.thread_id && event.thread_id === activeThreadIdRef.current && token) {
         void userMessagesApi.markRead(token, event.thread_id);
       } else {
         void loadThreads();
       }
     } else if (event.type === "thread.updated") {
       void loadThreads();
-      if (event.thread_id && event.thread_id === activeThread?.id) void loadThread(event.thread_id);
+      if (event.thread_id && event.thread_id === activeThreadIdRef.current) void loadThread(event.thread_id);
     } else if (event.type === "message.read" || event.type === "message.delivered") {
-      if (activeThread?.id) void loadThread(activeThread.id);
+      if (activeThreadIdRef.current) void loadThread(activeThreadIdRef.current);
     } else if (event.type === "typing.start" && event.thread_id) {
       setTypingUsers((current) => ({ ...current, [event.thread_id!]: Date.now() + 3500 }));
     } else if (event.type === "typing.stop" && event.thread_id) {
@@ -121,7 +160,7 @@ export function UserMessagesPage() {
     } else if (event.type === "error") {
       setError(String(event.payload.detail || "Messaging error"));
     }
-  }, [activeThread?.id, loadThread, loadThreads, token]);
+  }, [loadThread, loadThreads, token]);
 
   useEffect(() => {
     void loadThreads();
@@ -139,10 +178,26 @@ export function UserMessagesPage() {
   useEffect(() => {
     if (threadId) void loadThread(threadId);
     else {
+      loadAbortRef.current?.abort();
+      setLoadingThreadId("");
+      setOpeningThreadId("");
+      openGuardRef.current = "";
       setActiveThread(null);
       setMessages([]);
     }
   }, [loadThread, threadId]);
+
+  useEffect(() => {
+    activeThreadIdRef.current = activeThread?.id ?? null;
+  }, [activeThread?.id]);
+
+  useEffect(() => {
+    routeThreadIdRef.current = threadId;
+  }, [threadId]);
+
+  useEffect(() => {
+    attachmentRef.current = attachment;
+  }, [attachment]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -150,16 +205,70 @@ export function UserMessagesPage() {
 
   useEffect(() => {
     if (!token) return;
+    const controller = new AbortController();
     const term = query.trim();
     if (term.length < 2) {
       setSearchResults([]);
       return;
     }
     const timer = window.setTimeout(() => {
-      void userMessagesApi.searchUsers(token, term).then((page) => setSearchResults(page.items)).catch(() => setSearchResults([]));
+      void userMessagesApi.searchUsers(token, term, 1, controller.signal).then((page) => setSearchResults(page.items)).catch(() => {
+        if (!controller.signal.aborted) setSearchResults([]);
+      });
     }, 280);
-    return () => window.clearTimeout(timer);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
   }, [query, token]);
+
+  const returnToList = useCallback(() => {
+    savedListScrollRef.current = listRef.current?.scrollTop ?? savedListScrollRef.current;
+    loadAbortRef.current?.abort();
+    setActiveThread(null);
+    setMessages([]);
+    setLoadingThreadId("");
+    setOpeningThreadId("");
+    openGuardRef.current = "";
+    navigate("/messages", { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    returnToListRef.current = returnToList;
+  }, [returnToList]);
+
+  useEffect(() => {
+    if (threadId) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = savedListScrollRef.current;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [filter, query, threadId, threads.length]);
+
+  useEffect(() => {
+    if (!isMobileAppRuntime()) return;
+    const app = (window as Window & {
+      Capacitor?: { Plugins?: { App?: { addListener?: (eventName: "backButton", listener: () => void) => Promise<{ remove?: () => Promise<void> | void }> | { remove?: () => Promise<void> | void } } } };
+    }).Capacitor?.Plugins?.App;
+    if (!app?.addListener) return;
+    let handle: { remove?: () => Promise<void> | void } | undefined;
+    void Promise.resolve(app.addListener("backButton", () => {
+      if (attachmentRef.current) {
+        setAttachment(null);
+        return;
+      }
+      if (routeThreadIdRef.current) {
+        returnToListRef.current();
+        return;
+      }
+      navigate("/chat", { replace: true });
+    })).then((result) => {
+      handle = result;
+    });
+    return () => {
+      void handle?.remove?.();
+    };
+  }, [navigate]);
 
   const visibleThreads = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -172,11 +281,28 @@ export function UserMessagesPage() {
   }, [filter, query, threads]);
 
   async function openThread(thread: UserThread) {
-    navigate(`/messages/${thread.id}`);
+    if (!thread.id) {
+      setError("Conversation is unavailable.");
+      return;
+    }
+    if (threadId === thread.id || openingThreadId === thread.id || openGuardRef.current === thread.id) return;
+    savedListScrollRef.current = listRef.current?.scrollTop ?? savedListScrollRef.current;
+    openGuardRef.current = thread.id;
+    setOpeningThreadId(thread.id);
+    setError("");
+    navigate(`/messages/${encodeURIComponent(thread.id)}`);
   }
 
   async function startThread(peer: ChatPublicUser) {
     if (!token) return;
+    const existing = threads.find((thread) => thread.peer.id === peer.id);
+    if (existing) {
+      setQuery("");
+      setSearchResults([]);
+      await openThread(existing);
+      return;
+    }
+    if (openingPeerId === peer.id) return;
     setOpeningPeerId(peer.id);
     setError("");
     try {
@@ -184,7 +310,10 @@ export function UserMessagesPage() {
       upsertThread(thread);
       setQuery("");
       setSearchResults([]);
-      navigate(`/messages/${thread.id}`);
+      savedListScrollRef.current = listRef.current?.scrollTop ?? savedListScrollRef.current;
+      openGuardRef.current = thread.id;
+      setOpeningThreadId(thread.id);
+      navigate(`/messages/${encodeURIComponent(thread.id)}`);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "Unable to open chat.");
       setShowRetry(false);
@@ -347,6 +476,7 @@ export function UserMessagesPage() {
           {filters.map((item) => <button type="button" key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item === "favourites" ? "Favourites" : item[0].toUpperCase() + item.slice(1)}</button>)}
           <button type="button" className="new" onClick={() => setQuery("@")}>+ New Chat</button>
         </div>
+        {!activeThread && error && <div className="um-list-error"><span>{error}</span><button type="button" onClick={() => setError("")}><X size={14} /></button></div>}
         {searchResults.length > 0 && (
           <div className="um-search-results">
             {searchResults.map((peer) => (
@@ -356,13 +486,13 @@ export function UserMessagesPage() {
             ))}
           </div>
         )}
-        <div className="um-thread-list">
+        <div className="um-thread-list" ref={listRef}>
           {visibleThreads.map((thread) => (
-            <button type="button" key={thread.id} className={`um-thread ${activeThread?.id === thread.id ? "active" : ""} ${thread.unread_count ? "unread" : ""}`} onClick={() => void openThread(thread)}>
+            <button type="button" key={thread.id} className={`um-thread ${activeThread?.id === thread.id ? "active" : ""} ${thread.unread_count ? "unread" : ""}`} onClick={() => void openThread(thread)} disabled={openingThreadId === thread.id || loadingThreadId === thread.id}>
               <Avatar user={thread.peer} />
               <span className="um-thread-copy">
                 <strong>{thread.peer.display_name}<small>@{thread.peer.username}</small></strong>
-                <em>{messagePreview(thread.last_message)}</em>
+                <em>{openingThreadId === thread.id || loadingThreadId === thread.id ? "Opening..." : messagePreview(thread.last_message)}</em>
               </span>
               <span className="um-thread-meta">
                 <time>{timeLabel(thread.last_message?.created_at || thread.updated_at)}</time>
@@ -378,7 +508,7 @@ export function UserMessagesPage() {
         {activeThread ? (
           <>
             <header className="um-chat-head">
-              <button type="button" className="back" onClick={() => navigate("/messages")}><ArrowLeft size={18} /></button>
+              <button type="button" className="back" onClick={returnToList}><ArrowLeft size={18} /></button>
               <Avatar user={activeThread.peer} />
               <span><strong>{activeThread.peer.display_name}</strong><small>{typing ? "typing..." : `@${activeThread.peer.username} · ${activeThread.peer.availability}`}</small></span>
               <button type="button" onClick={() => void startCall("audio")} disabled={!activeThread.peer.can_audio_call} aria-label="Audio call"><Phone size={18} /></button>

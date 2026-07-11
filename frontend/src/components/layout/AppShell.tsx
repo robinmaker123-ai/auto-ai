@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { PanelLeftOpen } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsProvider } from "../../contexts/AppSettingsContext";
@@ -13,6 +13,7 @@ import "../../features/calls/calls.css";
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const lastOpenedThreadRef = useRef("");
   const {
     closeSidebar,
     expandSidebar,
@@ -28,14 +29,19 @@ export function AppShell() {
       const rawDetail = event instanceof CustomEvent ? event.detail : null;
       try {
         const detail = typeof rawDetail === "string" ? JSON.parse(rawDetail) : rawDetail;
-        if (detail?.threadId) navigate(`/messages/${encodeURIComponent(detail.threadId)}`);
+        const threadId = typeof detail?.threadId === "string" ? detail.threadId.trim() : "";
+        if (!threadId) return;
+        const encodedThreadId = encodeURIComponent(threadId);
+        if (lastOpenedThreadRef.current === threadId && location.pathname.endsWith(`/${encodedThreadId}`)) return;
+        lastOpenedThreadRef.current = threadId;
+        navigate(`/messages/${encodedThreadId}`, { replace: location.pathname.startsWith("/messages/") });
       } catch {
         return;
       }
     };
     window.addEventListener("auto-ai-open-chat-thread", openChatThread);
     return () => window.removeEventListener("auto-ai-open-chat-thread", openChatThread);
-  }, [navigate]);
+  }, [location.pathname, navigate]);
 
   return (
     <AppSettingsProvider>
