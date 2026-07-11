@@ -59,6 +59,9 @@ export function UserMessagesPage() {
   const [typingUsers, setTypingUsers] = useState<Record<string, number>>({});
   const [socketState, setSocketState] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   const [error, setError] = useState("");
+  const [showRetry, setShowRetry] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const socketRef = useRef<UserMessageSocket | null>(null);
   const retryingMessagesRef = useRef<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +187,7 @@ export function UserMessagesPage() {
       navigate(`/messages/${thread.id}`);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "Unable to open chat.");
+      setShowRetry(false);
     } finally {
       setOpeningPeerId("");
     }
@@ -214,6 +218,7 @@ export function UserMessagesPage() {
         });
         setMessages((current) => current.map((item) => item.client_message_id === clientId ? sent : item));
         setError("");
+        setShowRetry(false);
         void loadThreads();
       } catch {
         return;
@@ -235,7 +240,10 @@ export function UserMessagesPage() {
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!token || !activeThread || (!composer.trim() && !attachment)) return;
+    if (!token || !activeThread || sending || (!composer.trim() && !attachment)) return;
+    setSending(true);
+    setShowRetry(false);
+    setError("");
     const client_message_id = eventId();
     const optimistic: UserMessage = {
       id: `local-${client_message_id}`,
@@ -260,21 +268,69 @@ export function UserMessagesPage() {
         ? await userMessagesApi.sendAttachment(token, activeThread.id, file, optimistic.text_content || "", client_message_id)
         : await userMessagesApi.sendMessage(token, activeThread.id, { text_content: optimistic.text_content || "", client_message_id });
       setMessages((current) => current.map((item) => item.client_message_id === client_message_id ? sent : item));
+      setError("");
       void loadThreads();
     } catch (sendError) {
       if (file) {
-        setError(sendError instanceof Error ? sendError.message : "Attachment failed");
+        setError(sendError instanceof Error ? sendError.message : "Attachment could not be sent.");
+        setShowRetry(false);
         setMessages((current) => current.filter((item) => item.client_message_id !== client_message_id));
+        setAttachment(file);
         return;
       }
-      setError("Message pending. It will send automatically when the server is reachable.");
+      setError("Message could not be sent. Tap to retry.");
+      setShowRetry(true);
+    } finally {
+      setSending(false);
     }
   }
 
   function pickAttachment(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
+    setError("");
+    setShowRetry(false);
     if (file && file.size <= 20 * 1024 * 1024) setAttachment(file);
+    else if (file) setError("Attachment is too large. Choose a file under 20 MB.");
     event.target.value = "";
+  }
+
+  async function requestMicrophone() {
+    setError("");
+    setShowRetry(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setError("Microphone is ready.");
+    } catch {
+      setError("Microphone permission was denied.");
+    }
+  }
+
+  async function startCall(type: "audio" | "video") {
+    if (!activeThread?.peer) {
+      setError("Calling service is temporarily unavailable.");
+      return;
+    }
+    try {
+      await callSession.startCall(activeThread.peer, type);
+    } catch {
+      setError("Calling service is temporarily unavailable.");
+    }
+  }
+
+  async function togglePin() {
+    if (!token || !activeThread || pinning) return;
+    setPinning(true);
+    setError("");
+    setShowRetry(false);
+    try {
+      const updated = await userMessagesApi.setPin(token, activeThread.id, !activeThread.pinned);
+      upsertThread(updated);
+    } catch {
+      setError("Chat action failed. Please retry.");
+    } finally {
+      setPinning(false);
+    }
   }
 
   const typing = activeThread && typingUsers[activeThread.id] > Date.now();
@@ -325,9 +381,9 @@ export function UserMessagesPage() {
               <button type="button" className="back" onClick={() => navigate("/messages")}><ArrowLeft size={18} /></button>
               <Avatar user={activeThread.peer} />
               <span><strong>{activeThread.peer.display_name}</strong><small>{typing ? "typing..." : `@${activeThread.peer.username} · ${activeThread.peer.availability}`}</small></span>
-              <button type="button" onClick={() => void callSession.startCall(activeThread.peer, "audio")} disabled={!activeThread.peer.can_audio_call} aria-label="Audio call"><Phone size={18} /></button>
-              <button type="button" onClick={() => void callSession.startCall(activeThread.peer, "video")} disabled={!activeThread.peer.can_video_call} aria-label="Video call"><Video size={19} /></button>
-              <button type="button" onClick={() => void userMessagesApi.setPin(token || "", activeThread.id, !activeThread.pinned).then(upsertThread)} aria-label="Pin"><MoreVertical size={18} /></button>
+              <button type="button" onClick={() => void startCall("audio")} disabled={!activeThread.peer.can_audio_call} aria-label="Audio call"><Phone size={18} /></button>
+              <button type="button" onClick={() => void startCall("video")} disabled={!activeThread.peer.can_video_call} aria-label="Video call"><Video size={19} /></button>
+              <button type="button" onClick={() => void togglePin()} disabled={pinning} aria-label="Pin"><MoreVertical size={18} /></button>
             </header>
             <div className="um-messages">
               {messages.map((message) => {
@@ -343,13 +399,13 @@ export function UserMessagesPage() {
               })}
               <div ref={bottomRef} />
             </div>
-            {error && <div className="um-error"><span>{error}</span><button type="button" onClick={() => setError("")}><X size={14} /></button></div>}
+            {error && <div className="um-error"><span>{error}</span>{showRetry && <button type="button" className="um-retry" onClick={() => void retryPendingTextMessages()}>Retry</button>}<button type="button" onClick={() => { setError(""); setShowRetry(false); }}><X size={14} /></button></div>}
             {attachment && <div className="um-attachment-preview">{attachment.type.startsWith("image/") ? <Image size={16} /> : <FileText size={16} />}<span>{attachment.name}</span><button type="button" onClick={() => setAttachment(null)}><X size={14} /></button></div>}
             <form className="um-composer" onSubmit={sendMessage}>
               <label className="um-attach"><Paperclip size={18} /><input type="file" accept="image/*,.pdf,.txt,.doc,.docx,.zip" onChange={pickAttachment} /></label>
-              <button type="button" className="um-voice" title="Voice notes are coming soon" aria-label="Voice note placeholder"><Mic size={18} /></button>
+              <button type="button" className="um-voice" onClick={() => void requestMicrophone()} aria-label="Microphone"><Mic size={18} /></button>
               <textarea value={composer} onFocus={() => sendTyping(true)} onBlur={() => sendTyping(false)} onChange={(event) => { setComposer(event.target.value); sendTyping(true); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(event); } }} placeholder="Message" rows={1} />
-              <button type="submit" disabled={!composer.trim() && !attachment} aria-label="Send"><Send size={18} /></button>
+              <button type="submit" disabled={sending || (!composer.trim() && !attachment)} aria-label="Send"><Send size={18} /></button>
             </form>
           </>
         ) : (

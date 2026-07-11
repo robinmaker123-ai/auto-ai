@@ -377,6 +377,18 @@
   background: rgba(127, 29, 29, 0.28);
 }
 
+.um-error .um-retry {
+  width: auto;
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(254, 202, 202, 0.28);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .um-empty,
 .um-no-chat {
   color: #94a3b8;

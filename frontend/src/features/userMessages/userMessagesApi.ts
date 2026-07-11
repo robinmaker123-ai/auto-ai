@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiFetch } from "../../api/client";
+import { apiFetch, createWebSocketUrl } from "../../api/client";
 import type { ChatRealtimeEvent, ChatSettings, ChatUserPage, MessagePage, ThreadPage, UserMessage, UserThread } from "./types";
 
 export const userMessagesApi = {
@@ -41,15 +41,18 @@ export class UserMessageSocket {
   private queue: ChatRealtimeEvent[] = [];
   private closed = false;
   private reconnectTimer = 0;
+  private reconnectAttempt = 0;
+  private readonly maxReconnectAttempts = 8;
 
   constructor(private token: string, private onEvent: (event: ChatRealtimeEvent) => void, private onState: (state: "connecting" | "connected" | "disconnected") => void) {}
 
   connect() {
     this.closed = false;
     this.onState("connecting");
-    const wsUrl = `${API_BASE_URL.replace(/^http/, "ws")}/messages/ws?token=${encodeURIComponent(this.token)}`;
+    const wsUrl = createWebSocketUrl("/api/v1/messages/ws", { token: this.token });
     this.socket = new WebSocket(wsUrl);
     this.socket.onopen = () => {
+      this.reconnectAttempt = 0;
       this.onState("connected");
       const pending = this.queue.splice(0);
       pending.forEach((event) => this.send(event));
@@ -63,7 +66,12 @@ export class UserMessageSocket {
     };
     this.socket.onclose = () => {
       this.onState("disconnected");
-      if (!this.closed) this.reconnectTimer = window.setTimeout(() => this.connect(), 1800);
+      if (!this.closed) {
+        if (this.reconnectAttempt >= this.maxReconnectAttempts) return;
+        const delay = Math.min(15_000, 750 * 2 ** Math.min(this.reconnectAttempt, 5));
+        this.reconnectAttempt += 1;
+        this.reconnectTimer = window.setTimeout(() => this.connect(), delay);
+      }
     };
   }
 

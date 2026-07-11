@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../../../api/client";
+import { createWebSocketUrl } from "../../../api/client";
 import { callApi } from "./callApi";
 import type { SignalEnvelope } from "../types";
 
@@ -6,11 +6,7 @@ type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 const MAX_RECONNECT_ATTEMPTS = 8;
 
 function websocketUrl(ticket: string) {
-  const base = new URL(API_BASE_URL, window.location.origin);
-  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-  base.pathname = `${base.pathname.replace(/\/$/, "")}/calls/ws`;
-  base.search = new URLSearchParams({ ticket }).toString();
-  return base.toString();
+  return createWebSocketUrl("/api/v1/calls/ws", { ticket });
 }
 
 export class CallSignaling {

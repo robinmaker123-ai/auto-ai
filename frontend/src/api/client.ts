@@ -54,6 +54,7 @@ declare global {
 const PUBLIC_API_BASE_URL = "https://auto-ai-production-c510.up.railway.app/api/v1";
 const DEFAULT_API_TIMEOUT_MS = 8000;
 const API_DIAGNOSTIC_TIMEOUT_MS = 2500;
+export const API_ENVIRONMENT = import.meta.env.MODE || "production";
 
 export type ApiErrorKind =
   | "network_unavailable"
@@ -145,7 +146,18 @@ function stripTrailingSlash(value: string) {
 
 function normalizeApiUrl(value?: string) {
   const trimmed = value?.trim();
-  return trimmed ? stripTrailingSlash(trimmed) : "";
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed, isBrowser() ? window.location.origin : PUBLIC_API_BASE_URL);
+    url.pathname = `/${url.pathname
+      .replace(/\/+/g, "/")
+      .replace(/\/api\/v1(?:\/api\/v1)+\/?$/i, "/api/v1")
+      .replace(/\/+$/g, "")}`;
+    if (!/\/api\/v1$/i.test(url.pathname)) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/v1`;
+    return stripTrailingSlash(url.toString());
+  } catch {
+    return "";
+  }
 }
 
 function configuredApiUrl() {
@@ -154,12 +166,18 @@ function configuredApiUrl() {
 }
 
 function resolveApiBaseUrl() {
-  const runtimeUrl = isBrowser() ? normalizeApiUrl(window.__AUTO_AI_API_URL__) : "";
-  const configured = runtimeUrl || normalizeApiUrl(import.meta.env.VITE_API_URL);
+  const rawRuntimeUrl = isBrowser() ? window.__AUTO_AI_API_URL__?.trim() || "" : "";
+  const rawBuildUrl = import.meta.env.VITE_API_URL?.trim() || "";
+  const rawConfigured = rawRuntimeUrl || rawBuildUrl;
+  const runtimeUrl = normalizeApiUrl(rawRuntimeUrl);
+  const configured = runtimeUrl || normalizeApiUrl(rawBuildUrl);
   if (!isBrowser()) return configured || PUBLIC_API_BASE_URL;
 
   const pageUrl = window.location;
   const localPage = pageUrl.hostname === "localhost" || pageUrl.hostname === "127.0.0.1";
+  const capacitorPlatform = (window as Window & { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.();
+  const mobileApp = capacitorPlatform === "android" || capacitorPlatform === "ios" || (pageUrl.protocol === "https:" && pageUrl.hostname === "localhost");
+  if (mobileApp && (!configured || !/^https:\/\//i.test(rawConfigured))) return PUBLIC_API_BASE_URL;
   if (!configured && localPage && pageUrl.protocol === "http:") {
     return "http://localhost:8000/api/v1";
   }
@@ -176,7 +194,21 @@ function resolveApiBaseUrl() {
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
+export const WS_BASE_URL = (() => {
+  const url = new URL(API_BASE_URL, isBrowser() ? window.location.origin : PUBLIC_API_BASE_URL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = url.pathname.replace(/\/api\/v1\/?$/i, "");
+  url.search = "";
+  url.hash = "";
+  return stripTrailingSlash(url.toString());
+})();
 export const APK_DOWNLOAD_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, "/api").replace(/\/+$/, "") + "/download/apk";
+
+export function createWebSocketUrl(path: string, params?: Record<string, string>) {
+  const url = new URL(path.startsWith("/") ? path : `/${path}`, `${WS_BASE_URL}/`);
+  if (params) url.search = new URLSearchParams(params).toString();
+  return url.toString();
+}
 
 export function resolveApiAssetUrl(value?: string | null) {
   if (!value) return "";
@@ -365,23 +397,23 @@ function logApiIssue(error: ApiClientError, context: ApiContext, meta: RequestMe
 async function createConnectionError(input: string, originalError: unknown, meta: RequestMeta = {}) {
   const context = getApiContext(input);
   let kind: ApiErrorKind = "server_unreachable";
-  let message = `Server unreachable: Auto-AI API did not respond at ${context.apiOrigin}.`;
+  let message = "Auto-AI server is temporarily unavailable.";
 
   if (context.online === false) {
     kind = "network_unavailable";
-    message = "Network unavailable: your browser is offline or mobile data/Wi-Fi is not connected.";
+    message = "You are offline. Check mobile data or Wi-Fi and retry.";
   } else if (context.mixedContent) {
     kind = "ssl_certificate_issue";
-    message = "SSL / mixed-content issue: the site is HTTPS but the API URL is HTTP. Use a public HTTPS API URL.";
+    message = "Auto-AI server configuration is invalid.";
   } else if (isCertificateLikeError(originalError)) {
     kind = "ssl_certificate_issue";
-    message = "SSL certificate issue: the browser rejected the API connection certificate.";
+    message = "Auto-AI server certificate could not be verified.";
   } else if (context.crossOrigin) {
     if (await canReachApiWithCors()) {
       message = "Connection interrupted. Please retry.";
     } else if (await canReachApiHostWithoutCors()) {
       kind = "cors_blocked";
-      message = `CORS blocked: ${context.apiOrigin} is reachable, but it is not allowing requests from ${context.pageOrigin}.`;
+      message = "Auto-AI server is temporarily unavailable.";
     }
   }
 
@@ -396,8 +428,7 @@ async function createConnectionError(input: string, originalError: unknown, meta
 
 function createTimeoutError(input: string, timeoutMs: number, meta: RequestMeta = {}) {
   const context = getApiContext(input);
-  const seconds = Math.max(1, Math.round(timeoutMs / 1000));
-  const error = new ApiClientError(`Server timeout: Auto-AI API did not respond within ${seconds}s. Please retry.`, {
+  const error = new ApiClientError("Auto-AI server is temporarily unavailable. Please retry.", {
     kind: "server_unreachable",
     url: context.apiUrl,
   });
@@ -416,7 +447,9 @@ function createHttpError(
   const detail = getErrorMessage(payload, statusText || "Request failed");
   const authFailed = status === 401 || status === 403;
   const message = authFailed
-    ? `Authentication failed: ${detail}`
+    ? status === 401
+      ? "Your session expired. Please sign in again."
+      : "You do not have permission for this action."
     : `Request failed (${status}): ${detail}`;
   const error = new ApiClientError(message, {
     kind: authFailed ? "authentication_failed" : "http_error",
