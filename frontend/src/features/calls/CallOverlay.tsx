@@ -6,8 +6,23 @@ import { callNative } from "./services/callNative";
 
 function VideoSurface({ stream, muted, className }: { stream: MediaStream | null; muted?: boolean; className: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => { if (ref.current) ref.current.srcObject = stream; }, [stream]);
-  return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    if (video.srcObject !== stream) video.srcObject = stream;
+    if (stream) void video.play().catch(() => undefined);
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      className={className}
+      autoPlay
+      playsInline
+      muted={muted}
+      onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)}
+      onCanPlay={(event) => void event.currentTarget.play().catch(() => undefined)}
+    />
+  );
 }
 
 function Avatar({ name, url }: { name: string; url?: string | null }) {
@@ -51,6 +66,7 @@ export function CallOverlay() {
   const incoming = sessionState === "incoming";
   const activeLike = ["connecting", "active", "reconnecting", "ending"].includes(sessionState);
   const avatarUrl = resolveApiAssetUrl(peer.avatar_url);
+  const hasRemoteVideo = Boolean(remoteStream?.getVideoTracks().some((track) => track.readyState === "live"));
 
   function movePip(event: ReactPointerEvent<HTMLDivElement>) {
     if (!dragRef.current) return;
@@ -106,7 +122,7 @@ export function CallOverlay() {
 
   return (
     <div className="active-call-screen" role="dialog" aria-modal="true" aria-label={`Call with ${peer.display_name}`}>
-      {remoteStream && remoteCameraEnabled ? <VideoSurface stream={remoteStream} className="remote-call-video" /> : <div className="remote-call-placeholder"><Avatar name={peer.display_name} url={peer.avatar_url} /></div>}
+      {remoteStream && remoteCameraEnabled && hasRemoteVideo ? <VideoSurface stream={remoteStream} className="remote-call-video" /> : <div className="remote-call-placeholder"><Avatar name={peer.display_name} url={peer.avatar_url} /></div>}
       <div className="call-screen-shade" />
       <header className="active-call-header">
         <span><strong>{peer.display_name}</strong><small>{sessionState === "active" ? time : statusLabel(sessionState)}</small></span>

@@ -66,6 +66,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const sessionStateRef = useRef(sessionState);
   const callRef = useRef(call);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const peerCallIdRef = useRef<string | null>(null);
   const turnCredentialsRef = useRef<{ iceServers: RTCIceServer[]; relayConfigured: boolean; warning?: string | null; expiresAtMs: number } | null>(null);
@@ -133,6 +134,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   useEffect(() => { sessionStateRef.current = sessionState; }, [sessionState]);
   useEffect(() => { callRef.current = call; }, [call]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
+  useEffect(() => { remoteStreamRef.current = remoteStream; }, [remoteStream]);
   useEffect(() => { configRef.current = config; }, [config]);
 
   const signaling = useMemo(
@@ -357,12 +359,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
     terminalCallIdsRef.current.delete(currentCall.id);
     localStreamRef.current?.getTracks().forEach((track) => peer.addTrack(track, localStreamRef.current!));
     peer.ontrack = (event) => {
-      const stream = event.streams[0] ?? new MediaStream([event.track]);
-      setRemoteStream(stream);
+      const stream = event.streams[0] ?? new MediaStream(remoteStreamRef.current?.getTracks() ?? []);
+      if (!stream.getTracks().some((track) => track.id === event.track.id)) stream.addTrack(event.track);
+      const nextRemoteStream = new MediaStream(stream.getTracks());
+      remoteStreamRef.current = nextRemoteStream;
+      setRemoteStream(nextRemoteStream);
       if (event.track.kind === "video") {
-        setRemoteCameraEnabled(!event.track.muted);
-        event.track.onmute = () => setRemoteCameraEnabled(false);
+        setRemoteCameraEnabled(true);
+        event.track.onmute = () => callDebug("remote_video_track_muted", { call_id: currentCall.id, role: currentCall.direction });
         event.track.onunmute = () => setRemoteCameraEnabled(true);
+        event.track.onended = () => setRemoteCameraEnabled(false);
       }
     };
     peer.onicecandidate = (event) => {
@@ -509,6 +515,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     localStreamRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
+    remoteStreamRef.current = null;
     setCameraEnabled(false);
     setRemoteCameraEnabled(true);
     setMuted(false);
