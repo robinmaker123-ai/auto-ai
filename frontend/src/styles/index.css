@@ -1820,6 +1820,7 @@ button:disabled {
 }
 
 .landing-nav {
+  --landing-nav-height: 64px;
   position: fixed;
   right: 0;
   left: 0;

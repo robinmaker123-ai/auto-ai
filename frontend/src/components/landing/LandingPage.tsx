@@ -100,7 +100,7 @@ export function LandingPage() {
   }, []);
 
   return (
-    <AnimatedPage className="landing-page">
+    <>
       <header className="landing-nav">
         <Link className="brand-mark" to="/">
           <span className="brand-icon"><LogoIcon /></span>
@@ -123,6 +123,7 @@ export function LandingPage() {
         </div>
       </header>
 
+      <AnimatedPage className="landing-page">
       <main>
         <CognitiveThread />
         <section className="landing-hero" data-chapter="Awaken">
@@ -374,5 +375,6 @@ export function LandingPage() {
         <p>Premium AI workspace for contextual, human-feeling conversations.</p>
       </footer>
     </AnimatedPage>
+    </>
   );
 }
