@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { enableSafeMode } from "../../reliability/safeMode";
+import { isMobileAppRuntime } from "../../utils/runtime";
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
@@ -7,6 +9,7 @@ type AppErrorBoundaryProps = {
 
 type AppErrorBoundaryState = {
   error: Error | null;
+  referenceId: string;
 };
 
 const CHUNK_RELOAD_KEY = "auto-ai-chunk-reload-attempted";
@@ -22,14 +25,18 @@ function isChunkLoadError(error: Error) {
 }
 
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { error: null };
+  state: AppErrorBoundaryState = { error: null, referenceId: "" };
 
   static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
-    return { error };
+    return { error, referenceId: `ERR-${Date.now().toString(36).toUpperCase()}` };
   }
 
   componentDidMount() {
-    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    try {
+      sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    } catch {
+      return;
+    }
   }
 
   componentDidUpdate(previousProps: AppErrorBoundaryProps) {
@@ -39,12 +46,34 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Auto-AI] App render failed.", error, info);
+    console.error("[Auto-AI] App render failed.", { referenceId: this.state.referenceId, error, info });
     if (!isChunkLoadError(error)) return;
-    if (sessionStorage.getItem(CHUNK_RELOAD_KEY) === "1") return;
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+    try {
+      if (sessionStorage.getItem(CHUNK_RELOAD_KEY) === "1") return;
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+    } catch {
+      return;
+    }
     window.setTimeout(() => window.location.reload(), 100);
   }
+
+  returnToChat = () => {
+    if (isMobileAppRuntime()) {
+      window.location.hash = "#/chat";
+      return;
+    }
+    window.location.assign("/chat");
+  };
+
+  restartInSafeMode = () => {
+    enableSafeMode("render-error");
+    if (isMobileAppRuntime()) {
+      window.location.hash = "#/chat";
+      window.location.reload();
+      return;
+    }
+    window.location.href = "/chat";
+  };
 
   render() {
     if (!this.state.error) return this.props.children;
@@ -59,12 +88,19 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               ? "The app could not load this page file. Retry or return to the main workspace."
               : "The page could not render. Retry or return to the main workspace."}
           </p>
+          <p className="app-error-reference">Reference: {this.state.referenceId || "unavailable"}</p>
           <div className="app-error-actions">
             <button className="btn-primary" type="button" onClick={() => this.setState({ error: null })}>
               Retry
             </button>
-            <a className="btn-secondary" href="/chat">
+            <button className="btn-secondary" type="button" onClick={this.returnToChat}>
               Return to chat
+            </button>
+            <button className="btn-secondary" type="button" onClick={this.restartInSafeMode}>
+              Restart in Safe Mode
+            </button>
+            <a className="btn-secondary" href={`mailto:support@autoai.site.je?subject=Auto-AI%20problem%20${encodeURIComponent(this.state.referenceId)}`}>
+              Report Problem
             </a>
           </div>
         </section>

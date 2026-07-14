@@ -23,6 +23,11 @@ import {
   Sun,
   Trash2,
   PhoneCall,
+  Gem,
+  AudioLines,
+  CircleDot,
+  MousePointer2,
+  RotateCcw,
   type LucideIcon
 } from "lucide-react";
 import { api } from "../../api/client";
@@ -42,6 +47,8 @@ import { userMessagesApi } from "../../features/userMessages/userMessagesApi";
 import type { ChatSettings } from "../../features/userMessages/types";
 import { useMotionMode } from "../../motion/MotionProvider";
 import type { MotionPreference } from "../../motion/tokens";
+import { CrystalButton, CrystalCard } from "../crystal/Crystal";
+import { crystalUiEnabled, type CrystalEffectsLevel } from "../../crystal/tokens";
 
 const APP_VERSION = "1.0.3";
 
@@ -72,7 +79,7 @@ const PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: "Gemini"
 };
 
-type SettingsSection = "main" | "general" | "subscription" | "privacy" | "calls" | "chat";
+type SettingsSection = "main" | "general" | "visual" | "subscription" | "privacy" | "calls" | "chat";
 type Accent = "cyan" | "violet" | "amber" | "green" | "rose" | "red";
 
 function SettingsIcon({ icon: Icon, accent = "cyan" }: { icon: LucideIcon; accent?: Accent }) {
@@ -95,9 +102,9 @@ function SettingsIcon({ icon: Icon, accent = "cyan" }: { icon: LucideIcon; accen
 
 function SettingsCard({ children }: { children: React.ReactNode }) {
   return (
-    <section className="settings-card overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] shadow-[0_16px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+    <CrystalCard className="settings-card overflow-hidden">
       {children}
-    </section>
+    </CrystalCard>
   );
 }
 
@@ -213,7 +220,16 @@ export function SettingsPage() {
   const { token, logout } = useAuth();
   const { chats, refreshChats, setActiveChat } = useChat();
   const { theme, setTheme } = useTheme();
-  const { preference: motionPreference, setPreference: setMotionPreference, mode: activeMotionMode, tier: performanceTier } = useMotionMode();
+  const {
+    preference: motionPreference,
+    setPreference: setMotionPreference,
+    mode: activeMotionMode,
+    tier: performanceTier,
+    safeMode,
+    safeModeReason,
+    enableSafeMode,
+    disableSafeMode
+  } = useMotionMode();
   const {
     settings,
     setDefaultProvider,
@@ -226,7 +242,13 @@ export function SettingsPage() {
     setDeepResearchProviders,
     setDeepResearchMaxModels,
     setDeepResearchAllModels,
-    setDeepResearchTimeoutSeconds
+    setDeepResearchTimeoutSeconds,
+    setVisualEffectsLevel,
+    setCrystalOrb,
+    setCrystalSurfaces,
+    setCrystalButtonMotion,
+    setCrystalVoiceVisualizer,
+    resetVisualEffects
   } = useAppSettings();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [isClearingChats, setIsClearingChats] = useState(false);
@@ -234,7 +256,7 @@ export function SettingsPage() {
 
   const section = useMemo<SettingsSection>(() => {
     const current = new URLSearchParams(location.search).get("section");
-    return current === "general" || current === "subscription" || current === "privacy" || current === "calls" || current === "chat" ? current : "main";
+    return current === "general" || current === "visual" || current === "subscription" || current === "privacy" || current === "calls" || current === "chat" ? current : "main";
   }, [location.search]);
 
   const providerModels = useMemo(
@@ -242,7 +264,7 @@ export function SettingsPage() {
     [settings.defaultProvider]
   );
   const selectedModelLabel = providerModels.find((item) => item.value === settings.defaultModel)?.label ?? settings.defaultModel;
-  const sectionTitle = section === "general" ? "General" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : section === "chat" ? "Chat" : "Settings";
+  const sectionTitle = section === "general" ? "General" : section === "visual" ? "Visual Effects" : section === "subscription" ? "Subscription" : section === "privacy" ? "Privacy & Security" : section === "calls" ? "Calls" : section === "chat" ? "Chat" : "Settings";
 
   useEffect(() => {
     setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
@@ -337,9 +359,15 @@ export function SettingsPage() {
   }
 
   function updateProvider(value: string) {
-    if (value === "openai" || value === "groq" || value === "bedrock") {
+    if (value === "openai" || value === "groq" || value === "bedrock" || value === "gemini") {
       setDefaultProvider(value);
     }
+  }
+
+  function restartInSafeMode() {
+    enableSafeMode("settings");
+    navigate("/chat", { replace: true });
+    window.setTimeout(() => window.location.reload(), 80);
   }
 
   async function updateChatSettings(payload: Partial<ChatSettings>) {
@@ -363,6 +391,13 @@ export function SettingsPage() {
           title="Subscription"
           description="Current plan, billing, tokens and payment"
           onClick={() => openSection("subscription")}
+        />
+        <SettingsRow
+          icon={Gem}
+          accent="violet"
+          title="Visual Effects"
+          description={`Crystal UI: ${crystalUiEnabled ? settings.visualEffectsLevel : "disabled"}`}
+          onClick={() => openSection("visual")}
         />
         <SettingsRow
           icon={LockKeyhole}
@@ -417,6 +452,58 @@ export function SettingsPage() {
     );
   }
 
+  function renderVisualEffectsSettings() {
+    const controlsDisabled = !crystalUiEnabled || settings.visualEffectsLevel === "off";
+    const levels: Array<{ value: CrystalEffectsLevel; label: string }> = [
+      { value: "off", label: "Off" },
+      { value: "reduced", label: "Reduced" },
+      { value: "full", label: "Full" }
+    ];
+    return (
+      <div className="grid gap-3">
+        <SettingsCard>
+          <SettingsRow
+            icon={Gem}
+            accent="violet"
+            title="Visual Effects"
+            description={crystalUiEnabled ? "Reduced is optimized for Android and mobile." : "Disabled by the application feature flag."}
+          >
+            <div className="visual-effects-segment" role="group" aria-label="Visual effects level">
+              {levels.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={!crystalUiEnabled}
+                  aria-pressed={settings.visualEffectsLevel === option.value}
+                  onClick={() => setVisualEffectsLevel(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </SettingsRow>
+          <SettingsRow icon={CircleDot} accent="cyan" title="3D AI Orb" description="CSS crystal status tied to real chat and voice activity">
+            <Toggle checked={settings.crystalOrb} onChange={setCrystalOrb} disabled={controlsDisabled} />
+          </SettingsRow>
+          <SettingsRow icon={Gem} accent="violet" title="Crystal surfaces" description="Small cards and dialogs only">
+            <Toggle checked={settings.crystalSurfaces} onChange={setCrystalSurfaces} disabled={controlsDisabled} />
+          </SettingsRow>
+          <SettingsRow icon={MousePointer2} accent="green" title="Button motion" description="Short press-depth feedback">
+            <Toggle checked={settings.crystalButtonMotion} onChange={setCrystalButtonMotion} disabled={controlsDisabled} />
+          </SettingsRow>
+          <SettingsRow icon={AudioLines} accent="rose" title="Voice visualizer" description="Runs only during real listening or speaking activity">
+            <Toggle checked={settings.crystalVoiceVisualizer} onChange={setCrystalVoiceVisualizer} disabled={controlsDisabled} />
+          </SettingsRow>
+          <SettingsRow icon={RotateCcw} title="Reset visual effects" description="Restore lightweight defaults" showChevron={false}>
+            <CrystalButton className="btn-secondary min-h-8 px-2.5 py-1 text-[11px]" type="button" onClick={resetVisualEffects}>
+              <RotateCcw size={13} /> Reset
+            </CrystalButton>
+          </SettingsRow>
+        </SettingsCard>
+      </div>
+    );
+  }
+
   function renderGeneralSettings() {
     return (
       <div className="grid gap-3">
@@ -445,7 +532,7 @@ export function SettingsPage() {
             icon={Sparkles}
             accent="violet"
             title="Motion"
-            description={`Active: ${activeMotionMode} / ${performanceTier}`}
+            description={safeMode ? `Safe Mode active${safeModeReason ? `: ${safeModeReason}` : ""}` : `Active: ${activeMotionMode} / ${performanceTier}`}
           >
             <Select value={motionPreference} onChange={(value) => setMotionPreference(value as MotionPreference)} label="Motion preference">
               {MOTION_OPTIONS.map((option) => (
@@ -454,6 +541,22 @@ export function SettingsPage() {
                 </option>
               ))}
             </Select>
+          </SettingsRow>
+          <SettingsRow
+            icon={Shield}
+            accent={safeMode ? "amber" : "green"}
+            title={safeMode ? "Safe Mode" : "Restart in Safe Mode"}
+            description={safeMode ? "Advanced effects and experimental UI are disabled." : "Use a conservative mode if screens are blank or slow."}
+          >
+            {safeMode ? (
+              <button className="btn-secondary min-h-8 px-2.5 py-1 text-[11px]" type="button" onClick={disableSafeMode}>
+                Exit Safe Mode
+              </button>
+            ) : (
+              <button className="btn-secondary min-h-8 px-2.5 py-1 text-[11px]" type="button" onClick={restartInSafeMode}>
+                Restart in Safe Mode
+              </button>
+            )}
           </SettingsRow>
         </SettingsCard>
 
@@ -617,6 +720,7 @@ export function SettingsPage() {
         <div className="grid gap-3">
           {section === "main" && renderMainSettings()}
           {section === "general" && renderGeneralSettings()}
+          {section === "visual" && renderVisualEffectsSettings()}
           {section === "subscription" && <SubscriptionBillingCenter />}
           {section === "privacy" && renderPrivacySettings()}
           {section === "calls" && <CallSettings />}

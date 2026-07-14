@@ -27,7 +27,7 @@ export type UsernameAvailability = {
   message: string;
 };
 
-export type UserRole = "user" | "admin" | "super_admin";
+export type UserRole = "user" | "admin" | "super_admin" | "content_admin" | "content_editor" | "content_viewer";
 
 export type SearchMode = "off" | "auto" | "web" | "news" | "research" | "deep";
 export type ChatMode = "normal" | "deep_research" | "multi_model";

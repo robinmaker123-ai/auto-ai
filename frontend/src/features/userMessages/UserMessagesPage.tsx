@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { useNavigate, useParams } from "react-router-dom";
 import { resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
-import { isMobileAppRuntime } from "../../utils/runtime";
 import { useCallSession } from "../calls/hooks/useCallSession";
 import type { ChatPublicUser, ChatRealtimeEvent, UserMessage, UserThread } from "./types";
 import { UserMessageSocket, userMessagesApi } from "./userMessagesApi";
@@ -342,29 +341,22 @@ export function UserMessagesPage() {
   }, [filter, query, threadId, threads.length]);
 
   useEffect(() => {
-    if (!isMobileAppRuntime()) return;
-    const app = (window as Window & {
-      Capacitor?: { Plugins?: { App?: { addListener?: (eventName: "backButton", listener: () => void) => Promise<{ remove?: () => Promise<void> | void }> | { remove?: () => Promise<void> | void } } } };
-    }).Capacitor?.Plugins?.App;
-    if (!app?.addListener) return;
-    let handle: { remove?: () => Promise<void> | void } | undefined;
-    void Promise.resolve(app.addListener("backButton", () => {
+    const handleAndroidBack = (event: Event) => {
       if (attachmentRef.current) {
+        event.preventDefault();
         setAttachment(null);
         return;
       }
       if (routeThreadIdRef.current) {
+        event.preventDefault();
         returnToListRef.current();
-        return;
       }
-      navigate("/chat", { replace: true });
-    })).then((result) => {
-      handle = result;
-    });
-    return () => {
-      void handle?.remove?.();
     };
-  }, [navigate]);
+    window.addEventListener("auto-ai-android-back", handleAndroidBack);
+    return () => {
+      window.removeEventListener("auto-ai-android-back", handleAndroidBack);
+    };
+  }, []);
 
   const visibleThreads = useMemo(() => {
     const term = query.trim().toLowerCase();

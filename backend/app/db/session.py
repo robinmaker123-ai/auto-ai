@@ -76,6 +76,16 @@ def ensure_runtime_schema() -> None:
         if "metadata" not in document_columns:
             add_column("documents", "metadata", "json")
 
+    if "content_pages" in table_names:
+        cms_page_columns = {column["name"] for column in inspector.get_columns("content_pages")}
+        if "published_slug" not in cms_page_columns:
+            add_column("content_pages", "published_slug", "VARCHAR(160)")
+
+    if "announcements" in table_names:
+        announcement_columns = {column["name"] for column in inspector.get_columns("announcements")}
+        if "published_snapshot" not in announcement_columns:
+            add_column("announcements", "published_snapshot", "json")
+
     if "users" in table_names:
         user_columns = {column["name"] for column in inspector.get_columns("users")}
         user_indexes = {index["name"] for index in inspector.get_indexes("users")}
@@ -321,8 +331,8 @@ def ensure_runtime_schema() -> None:
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('message_permission')} = 'everyone' WHERE {quote('message_permission')} IS NULL OR TRIM({quote('message_permission')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('subscription_status')} = 'free' WHERE {quote('subscription_status')} IS NULL OR TRIM({quote('subscription_status')}) = ''"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'user' WHERE {quote('role')} IS NULL OR TRIM({quote('role')}) = ''"))
-            connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'admin' WHERE {quote('is_admin')} = TRUE AND {quote('role')} NOT IN ('admin', 'super_admin')"))
-            connection.execute(text(f"UPDATE {quote('users')} SET {quote('is_admin')} = TRUE WHERE {quote('role')} IN ('admin', 'super_admin') AND {quote('is_admin')} = FALSE"))
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('role')} = 'admin' WHERE {quote('is_admin')} = TRUE AND {quote('role')} NOT IN ('admin', 'super_admin', 'content_admin', 'content_editor', 'content_viewer')"))
+            connection.execute(text(f"UPDATE {quote('users')} SET {quote('is_admin')} = TRUE WHERE {quote('role')} IN ('admin', 'super_admin', 'content_admin', 'content_editor', 'content_viewer') AND {quote('is_admin')} = FALSE"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('created_at')} = CURRENT_TIMESTAMP WHERE {quote('created_at')} IS NULL"))
             connection.execute(text(f"UPDATE {quote('users')} SET {quote('updated_at')} = {quote('created_at')} WHERE {quote('updated_at')} IS NULL"))
             if "phone_number" in user_columns or any("phone_number" in statement for statement in statements):

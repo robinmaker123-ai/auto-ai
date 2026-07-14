@@ -114,16 +114,12 @@
 
 .live-ai-orb-stage > strong { font-size: 15px; font-weight: 650; }
 .live-ai-orb-stage > p { max-width: 100%; margin: 0; color: rgba(255,255,255,.75); font-size: 13px; }
-.live-ai-orb { width: clamp(132px, 38vw, 210px); aspect-ratio: 1; border-radius: 50%; }
-.live-orb-listening { background: radial-gradient(circle at 35% 30%, #eaf5ff, #7168ff 43%, #3a218d 75%); box-shadow: 0 0 55px rgba(101, 105, 255, .68); animation: auto-live-pulse 2s ease-in-out infinite; }
-.live-orb-connected { background: radial-gradient(circle at 35% 30%, #e9fff6, #36c9ac 45%, #284f93 78%); box-shadow: 0 0 55px rgba(66, 211, 175, .55); }
-.live-orb-thinking { background: conic-gradient(from 90deg, #645cff, #d962ff, #4bd7ff, #645cff); box-shadow: 0 0 58px rgba(165, 91, 255, .6); animation: auto-live-spin 2.4s linear infinite; }
-.live-orb-speaking { background: radial-gradient(circle at 35% 30%, #effffb, #47dcb5 44%, #3364c7 76%); box-shadow: 0 0 55px rgba(75, 220, 181, .62); animation: auto-live-pulse .9s ease-in-out infinite; }
-.live-orb-permission { background: radial-gradient(circle at 35% 30%, #fff8e6, #e6a632 48%, #76551e 76%); box-shadow: 0 0 48px rgba(230, 166, 50, .5); }
-.live-orb-failure { background: radial-gradient(circle at 35% 30%, #ffecef, #d9445c 48%, #701d30 78%); box-shadow: 0 0 48px rgba(217, 68, 92, .48); }
-
-@keyframes auto-live-pulse { 50% { transform: scale(1.055); } }
-@keyframes auto-live-spin { to { transform: rotate(360deg); } }
+.live-camera-ai-status.live-orb-listening { border-color: rgba(113, 104, 255, .58); }
+.live-camera-ai-status.live-orb-connected { border-color: rgba(54, 201, 172, .58); }
+.live-camera-ai-status.live-orb-thinking { border-color: rgba(217, 98, 255, .58); }
+.live-camera-ai-status.live-orb-speaking { border-color: rgba(71, 220, 181, .62); }
+.live-camera-ai-status.live-orb-permission { border-color: rgba(230, 166, 50, .58); }
+.live-camera-ai-status.live-orb-failure { border-color: rgba(217, 68, 92, .58); }
 
 .live-camera-ai-status {
   position: absolute;
@@ -275,7 +271,6 @@
 @media (max-width: 380px), (max-height: 690px) {
   .live-call-controls { gap: 5px; }
   .live-round-button, .live-end-call-button { width: 44px; height: 44px; min-width: 44px; }
-  .live-ai-orb { width: 120px; }
   .live-ai-orb-stage { top: 18%; }
   .live-permission-card { right: 68px; }
 }

@@ -7,13 +7,14 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, social, user_messages, users, voice
+from app.api.routes import admin, ai, auth, calls, chat_sessions, chats, cms, documents, download, health, human, live, live_websocket, memory, notifications, payments, search, social, user_messages, users, voice
 from app.core.config import settings
 from app.core.rate_limit import InMemoryRateLimitMiddleware
 from app.db.session import SessionLocal, init_db
 from app.services.admin_seed import create_admin_from_env
 from app.services.apk_service import apk_service
 from app.services.call_service import call_timeout_worker
+from app.services.cms_service import ensure_cms_defaults
 from app.services.presence_service import RealtimeUnavailable, presence_service
 from app.websockets import call_signaling, user_chat
 
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
         with SessionLocal() as db:
             create_admin_from_env(db)
             apk_service.sync_filesystem_release(db)
+            ensure_cms_defaults(db)
 
     @app.on_event("startup")
     async def start_call_workers() -> None:
@@ -153,6 +155,7 @@ def create_app() -> FastAPI:
     app.include_router(payments.router, prefix="/api")
     app.include_router(payments.router, prefix=settings.API_V1_STR)
     app.include_router(admin.router, prefix=settings.API_V1_STR)
+    app.include_router(cms.router, prefix=settings.API_V1_STR)
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
     return app

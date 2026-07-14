@@ -17,7 +17,9 @@ import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
 import { LiveCallMode } from "../live/LiveCallMode";
 import { mediaResourceCoordinator } from "../../features/calls/services/mediaResourceCoordinator";
 import { useCallSession } from "../../features/calls/hooks/useCallSession";
-import { NeuralCore } from "../../motion/NeuralCore";
+import { CrystalAiOrb, CrystalErrorBoundary } from "../crystal/Crystal";
+import type { CrystalOrbState } from "../../crystal/tokens";
+import { usePublishedUiText } from "../../hooks/useCmsContent";
 
 const DEFAULT_OPTIONS: ComposerOptions = {
   searchMode: "auto",
@@ -146,6 +148,7 @@ function thinkingPhase(options: ComposerOptions, attachments: ChatAttachment[], 
 }
 
 export function ChatPage() {
+  const uiText = usePublishedUiText();
   const navigate = useNavigate();
   const { config: callConfig } = useCallSession();
   const { token } = useAuth();
@@ -286,7 +289,7 @@ export function ChatPage() {
   const visibleChatBusy = submittingGeneration || visibleGenerationRunning;
   const visibleStreamingMessageId =
     visibleGenerationRunning ? visibleGeneration?.assistant_message_id ?? streamingMessageId : streamingMessageId;
-  const neuralState = !navigator.onLine
+  const neuralState: CrystalOrbState = !navigator.onLine
     ? "offline"
     : visibleStreamingMessageId
       ? "streaming"
@@ -940,7 +943,7 @@ export function ChatPage() {
             <Menu size={18} />
           </button>
           <span className="flex min-w-0 items-center gap-2">
-            <NeuralCore state={neuralState} size="sm" className="chat-status-core" />
+            <CrystalErrorBoundary><CrystalAiOrb state={neuralState} size="sm" className="chat-status-core" /></CrystalErrorBoundary>
             <span className="truncate text-sm font-medium">{activeTitle}</span>
           </span>
           <div className="flex items-center gap-1.5">
@@ -979,7 +982,7 @@ export function ChatPage() {
         <div className="chat-topbar hidden md:flex">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <NeuralCore state={neuralState} size="sm" className="chat-status-core" />
+              <CrystalErrorBoundary><CrystalAiOrb state={neuralState} size="sm" className="chat-status-core" /></CrystalErrorBoundary>
               <h1 className="truncate text-sm font-semibold text-white">{activeTitle}</h1>
             </div>
             <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -1033,14 +1036,14 @@ export function ChatPage() {
               >
                 <div className="empty-chat-content max-w-3xl text-center">
                   <div className="empty-chat-orb mx-auto mb-5 grid h-16 w-16 place-items-center">
-                    <NeuralCore state="ready" size="md" />
+                    <CrystalErrorBoundary><CrystalAiOrb state="ready" size="md" /></CrystalErrorBoundary>
                   </div>
                   <p className="empty-chat-kicker mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase text-cyan-100">
                     <Sparkles size={13} />
                     Ultra human mode
                   </p>
                   <h1 className="empty-chat-title text-3xl font-semibold text-white md:text-5xl">
-                    Ask, upload, speak, and keep the thread alive.
+                    {uiText?.["chat.welcome"] || "Ask, upload, speak, and keep the thread alive."}
                   </h1>
                   <p className="empty-chat-subtitle mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-300 md:text-base">
                     Auto-AI adapts to tone, remembers useful preferences, streams answers smoothly, and can reason across your documents and images.

@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { api, resolveApiAssetUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { User } from "../../types";
+import { CrystalBadge, CrystalCard } from "../crystal/Crystal";
 
 const USERNAME_PATTERN = /^[a-z0-9._]{3,30}$/;
 const RESERVED_USERNAMES = new Set(["admin", "administrator", "support", "autoai", "system", "api", "null"]);
@@ -195,7 +196,7 @@ export function ProfileAccountCard() {
   }
 
   return (
-    <section className="settings-card overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] shadow-[0_16px_42px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+    <CrystalCard className="settings-card overflow-hidden">
       <div className="grid gap-3 p-3 md:grid-cols-[auto_1fr_auto] md:items-center md:p-4">
         <div className="mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full border border-cyan-200/25 bg-cyan-200/10 text-xl font-bold text-cyan-50 md:mx-0">
           {shownAvatar ? <img className="h-full w-full object-cover" src={shownAvatar} alt="" /> : initials(user?.name, user?.email)}
@@ -205,6 +206,9 @@ export function ProfileAccountCard() {
           <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
             <h2 className="truncate text-[15px] font-semibold text-white">{user?.name || "Profile & Account"}</h2>
             <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">@{user?.username || "create_username"}</span>
+            {mobileVerified && <CrystalBadge tone="verified">Verified</CrystalBadge>}
+            {(user?.role === "admin" || user?.role === "super_admin") && <CrystalBadge tone="admin">Admin</CrystalBadge>}
+            {user?.subscription_status && !["free", "inactive", "expired"].includes(user.subscription_status.toLowerCase()) && <CrystalBadge tone="premium">Premium</CrystalBadge>}
           </div>
           <div className="mt-2 grid gap-1 text-[11px] text-slate-400 sm:grid-cols-2">
             <span className="truncate">{user?.email || "Unknown email"}</span>
@@ -272,6 +276,6 @@ export function ProfileAccountCard() {
           </div>
         </div>
       )}
-    </section>
+    </CrystalCard>
   );
 }

@@ -7,8 +7,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
 import { useShell } from "../../contexts/ShellContext";
 import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
-import { isMobileAppRuntime } from "../../utils/runtime";
 import { LogoIcon } from "../brand/LogoIcon";
+import { isAdminPanelRole } from "../../utils/roles";
 
 const accountMenuItemClass =
   "compact-button flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white transition hover:border-cyan-200/30 hover:bg-cyan-200/10";
@@ -42,26 +42,21 @@ export function Sidebar() {
   const displayName = user?.name?.trim() || "Account";
   const displayEmail = user?.email?.trim() || "";
   const subscriptionLabel = formatSubscriptionStatus(user?.subscription_status);
-  const subscriptionHref = isMobileAppRuntime() ? "/settings?section=subscription" : "/pricing";
+  const subscriptionHref = "/settings?section=subscription";
   const profileInitial = (displayName || displayEmail || "A").charAt(0).toUpperCase();
   const profileAvatar = resolveApiAssetUrl(user?.avatar || user?.picture);
 
   useEffect(() => {
-    if (!isSidebarOpen) return;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
-
-    window.history.pushState({ autoAiDrawer: true }, "");
-    const handlePopState = () => {
-      if (isSidebarOpen) {
-        closeSidebar();
-      }
+    if (!isAccountMenuOpen) return;
+    const handleAndroidBack = (event: Event) => {
+      event.preventDefault();
+      setIsAccountMenuOpen(false);
     };
-
-    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("auto-ai-android-back", handleAndroidBack);
     return () => {
-      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("auto-ai-android-back", handleAndroidBack);
     };
-  }, [closeSidebar, isSidebarOpen]);
+  }, [isAccountMenuOpen]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -231,7 +226,7 @@ export function Sidebar() {
         <div ref={accountMenuRef} className="relative border-t border-white/10 p-3">
           {isAccountMenuOpen && (
             <div className="absolute bottom-[calc(100%+8px)] left-3 right-3 z-50 max-h-[calc(100vh-96px)] space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-slate-950 p-2 shadow-[0_22px_65px_rgba(0,0,0,0.55)]">
-              {(user?.role === "admin" || user?.role === "super_admin") && (
+              {isAdminPanelRole(user?.role) && (
                 <Link
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-sm font-medium text-cyan-50 transition hover:bg-cyan-200/15"
                   onClick={() => {

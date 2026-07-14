@@ -17,8 +17,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import type { ApkRelease, ApkStats, BillingPlan } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
-import { NeuralCore } from "../../motion/NeuralCore";
-import { AnimatedPage, FlyText, Reveal, StaggerGroup, StaggerItem, TiltCard } from "../../motion/primitives";
+import { AnimatedPage, FlyText, Reveal, StaggerGroup, StaggerItem } from "../../motion/primitives";
+import { CrystalAiOrb, CrystalCard, CrystalErrorBoundary } from "../crystal/Crystal";
+import { usePublishedFaqs, usePublishedGlobals, usePublishedPage } from "../../hooks/useCmsContent";
+import { PublishedContentBlocks } from "../common/PublishedContentBlocks";
 
 const features = [
   { icon: <Brain size={18} />, title: "Adaptive memory", body: "Preference, project, and style signals shape future replies without making the assistant feel scripted." },
@@ -58,10 +60,18 @@ function formatDate(value?: string | null) {
 
 export function LandingPage() {
   const { user } = useAuth();
+  const cmsPage = usePublishedPage("home");
+  const globalContent = usePublishedGlobals();
+  const publishedFaqs = usePublishedFaqs();
   const [latestApk, setLatestApk] = useState<ApkRelease | null>(null);
   const [apkStats, setApkStats] = useState<ApkStats | null>(null);
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const qrUrl = resolveApkDownloadUrl();
+  const cmsBlocks = cmsPage?.blocks ?? [];
+  const featureHeading = String(cmsBlocks.find((block) => block.block_type === "heading")?.content.text ?? "Every interaction has weight, motion, and memory.");
+  const finalCta = cmsBlocks.find((block) => block.block_type === "call_to_action");
+  const extraBlocks = cmsBlocks.filter((block) => !["heading", "feature_grid", "call_to_action"].includes(block.block_type));
+  const visibleFaqs = publishedFaqs?.length ? publishedFaqs.map((item) => [item.question, item.answer]) : faqs;
 
   async function downloadLatestApk() {
     let release = latestApk;
@@ -122,18 +132,18 @@ export function LandingPage() {
       <header className="landing-nav">
         <Link className="brand-mark" to="/">
           <span className="brand-icon"><LogoIcon /></span>
-          Auto-AI
+          {globalContent?.["site.name"] || "Auto-AI"}
         </Link>
         <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
-          <a href="#features">Features</a>
-          <Link to="/download">Android</Link>
-          <Link to="/pricing">Pricing</Link>
-          <Link to="/admin/login">Admin</Link>
-          <a href="#faq">FAQ</a>
+          <a href="#features">{globalContent?.["header.features"] || "Features"}</a>
+          <Link to="/download">{globalContent?.["header.android"] || "Android"}</Link>
+          <Link to="/pricing">{globalContent?.["header.pricing"] || "Pricing"}</Link>
+          <Link to="/admin/login">{globalContent?.["header.admin"] || "Admin"}</Link>
+          <a href="#faq">{globalContent?.["header.faq"] || "FAQ"}</a>
         </nav>
         <div className="nav-actions">
           <Link className="btn-primary" to={user ? "/chat" : "/login"}>
-            {user ? "Open app" : "Sign in"}
+            {user ? "Open app" : globalContent?.["header.sign_in"] || "Sign in"}
             <ArrowRight size={16} />
           </Link>
           <ThemeToggleButton />
@@ -154,21 +164,21 @@ export function LandingPage() {
               <p className="hero-kicker"><Zap size={14} /> Ultra Premium AI Workspace</p>
             </Reveal>
             <Reveal delay={0.08} x={-26} y={18} scale={0.96} blur={8}>
-              <h1 className="neural-sweep-once">Auto-AI</h1>
+              <h1 className="neural-sweep-once">{cmsPage?.hero_heading || "Auto-AI"}</h1>
             </Reveal>
             <Reveal delay={0.16} x={-18} y={16} blur={6}>
               <p className="hero-subtitle">
-                Auto-AI, also known as AutoAI and Auto AI, is a commercial-grade AI experience with memory, uploads, voice, streaming, and a conversation style that feels alive.
+                {cmsPage?.hero_description || "Auto-AI, also known as AutoAI and Auto AI, is a commercial-grade AI experience with memory, uploads, voice, streaming, and a conversation style that feels alive."}
               </p>
             </Reveal>
             <Reveal delay={0.22} x={-14} y={14}>
               <div className="mt-7 flex flex-wrap gap-3">
-                <Link className="btn-primary h-11 px-5" to={user ? "/chat" : "/register"}>
-                  Start building
+                <Link className="btn-primary h-11 px-5" to={user ? "/chat" : cmsPage?.buttons?.[0]?.url || "/register"}>
+                  {cmsPage?.buttons?.[0]?.label || "Start building"}
                   <ArrowRight size={17} />
                 </Link>
-                <Link className="btn-secondary h-11 px-5" to={user ? "/chat" : "/login"}>
-                  View workspace
+                <Link className="btn-secondary h-11 px-5" to={user ? "/chat" : cmsPage?.buttons?.[1]?.url || "/login"}>
+                  {cmsPage?.buttons?.[1]?.label || "View workspace"}
                 </Link>
               </div>
             </Reveal>
@@ -190,7 +200,7 @@ export function LandingPage() {
               <span />
             </div>
             <div className="product-neural-core" aria-hidden="true">
-              <NeuralCore state="ready" size="lg" />
+              <CrystalErrorBoundary><CrystalAiOrb state="ready" size="lg" /></CrystalErrorBoundary>
             </div>
             <div className="preview-sidebar">
               <span />
@@ -219,19 +229,21 @@ export function LandingPage() {
           </div>
         </section>
 
+        <PublishedContentBlocks blocks={extraBlocks} />
+
         <section id="features" className="landing-section" data-chapter="Understand">
           <div className="section-heading">
             <p className="hero-kicker">Product System</p>
-            <h2><FlyText text="Every interaction has weight, motion, and memory." /></h2>
+            <h2><FlyText text={featureHeading} /></h2>
           </div>
           <StaggerGroup className="feature-grid">
             {features.map((feature) => (
               <StaggerItem key={feature.title}>
-                <TiltCard className="premium-feature" data-thread-node>
+                <CrystalCard className="premium-feature" data-thread-node>
                   <span>{feature.icon}</span>
                   <h3>{feature.title}</h3>
                   <p>{feature.body}</p>
-                </TiltCard>
+                </CrystalCard>
               </StaggerItem>
             ))}
           </StaggerGroup>
@@ -335,14 +347,14 @@ export function LandingPage() {
           <StaggerGroup className="pricing-grid pricing-grid-four">
             {plans.map((plan) => (
               <StaggerItem key={plan.id}>
-                <TiltCard className="pricing-card">
+                <CrystalCard className="pricing-card">
                   <h3>{plan.label}</h3>
                   <strong className="pricing-price">{money(plan.price_paise, plan.currency)}</strong>
                   <span>{plan.token_quota.toLocaleString()} tokens/month</span>
                   <Link className={plan.id === "premium" ? "btn-primary" : "btn-secondary"} to="/pricing">
                     Choose {plan.label}
                   </Link>
-                </TiltCard>
+                </CrystalCard>
               </StaggerItem>
             ))}
           </StaggerGroup>
@@ -351,10 +363,10 @@ export function LandingPage() {
         <section className="landing-section final-cta-section" data-chapter="Resolve">
           <Reveal className="final-cta">
             <p className="hero-kicker">Auto-AI</p>
-            <h2><FlyText text="Bring the whole workspace into one conversation." /></h2>
+            <h2><FlyText text={String(finalCta?.content.heading ?? "Bring the whole workspace into one conversation.")} /></h2>
             <div className="final-cta-actions">
               <Link className="btn-primary h-11 px-5" to={user ? "/chat" : "/register"}>
-                {user ? "Open app" : "Create account"}
+                {user ? "Open app" : String(finalCta?.content.button_text ?? globalContent?.["cta.default"] ?? "Create account")}
                 <ArrowRight size={17} />
               </Link>
               <Link className="btn-secondary h-11 px-5" to="/download">
@@ -371,7 +383,7 @@ export function LandingPage() {
             <h2><FlyText text="Common Auto-AI questions." /></h2>
           </div>
           <div className="faq-list">
-            {faqs.map(([question, answer]) => (
+            {visibleFaqs.map(([question, answer]) => (
               <details key={question}>
                 <summary>{question}</summary>
                 <p>{answer}</p>
@@ -382,8 +394,8 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <span className="brand-mark"><span className="brand-icon"><LogoIcon /></span> Auto-AI</span>
-        <p>Premium AI workspace for contextual, human-feeling conversations.</p>
+        <span className="brand-mark"><span className="brand-icon"><LogoIcon /></span> {globalContent?.["site.name"] || "Auto-AI"}</span>
+        <p>{globalContent?.["footer.description"] || "Premium AI workspace for contextual, human-feeling conversations."}</p>
       </footer>
     </AnimatedPage>
     </>

@@ -47,3 +47,27 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in {"admin", "super_admin"} or not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
+
+
+def get_current_cms_viewer(current_user: User = Depends(get_current_user)) -> User:
+    from app.services.cms_service import CMS_VIEW_ROLES
+
+    if current_user.role not in CMS_VIEW_ROLES or not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Content Manager access required")
+    return current_user
+
+
+def get_current_cms_editor(current_user: User = Depends(get_current_cms_viewer)) -> User:
+    from app.services.cms_service import CMS_EDIT_ROLES
+
+    if current_user.role not in CMS_EDIT_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Content edit permission required")
+    return current_user
+
+
+def get_current_cms_publisher(current_user: User = Depends(get_current_cms_viewer)) -> User:
+    from app.services.cms_service import CMS_PUBLISH_ROLES
+
+    if current_user.role not in CMS_PUBLISH_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Content publish permission required")
+    return current_user

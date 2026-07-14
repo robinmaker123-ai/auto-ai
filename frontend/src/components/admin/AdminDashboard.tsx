@@ -3,6 +3,7 @@ import {
   Activity,
   Ban,
   BarChart3,
+  BookOpen,
   Coins,
   CreditCard,
   Database,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, api, resolveApkDownloadUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
+import { ContentManager } from "./cms/ContentManager";
 import type {
   AdminAnalytics,
   AdminFeaturesResponse,
@@ -39,7 +41,7 @@ import type {
   UserRole
 } from "../../types";
 
-type AdminSection = "dashboard" | "users" | "tokens" | "subscriptions" | "usage" | "features" | "mobile" | "payments" | "settings";
+type AdminSection = "dashboard" | "users" | "tokens" | "subscriptions" | "usage" | "features" | "mobile" | "payments" | "content" | "settings";
 
 const sections: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
   { id: "dashboard", label: "Dashboard", icon: <BarChart3 size={15} /> },
@@ -50,6 +52,7 @@ const sections: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
   { id: "features", label: "Feature Controls", icon: <SlidersHorizontal size={15} /> },
   { id: "mobile", label: "Mobile App", icon: <Smartphone size={15} /> },
   { id: "payments", label: "Payments", icon: <Wallet size={15} /> },
+  { id: "content", label: "Content Manager", icon: <BookOpen size={15} /> },
   { id: "settings", label: "Settings", icon: <Settings size={15} /> }
 ];
 
@@ -235,7 +238,7 @@ export function AdminDashboard() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "admin" as Extract<UserRole, "admin" | "super_admin">
+    role: "admin" as Exclude<UserRole, "user">
   });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -243,11 +246,12 @@ export function AdminDashboard() {
   const [success, setSuccess] = useState("");
   const [quotaForms, setQuotaForms] = useState<Record<string, QuotaForm>>({});
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isFullAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = isFullAdmin || user?.role === "content_admin" || user?.role === "content_editor" || user?.role === "content_viewer";
   const isSuperAdmin = user?.role === "super_admin";
 
   const loadAdminData = useCallback(async () => {
-    if (!token || !isAdmin) {
+    if (!token || !isFullAdmin) {
       setLoading(false);
       return;
     }
@@ -282,11 +286,15 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, token]);
+  }, [isFullAdmin, token]);
 
   useEffect(() => {
     void loadAdminData();
   }, [loadAdminData]);
+
+  useEffect(() => {
+    if (isAdmin && !isFullAdmin) setActiveSection("content");
+  }, [isAdmin, isFullAdmin]);
 
   useEffect(() => {
     setPlanLimitDrafts(mapPlanLimitsByPlan(features?.plan_limits ?? []));
@@ -831,14 +839,14 @@ export function AdminDashboard() {
           <h1 className="text-2xl font-semibold text-white">Admin Control Center</h1>
           <p className="mt-1 text-sm text-slate-400">Users, plans, usage, features, payments, and system settings</p>
         </div>
-        <button className="btn-secondary" onClick={loadAdminData} type="button">
+        {isFullAdmin && <button className="btn-secondary" onClick={loadAdminData} type="button">
           <RefreshCw size={15} />
           Refresh
-        </button>
+        </button>}
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2">
-        {sections.map((section) => (
+        {sections.filter((section) => isFullAdmin || section.id === "content").map((section) => (
           <button
             key={section.id}
             className={activeSection === section.id ? "chip-dark chip-dark-active" : "chip-dark"}
@@ -951,11 +959,14 @@ export function AdminDashboard() {
                       onChange={(event) =>
                         setCreateAdminForm((current) => ({
                           ...current,
-                          role: event.target.value as Extract<UserRole, "admin" | "super_admin">
+                          role: event.target.value as Exclude<UserRole, "user">
                         }))
                       }
                     >
                       <option value="admin">Admin</option>
+                      <option value="content_admin">Content Admin</option>
+                      <option value="content_editor">Content Editor</option>
+                      <option value="content_viewer">Content Viewer</option>
                       {isSuperAdmin && <option value="super_admin">Super Admin</option>}
                     </select>
                   </div>
@@ -969,6 +980,9 @@ export function AdminDashboard() {
                     <option value="">All roles</option>
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
+                    <option value="content_admin">Content Admin</option>
+                    <option value="content_editor">Content Editor</option>
+                    <option value="content_viewer">Content Viewer</option>
                     <option value="super_admin">Super Admin</option>
                   </select>
                   <select className="model-select-dark h-11" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
@@ -1027,6 +1041,9 @@ export function AdminDashboard() {
                             >
                               <option value="user">User</option>
                               <option value="admin">Admin</option>
+                              <option value="content_admin">Content Admin</option>
+                              <option value="content_editor">Content Editor</option>
+                              <option value="content_viewer">Content Viewer</option>
                               {(isSuperAdmin || account.role === "super_admin") && <option value="super_admin">Super Admin</option>}
                             </select>
                           </td>
@@ -1581,6 +1598,12 @@ export function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+
+          {activeSection === "content" && (
+            <section className="border-t border-white/10 pt-4">
+              <ContentManager />
             </section>
           )}
 

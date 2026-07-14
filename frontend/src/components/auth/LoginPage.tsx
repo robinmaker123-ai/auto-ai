@@ -9,9 +9,11 @@ import { LogoIcon } from "../brand/LogoIcon";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { NeuralCore } from "../../motion/NeuralCore";
 import { AnimatedPage } from "../../motion/primitives";
+import { usePublishedUiText } from "../../hooks/useCmsContent";
 
 export function LoginPage() {
   const { googleLogin, login, user } = useAuth();
+  const uiText = usePublishedUiText();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -93,7 +95,7 @@ export function LoginPage() {
       </div>
       <section className="auth-visual">
         <p className="hero-kicker"><Lock size={14} /> Secure workspace</p>
-        <h1>Welcome back.</h1>
+        <h1>{uiText?.["auth.login.title"] || "Welcome back."}</h1>
         <p>Pick up the thread with your chats, documents, memory, and model settings intact.</p>
       </section>
       <form onSubmit={onSubmit} className="auth-card">
@@ -105,11 +107,11 @@ export function LoginPage() {
         <GoogleSignInButton disabled={loading} intent="signin" onCredential={handleGoogleCredential} onError={handleGoogleError} />
         <div className="auth-divider"><span>or use email</span></div>
         <label className="mb-3 block">
-          <span className="mb-1 block text-sm font-medium text-slate-200">Email</span>
+          <span className="mb-1 block text-sm font-medium text-slate-200">{uiText?.["auth.login.email"] || "Email"}</span>
           <input className="input-dark" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
         </label>
         <label className="mb-2 block">
-          <span className="mb-1 block text-sm font-medium text-slate-200">Password</span>
+          <span className="mb-1 block text-sm font-medium text-slate-200">{uiText?.["auth.login.password"] || "Password"}</span>
           <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
         </label>
         <div className="auth-inline-row">
@@ -145,7 +147,7 @@ export function LoginPage() {
           </div>
         )}
         <button className="btn-primary h-11 w-full" disabled={loading}>
-          {loading ? "Signing in" : "Login"}
+          {loading ? "Signing in" : uiText?.["auth.login.submit"] || "Login"}
           <ArrowRight size={17} />
         </button>
         <p className="mt-4 text-center text-sm text-slate-400">

@@ -4,6 +4,7 @@ import { ArrowRight, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { authErrorMessage } from "../../utils/apiErrors";
 import { LogoIcon } from "../brand/LogoIcon";
+import { isAdminPanelRole } from "../../utils/roles";
 
 export function AdminLoginPage() {
   const { adminLogin, logout, user } = useAuth();
@@ -12,7 +13,7 @@ export function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (user?.role === "admin" || user?.role === "super_admin") return <Navigate to="/admin" replace />;
+  if (isAdminPanelRole(user?.role)) return <Navigate to="/admin" replace />;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -36,7 +37,7 @@ export function AdminLoginPage() {
       <section className="auth-visual">
         <p className="hero-kicker"><ShieldCheck size={14} /> Admin only</p>
         <h1>Admin Control Center.</h1>
-        <p>Only accounts with role admin can enter the dashboard.</p>
+        <p>Only authorized admin and content accounts can enter the dashboard.</p>
       </section>
       <form onSubmit={onSubmit} className="auth-card">
         <div className="mb-6">

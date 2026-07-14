@@ -1,5 +1,5 @@
-import { Suspense, lazy, type ReactNode } from "react";
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { Suspense, lazy, useEffect, useRef, type ReactNode } from "react";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ShellProvider } from "./contexts/ShellContext";
@@ -9,6 +9,10 @@ import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { LandingPage } from "./components/landing/LandingPage";
 import { isMobileAppRuntime } from "./utils/runtime";
 import { MotionProvider } from "./motion/MotionProvider";
+import { consumeSafeRootRedirect, markStartupStable } from "./reliability/safeMode";
+import { AppSettingsProvider } from "./contexts/AppSettingsContext";
+import { AnnouncementBanner } from "./components/common/AnnouncementBanner";
+import { isAdminPanelRole } from "./utils/roles";
 
 const AppShell = lazy(() => import("./components/layout/AppShell").then((module) => ({ default: module.AppShell })));
 const ChatPage = lazy(() => import("./components/chat/ChatPage").then((module) => ({ default: module.ChatPage })));
@@ -54,7 +58,7 @@ function AdminRoute() {
   if (loading) {
     return <div className="app-loading">Loading Auto-AI...</div>;
   }
-  return user?.role === "admin" || user?.role === "super_admin" ? <Outlet /> : <Navigate to="/admin/login" replace />;
+  return isAdminPanelRole(user?.role) ? <Outlet /> : <Navigate to="/admin/login" replace />;
 }
 
 function AppRoutes() {
@@ -95,19 +99,42 @@ function AppRoutes() {
   );
 }
 
+function StartupRecoveryMarker() {
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
+  const safeRootRef = useRef(consumeSafeRootRedirect());
+
+  useEffect(() => {
+    const timer = window.setTimeout(markStartupStable, 4500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!safeRootRef.current || loading) return;
+    safeRootRef.current = false;
+    navigate(user ? "/chat" : "/login", { replace: true });
+  }, [loading, navigate, user]);
+
+  return null;
+}
+
 export default function App() {
   const Router = isMobileAppRuntime() ? HashRouter : BrowserRouter;
   return (
     <ThemeProvider>
       <MotionProvider>
-        <AuthProvider>
-          <ShellProvider>
-            <Router>
-              <SeoManager />
-              <AppRoutes />
-            </Router>
-          </ShellProvider>
-        </AuthProvider>
+        <AppSettingsProvider>
+          <AuthProvider>
+            <ShellProvider>
+              <Router>
+                <SeoManager />
+                <AnnouncementBanner />
+                <StartupRecoveryMarker />
+                <AppRoutes />
+              </Router>
+            </ShellProvider>
+          </AuthProvider>
+        </AppSettingsProvider>
       </MotionProvider>
     </ThemeProvider>
   );

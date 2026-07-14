@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import seoData from "./seo-data.json";
+import { apiFetch } from "../api/client";
+import type { CmsPage } from "../components/admin/cms/types";
 
 type SeoRoute = {
   path: string;
@@ -134,6 +136,35 @@ export function SeoManager() {
     upsertMeta('meta[name="twitter:image:alt"]', "name", "twitter:image:alt", "Auto-AI app logo and brand mark");
 
     applyStructuredData();
+
+    const cmsSlug = location.pathname === "/" ? "home" : location.pathname === "/pricing" ? "pricing" : location.pathname === "/download" ? "download" : "";
+    if (!cmsSlug) return;
+    let active = true;
+    const applyCmsSeo = (page: CmsPage) => {
+      if (!active || !page.seo) return;
+      const cmsTitle = page.seo.title || page.title;
+      const cmsDescription = page.seo.description || page.hero_description;
+      const cmsCanonical = page.seo.canonical_url || absoluteUrl(location.pathname);
+      const cmsImage = page.seo.og_image ? absoluteUrl(page.seo.og_image) : defaultImageUrl;
+      document.title = cmsTitle;
+      upsertMeta('meta[name="description"]', "name", "description", cmsDescription);
+      upsertMeta('meta[name="robots"]', "name", "robots", page.seo.robots_index ? "index,follow" : "noindex,nofollow");
+      upsertLink("canonical", cmsCanonical);
+      upsertMeta('meta[property="og:title"]', "property", "og:title", page.seo.og_title || cmsTitle);
+      upsertMeta('meta[property="og:description"]', "property", "og:description", page.seo.og_description || cmsDescription);
+      upsertMeta('meta[property="og:image"]', "property", "og:image", cmsImage);
+      upsertMeta('meta[name="twitter:title"]', "name", "twitter:title", page.seo.og_title || cmsTitle);
+      upsertMeta('meta[name="twitter:description"]', "name", "twitter:description", page.seo.og_description || cmsDescription);
+      upsertMeta('meta[name="twitter:image"]', "name", "twitter:image", cmsImage);
+    };
+    try {
+      const cached = localStorage.getItem(`auto-ai-published-content:page:${cmsSlug}`);
+      if (cached) applyCmsSeo(JSON.parse(cached) as CmsPage);
+    } catch { /* Static SEO remains active. */ }
+    void apiFetch<CmsPage>(`/content/public/pages/${cmsSlug}`, { operation: "content.public.seo", timeoutMs: 4000 })
+      .then(applyCmsSeo)
+      .catch(() => undefined);
+    return () => { active = false; };
   }, [location.pathname]);
 
   return null;

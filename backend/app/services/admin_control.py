@@ -335,7 +335,7 @@ def ensure_user_subscription(db: Session, user: User) -> UserSubscription:
         refresh_quota_periods(subscription)
         recalculate_token_balance(subscription)
         return subscription
-    plan = "admin" if user.role in {"admin", "super_admin"} else "free"
+    plan = "admin" if user.role in {"admin", "super_admin", "content_admin", "content_editor", "content_viewer"} else "free"
     defaults = quota_plan_defaults(plan)
     monthly_token_limit = plan_monthly_token_limit(db, plan)
     daily_message_limit = plan_daily_message_limit(db, plan)
@@ -492,7 +492,7 @@ def enforce_plan_and_feature_access(
     search_mode: str | None,
     max_models: int | None = None,
 ) -> None:
-    if user.role in {"admin", "super_admin"}:
+    if user.role in {"admin", "super_admin", "content_admin", "content_editor", "content_viewer"}:
         enforce_user_quota(db, user)
         return
 

@@ -3,6 +3,7 @@ import { Bot, Brain, LogOut, Moon, PhoneCall, Settings, Shield, Sun, Zap } from 
 import clsx from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { isAdminPanelRole } from "../../utils/roles";
 import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
 import { useCallSession } from "../../features/calls/hooks/useCallSession";
 
@@ -92,7 +93,7 @@ export function Header() {
         >
           <Settings size={18} />
         </button>
-        {(user?.role === "admin" || user?.role === "super_admin") && (
+        {isAdminPanelRole(user?.role) && (
           <Link className="icon-button-dark" to="/admin" title="Admin dashboard">
             <Shield size={18} />
           </Link>

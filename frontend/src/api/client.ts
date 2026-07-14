@@ -1047,7 +1047,7 @@ export const api = {
       operation: "admin.users.status",
       body: JSON.stringify({ is_active: isActive })
     }),
-  createAdminUser: (token: string, payload: { name: string; email: string; password: string; role: Extract<UserRole, "admin" | "super_admin"> }) =>
+  createAdminUser: (token: string, payload: { name: string; email: string; password: string; role: Exclude<UserRole, "user"> }) =>
     apiFetch<AdminUser>("/admin/users/create-admin", {
       method: "POST",
       token,

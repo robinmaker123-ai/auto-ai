@@ -1,8 +1,10 @@
-import { Camera, CameraOff, Mic, MicOff, Phone, PhoneOff, RefreshCw, Settings, SwitchCamera, Volume2, VolumeX, Wifi } from "lucide-react";
+import { Camera, CameraOff, Mic, MicOff, Minimize2, Phone, PhoneOff, RefreshCw, Settings, SwitchCamera, Volume2, VolumeX, Wifi } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { resolveApiAssetUrl } from "../../api/client";
 import { useCallSession } from "./hooks/useCallSession";
 import { callNative } from "./services/callNative";
+import { CrystalAvatarRing } from "../../components/crystal/Crystal";
+import type { CrystalCallState } from "../../crystal/tokens";
 
 function VideoSurface({ stream, muted, className }: { stream: MediaStream | null; muted?: boolean; className: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
@@ -25,9 +27,13 @@ function VideoSurface({ stream, muted, className }: { stream: MediaStream | null
   );
 }
 
-function Avatar({ name, url }: { name: string; url?: string | null }) {
+function Avatar({ name, url, ringState }: { name: string; url?: string | null; ringState: CrystalCallState }) {
   const avatarUrl = resolveApiAssetUrl(url);
-  return <span className="call-screen-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}</span>;
+  return (
+    <CrystalAvatarRing state={ringState}>
+      <span className="call-screen-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : name.slice(0, 1).toUpperCase()}</span>
+    </CrystalAvatarRing>
+  );
 }
 
 function statusLabel(state: ReturnType<typeof useCallSession>["sessionState"]) {
@@ -53,6 +59,7 @@ export function CallOverlay() {
   const [seconds, setSeconds] = useState(0);
   const [pipPosition, setPipPosition] = useState({ x: 0, y: 0 });
   const [incomingActionPending, setIncomingActionPending] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const dragRef = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
 
   useEffect(() => {
@@ -64,6 +71,24 @@ export function CallOverlay() {
   useEffect(() => {
     if (sessionState === "incoming") setIncomingActionPending(false);
   }, [call?.id, sessionState]);
+
+  useEffect(() => {
+    setMinimized(false);
+  }, [call?.id]);
+
+  useEffect(() => {
+    if (sessionState === "idle" || sessionState === "ended" || sessionState === "rejected" || sessionState === "cancelled" || sessionState === "missed" || sessionState === "busy" || sessionState === "failed") {
+      setMinimized(false);
+    }
+  }, [sessionState]);
+
+  useEffect(() => {
+    const minimize = () => {
+      if (sessionState !== "idle") setMinimized(true);
+    };
+    window.addEventListener("auto-ai-minimize-call-overlay", minimize);
+    return () => window.removeEventListener("auto-ai-minimize-call-overlay", minimize);
+  }, [sessionState]);
 
   useEffect(() => {
     const active = sessionState !== "idle";
@@ -80,6 +105,25 @@ export function CallOverlay() {
   const activeLike = ["connecting", "active", "reconnecting", "ending"].includes(sessionState);
   const avatarUrl = resolveApiAssetUrl(peer.avatar_url);
   const hasRemoteVideo = Boolean(remoteStream?.getVideoTracks().some((track) => track.readyState === "live"));
+  const avatarRingState: CrystalCallState = sessionState === "incoming" || sessionState === "ringing"
+    ? "ringing"
+    : sessionState === "reconnecting"
+      ? "reconnecting"
+      : sessionState === "active"
+        ? networkQuality === "poor" ? "poor" : "connected"
+        : sessionState === "ended" || sessionState === "failed" || sessionState === "rejected" || sessionState === "cancelled" || sessionState === "missed"
+          ? "ended"
+          : "calling";
+
+  if (minimized) {
+    return (
+      <button type="button" className="ongoing-call-chip" onClick={() => setMinimized(false)} aria-label={`Return to call with ${peer.display_name}`}>
+        <span>{call?.call_type === "video" ? <VideoSurface stream={remoteStream && remoteCameraEnabled && hasRemoteVideo ? remoteStream : localStream} muted className="ongoing-call-video" /> : <Phone size={16} />}</span>
+        <strong>{peer.display_name}</strong>
+        <small>{sessionState === "active" ? time : statusLabel(sessionState)}</small>
+      </button>
+    );
+  }
 
   function movePip(event: ReactPointerEvent<HTMLDivElement>) {
     if (!dragRef.current) return;
@@ -105,7 +149,7 @@ export function CallOverlay() {
         {avatarUrl && <div className="incoming-call-backdrop" style={{ backgroundImage: `url(${avatarUrl})` }} />}
         <div className="call-orbit-bg" aria-hidden="true" />
         <div className="incoming-call-content">
-          <div className="incoming-avatar-wrap"><span className="incoming-pulse" /><Avatar name={peer.display_name} url={peer.avatar_url} /></div>
+          <div className="incoming-avatar-wrap"><Avatar name={peer.display_name} url={peer.avatar_url} ringState={avatarRingState} /></div>
           <p>Incoming Auto-AI {call?.call_type === "audio" ? "Audio" : "Video"} Call</p>
           <h2>{peer.display_name}</h2>
           <span>@{peer.username}</span>
@@ -127,7 +171,7 @@ export function CallOverlay() {
         <div className="call-orbit-bg" aria-hidden="true" />
         <div className="auto-ai-watermark" aria-hidden="true">Auto-AI</div>
         <section className="outgoing-profile-card">
-          <div className="outgoing-avatar-orbit"><Avatar name={peer.display_name} url={peer.avatar_url} /></div>
+          <div className="outgoing-avatar-orbit"><Avatar name={peer.display_name} url={peer.avatar_url} ringState={avatarRingState} /></div>
           <h2>{peer.display_name}</h2>
           <span>@{peer.username}</span>
           <p>{call?.call_type === "audio" ? "Audio Call" : "Video Call"}</p>
@@ -143,7 +187,7 @@ export function CallOverlay() {
 
   return (
     <div className="active-call-screen neural-call-screen" role="dialog" aria-modal="true" aria-label={`Call with ${peer.display_name}`}>
-      {remoteStream && remoteCameraEnabled && hasRemoteVideo ? <VideoSurface stream={remoteStream} className="remote-call-video" /> : <div className="remote-call-placeholder"><Avatar name={peer.display_name} url={peer.avatar_url} /></div>}
+      {remoteStream && remoteCameraEnabled && hasRemoteVideo ? <VideoSurface stream={remoteStream} className="remote-call-video" /> : <div className="remote-call-placeholder"><Avatar name={peer.display_name} url={peer.avatar_url} ringState={avatarRingState} /></div>}
       <div className="call-screen-shade" />
       <header className="active-call-header">
         <span><strong>{peer.display_name}</strong><small>{sessionState === "active" ? time : statusLabel(sessionState)}</small></span>
@@ -161,6 +205,7 @@ export function CallOverlay() {
       )}
       {error && <div className="call-screen-error floating"><span>{error}</span>{callNative.isAndroid() && /permission/i.test(error) && <button type="button" onClick={() => void callNative.openAppSettings()}><Settings size={14} /> Settings</button>}</div>}
       <nav className="active-call-controls" aria-label="Call controls">
+        <button type="button" onClick={() => setMinimized(true)} aria-label="Minimize call"><Minimize2 size={21} /><span>Min</span></button>
         <button type="button" className={muted ? "inactive" : ""} onClick={callSession.toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff size={21} /> : <Mic size={21} />}<span>{muted ? "Unmute" : "Mute"}</span></button>
         {call?.call_type === "video" && <button type="button" className={!cameraEnabled ? "inactive" : ""} onClick={() => void callSession.toggleCamera()} aria-label={cameraEnabled ? "Turn camera off" : "Turn camera on"}>{cameraEnabled ? <Camera size={21} /> : <CameraOff size={21} />}<span>Camera</span></button>}
         {call?.call_type === "video" && <button type="button" disabled={!cameraEnabled} onClick={() => void callSession.switchCamera()} aria-label="Switch camera"><SwitchCamera size={21} /><span>Flip</span></button>}

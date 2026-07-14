@@ -6,7 +6,9 @@ import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { AiProvider, ChatMode, DocumentItem, ResearchModelOptions, ResearchProvider, SearchMode } from "../../types";
 import { PROVIDER_MODELS, useAppSettings } from "../../contexts/AppSettingsContext";
+import { useCrystalEffects } from "../../crystal/useCrystalEffects";
 import { VoiceButton } from "./VoiceButton";
+import { usePublishedUiText } from "../../hooks/useCmsContent";
 
 type Provider = AiProvider;
 
@@ -315,13 +317,16 @@ export function Composer({
   onStop?: () => Promise<void> | void;
   onOpenLiveMode: () => void;
 }) {
+  const uiText = usePublishedUiText();
   const { token } = useAuth();
   const { settings } = useAppSettings();
+  const crystalEffects = useCrystalEffects();
   const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const imageAttachmentsRef = useRef<ImageAttachment[]>([]);
+  const attachmentMenuOpenRef = useRef(false);
   const [draft, setDraft] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [chatMode, setChatMode] = useState<ChatMode>("normal");
@@ -361,6 +366,26 @@ export function Composer({
   useEffect(() => {
     imageAttachmentsRef.current = imageAttachments;
   }, [imageAttachments]);
+
+  useEffect(() => {
+    attachmentMenuOpenRef.current = attachmentMenuOpen;
+  }, [attachmentMenuOpen]);
+
+  useEffect(() => {
+    const handleAndroidBack = (event: Event) => {
+      if (attachmentMenuOpenRef.current) {
+        event.preventDefault();
+        setAttachmentMenuOpen(false);
+        return;
+      }
+      if (imageAttachmentsRef.current.length) {
+        event.preventDefault();
+        clearImageAttachments();
+      }
+    };
+    window.addEventListener("auto-ai-android-back", handleAndroidBack);
+    return () => window.removeEventListener("auto-ai-android-back", handleAndroidBack);
+  }, []);
 
   useEffect(() => {
     if (!attachmentMenuOpen) return;
@@ -503,6 +528,12 @@ export function Composer({
     });
   }
 
+  function clearImageAttachments() {
+    imageAttachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+    imageAttachmentsRef.current = [];
+    setImageAttachments([]);
+  }
+
   function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length) void addFiles(files);
@@ -590,7 +621,7 @@ export function Composer({
         addFiles(Array.from(event.dataTransfer.files));
       }}
     >
-      <div className={clsx("composer-card compact-card", dragActive && "composer-card-active")}>
+      <div className={clsx("composer-card compact-card crystal-surface", crystalEffects.surfaces && "is-crystal-enabled", dragActive && "composer-card-active")}>
         <AnimatePresence>
           {(selectedDocuments.length > 0 || uploadTasks.length > 0 || imageAttachments.length > 0 || error) && (
             <motion.div
@@ -811,7 +842,7 @@ export function Composer({
                 <Square size={16} />
               </button>
             ) : (
-              <button className="send-button composer-send-round" disabled={!canSend} type="submit" title="Send message">
+              <button className="send-button composer-send-round" disabled={!canSend} type="submit" title={uiText?.["chat.send"] || "Send message"}>
                 <SendHorizonal size={18} />
               </button>
             )}

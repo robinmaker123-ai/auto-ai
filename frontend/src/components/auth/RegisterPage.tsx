@@ -7,9 +7,11 @@ import { LogoIcon } from "../brand/LogoIcon";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { NeuralCore } from "../../motion/NeuralCore";
 import { AnimatedPage } from "../../motion/primitives";
+import { usePublishedUiText } from "../../hooks/useCmsContent";
 
 export function RegisterPage() {
   const { googleLogin, register, user } = useAuth();
+  const uiText = usePublishedUiText();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,7 +66,7 @@ export function RegisterPage() {
       </div>
       <section className="auth-visual">
         <p className="hero-kicker"><Brain size={14} /> Personal AI layer</p>
-        <h1>Create your workspace.</h1>
+        <h1>{uiText?.["auth.signup.title"] || "Create your workspace."}</h1>
         <p>Start with streaming chat, memory management, document context, image analysis, and voice input ready on day one.</p>
       </section>
       <form onSubmit={onSubmit} className="auth-card">
@@ -88,7 +90,7 @@ export function RegisterPage() {
           <input className="input-dark" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required minLength={8} />
         </label>
         <button className="btn-primary h-11 w-full" disabled={loading}>
-          {loading ? "Creating" : "Create account"}
+          {loading ? "Creating" : uiText?.["auth.signup.submit"] || "Create account"}
           <ArrowRight size={17} />
         </button>
         <p className="mt-4 text-center text-sm text-slate-400">

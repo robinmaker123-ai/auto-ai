@@ -416,7 +416,7 @@ def create_admin_user(
 @router.get("/users", response_model=list[AdminUserRead])
 def list_users(
     search: str | None = Query(default=None),
-    role: str | None = Query(default=None, pattern="^(user|admin|super_admin)$"),
+    role: str | None = Query(default=None, pattern="^(user|admin|super_admin|content_admin|content_editor|content_viewer)$"),
     status_filter: str | None = Query(default=None, alias="status", pattern="^(active|blocked)$"),
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
@@ -632,10 +632,10 @@ def update_user_role(
     if (user.role == "super_admin" or payload.role == "super_admin") and current_admin.role != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only a super admin can manage super admin roles")
     user.role = payload.role
-    user.is_admin = payload.role in {"admin", "super_admin"}
+    user.is_admin = payload.role in {"admin", "super_admin", "content_admin", "content_editor", "content_viewer"}
     user.updated_at = datetime.utcnow()
     subscription = ensure_user_subscription(db, user)
-    if payload.role in {"admin", "super_admin"}:
+    if payload.role in {"admin", "super_admin", "content_admin", "content_editor", "content_viewer"}:
         defaults = quota_plan_defaults("admin")
         subscription.plan = "admin"
         subscription.plan_name = str(defaults["plan_name"])

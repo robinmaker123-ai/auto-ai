@@ -16,6 +16,9 @@ import { api, resolveApkDownloadUrl } from "../../api/client";
 import type { ApkRelease, ApkStats } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
+import { usePublishedPage } from "../../hooks/useCmsContent";
+import { PublishedContentBlocks } from "../common/PublishedContentBlocks";
+import { PublicFooter } from "../common/PublicFooter";
 
 const screenshots = [
   { title: "Memory chat", lines: ["Project context loaded", "Tone profile active", "Sources ready"] },
@@ -52,6 +55,7 @@ function absoluteDownloadUrl() {
 }
 
 export function DownloadPage() {
+  const cmsPage = usePublishedPage("download");
   const [latest, setLatest] = useState<ApkRelease | null>(null);
   const [versions, setVersions] = useState<ApkRelease[]>([]);
   const [stats, setStats] = useState<ApkStats | null>(null);
@@ -133,14 +137,14 @@ export function DownloadPage() {
         <section className="download-hero">
           <div className="download-copy">
             <p className="hero-kicker"><Smartphone size={14} /> Android APK</p>
-            <h1>Auto-AI Mobile</h1>
+            <h1>{cmsPage?.hero_heading || "Auto-AI Mobile"}</h1>
             <p className="hero-subtitle">
-              Install Auto-AI on Android with the same backend, account, memory, chat history, uploads, settings, and source-grounded answers as the website.
+              {cmsPage?.hero_description || "Install Auto-AI on Android with the same backend, account, memory, chat history, uploads, settings, and source-grounded answers as the website."}
             </p>
             <div className="download-actions">
               <button className="btn-primary h-12 px-5" type="button" onClick={downloadLatestApk}>
                 <Download size={18} />
-                Download Auto-AI APK
+                {cmsPage?.buttons?.[0]?.label || "Download Auto-AI APK"}
               </button>
               <span className="download-version">
                 {latest ? `Version ${latest.version_name} (${latest.version_code})` : loading ? "Checking latest version" : `Build ${buildVersion}`}
@@ -167,6 +171,8 @@ export function DownloadPage() {
             </div>
           </div>
         </section>
+
+        <PublishedContentBlocks blocks={cmsPage?.blocks?.filter((block) => block.block_type !== "download_button")} />
 
         <section className="download-section">
           <div className="download-meta-grid">
@@ -266,6 +272,7 @@ export function DownloadPage() {
           </div>
         </section>
       </main>
+      <PublicFooter />
     </div>
   );
 }

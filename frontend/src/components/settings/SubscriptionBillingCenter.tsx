@@ -18,6 +18,7 @@ import type { BillingCenter, BillingPlan, PaidPricingPlanName, PaymentConfig, Pa
 import { createRazorpayCheckoutOptions, loadRazorpayCheckout } from "../../utils/razorpay";
 import { normalizeUpiId } from "../../utils/upi";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
+import { CrystalBadge, CrystalLoader, CrystalSurface } from "../crystal/Crystal";
 
 const paidPlans = new Set(["pro", "premium", "ultra"]);
 
@@ -251,7 +252,7 @@ export function SubscriptionBillingCenter() {
   if (!billing || !current) {
     return (
       <section className="settings-billing-center">
-        <div className="billing-loading"><Loader2 className="spin-icon" size={18} /> Loading subscription</div>
+        <div className="billing-loading"><CrystalLoader label="Loading subscription" /> Loading subscription</div>
       </section>
     );
   }
@@ -277,13 +278,13 @@ export function SubscriptionBillingCenter() {
       {(error || success) && <div className={success ? "billing-alert billing-alert-success" : "billing-alert billing-alert-error"}>{success || error}</div>}
 
       <div className="billing-summary-grid">
-        <div className="billing-current-card">
+        <CrystalSurface className="billing-current-card">
           <div className="billing-plan-line">
             <div>
               <span>Current Plan</span>
               <strong>{current.plan_name}</strong>
             </div>
-            <span className="billing-status">{current.status}</span>
+            <CrystalBadge tone={current.plan === "free" ? "default" : "premium"}>{current.status}</CrystalBadge>
           </div>
           <div className="billing-block-title">Token Usage</div>
           <div className="billing-token-bar">
@@ -299,7 +300,7 @@ export function SubscriptionBillingCenter() {
             <span>Renewal Date<strong>{formatDate(current.renewal_at)}</strong></span>
             <span>Plan Status<strong>{current.status}</strong></span>
           </div>
-        </div>
+        </CrystalSurface>
         <div className="billing-side-card">
           <div className="billing-side-title"><Sparkles size={16} /> Enabled AI Models</div>
           <div className="billing-chip-list">

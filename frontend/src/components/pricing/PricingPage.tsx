@@ -10,6 +10,9 @@ import { normalizeUpiId } from "../../utils/upi";
 import { LogoIcon } from "../brand/LogoIcon";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
+import { usePublishedPage } from "../../hooks/useCmsContent";
+import { PublishedContentBlocks } from "../common/PublishedContentBlocks";
+import { PublicFooter } from "../common/PublicFooter";
 
 const paymentInstruction = "After payment, send your registered email and payment screenshot to admin.";
 
@@ -26,6 +29,7 @@ export function PricingPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const mobileApp = isMobileAppRuntime();
+  const cmsPage = usePublishedPage("pricing");
 
   const razorpayKeyId = paymentConfig?.key_id || "";
   const razorpayReady = paymentConfig?.razorpay_ready ?? false;
@@ -147,9 +151,11 @@ export function PricingPage() {
       <main className="landing-section pricing-main">
         <div className="section-heading">
           <p className="hero-kicker"><CreditCard size={14} /> Subscription</p>
-          <h1>Auto-AI Pricing</h1>
-          <p className="pricing-subtitle">{paymentInstruction}</p>
+          <h1>{cmsPage?.hero_heading || "Auto-AI Pricing"}</h1>
+          <p className="pricing-subtitle">{cmsPage?.hero_description || paymentInstruction}</p>
         </div>
+
+        <PublishedContentBlocks blocks={cmsPage?.blocks?.filter((block) => block.block_type !== "pricing_description")} />
 
         {(message || error) && (
           <div className={message ? "payment-alert payment-alert-success" : "payment-alert payment-alert-error"}>
@@ -199,6 +205,7 @@ export function PricingPage() {
           })}
         </div>
       </main>
+      <PublicFooter />
     </div>
   );
 }

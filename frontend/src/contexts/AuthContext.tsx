@@ -4,6 +4,7 @@ import { nativeGoogleAuth, readStoredSession, removeStoredSession, writeStoredSe
 import { callApi } from "../features/calls/services/callApi";
 import { callNative } from "../features/calls/services/callNative";
 import type { User } from "../types";
+import { isAdminPanelRole } from "../utils/roles";
 
 type AuthContextValue = {
   user: User | null;
@@ -90,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       adminLogin: async (email, password) => {
         const credentials = { email: email.trim().toLowerCase(), password };
         const session = await api.login(credentials);
-        if (!["admin", "super_admin"].includes(session.user.role)) {
+        if (!isAdminPanelRole(session.user.role)) {
           throw new Error("Only admin accounts can access the admin dashboard.");
         }
         await persistSession(session);

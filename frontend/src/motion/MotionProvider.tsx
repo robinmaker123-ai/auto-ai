@@ -7,6 +7,7 @@ import {
   type MotionMode,
   type MotionPreference
 } from "./tokens";
+import { disableSafeMode as disableStoredSafeMode, enableSafeMode as enableStoredSafeMode, readSafeModeState } from "../reliability/safeMode";
 
 type MotionContextValue = {
   enabled: boolean;
@@ -15,7 +16,12 @@ type MotionContextValue = {
   mode: MotionMode;
   tier: DevicePerformanceTier;
   reduceMotion: boolean;
+  systemReduced: boolean;
   visible: boolean;
+  safeMode: boolean;
+  safeModeReason?: string;
+  enableSafeMode: (reason?: string) => void;
+  disableSafeMode: () => void;
   canUseAmbient: boolean;
   canUseCinematic: boolean;
   canUsePointerEffects: boolean;
@@ -95,10 +101,12 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
   const [preference, setPreferenceState] = useState<MotionPreference>(() => readPreference());
   const [systemReduced, setSystemReduced] = useState(() => getSystemReducedMotion());
   const [tier, setTier] = useState<DevicePerformanceTier>(() => getDeviceTier());
+  const [safeModeState, setSafeModeState] = useState(() => readSafeModeState());
   const visible = useAppVisibility();
-  const mode = modeFromPreference(preference, systemReduced, tier);
-  const enabled = advancedMotionEnabled;
-  const reduceMotion = !enabled || mode === "reduced";
+  const safeMode = safeModeState.enabled;
+  const mode = safeMode ? "reduced" : modeFromPreference(preference, systemReduced, tier);
+  const enabled = advancedMotionEnabled && !safeMode;
+  const reduceMotion = safeMode || !enabled || mode === "reduced";
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -124,11 +132,13 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
     root.dataset.autoAiCinematic = cinematicWebsiteEnabled && enabled && mode !== "reduced" ? "true" : "false";
     root.dataset.autoAiPerformance = tier;
     root.dataset.autoAiVisible = visible ? "true" : "false";
+    root.dataset.autoAiSafeMode = safeMode ? "true" : "false";
     root.classList.toggle("advanced-motion", enabled);
     root.classList.toggle("cinematic-website", cinematicWebsiteEnabled && enabled && mode !== "reduced");
     root.classList.toggle("motion-reduced", reduceMotion);
+    root.classList.toggle("safe-mode", safeMode);
     root.classList.toggle("app-hidden", !visible);
-  }, [enabled, mode, reduceMotion, tier, visible]);
+  }, [enabled, mode, reduceMotion, safeMode, tier, visible]);
 
   const setPreference = useCallback((next: MotionPreference) => {
     setPreferenceState(next);
@@ -137,6 +147,16 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn("[Auto-AI Motion] Unable to save motion preference.", error);
     }
+  }, []);
+
+  const enableSafeMode = useCallback((reason = "manual") => {
+    enableStoredSafeMode(reason);
+    setSafeModeState(readSafeModeState());
+  }, []);
+
+  const disableSafeMode = useCallback(() => {
+    disableStoredSafeMode();
+    setSafeModeState(readSafeModeState());
   }, []);
 
   const value = useMemo<MotionContextValue>(() => {
@@ -149,12 +169,17 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
       mode,
       tier,
       reduceMotion,
+      systemReduced,
       visible,
+      safeMode,
+      safeModeReason: safeModeState.reason,
+      enableSafeMode,
+      disableSafeMode,
       canUseAmbient: enabled && visible && !callActive && mode !== "reduced",
       canUseCinematic: cinematicWebsiteEnabled && enabled && visible && mode !== "reduced" && tier !== "low",
       canUsePointerEffects: enabled && visible && pointerFine && mode === "full" && tier !== "low"
     };
-  }, [enabled, mode, preference, reduceMotion, setPreference, tier, visible]);
+  }, [disableSafeMode, enableSafeMode, enabled, mode, preference, reduceMotion, safeMode, safeModeState.reason, setPreference, systemReduced, tier, visible]);
 
   return <MotionContext.Provider value={value}>{children}</MotionContext.Provider>;
 }

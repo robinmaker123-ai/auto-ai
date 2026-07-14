@@ -11,6 +11,8 @@ import { LivePermissionCard } from "./LivePermissionCard";
 import { LiveVoiceSettingsSheet } from "./LiveVoiceSettingsSheet";
 import "./LiveCallMode.css";
 import { mediaResourceCoordinator } from "../../features/calls/services/mediaResourceCoordinator";
+import { CrystalAiOrb, CrystalErrorBoundary, CrystalVoiceVisualizer } from "../crystal/Crystal";
+import type { CrystalOrbState } from "../../crystal/tokens";
 
 export function LiveCallMode({ onClose }: { onClose: () => void }) {
   const { token } = useAuth();
@@ -90,6 +92,18 @@ export function LiveCallMode({ onClose }: { onClose: () => void }) {
 
   const time = `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
   const tone = liveVisualTone(live.state);
+  const orbState: CrystalOrbState = live.state === "listening" || live.state === "user_speaking"
+    ? "listening"
+    : live.state === "thinking" || live.state === "processing_speech"
+      ? "thinking"
+      : live.state === "speaking"
+        ? "speaking"
+        : live.state === "offline" || live.state === "reconnecting"
+          ? "offline"
+          : live.state === "error" || live.state === "permission_required"
+            ? "error"
+            : "ready";
+  const voiceActive = live.state === "listening" || live.state === "user_speaking" || live.state === "speaking";
   const permissionRequired = live.state === "permission_required";
   const networkFailure = ["reconnecting", "offline", "error"].includes(live.state);
   const cameraPermissionDenied = Boolean(live.vision.cameraError);
@@ -133,7 +147,10 @@ export function LiveCallMode({ onClose }: { onClose: () => void }) {
 
       {!live.vision.cameraActive && (
         <section className="live-ai-orb-stage" aria-live="polite">
-          <div className={`live-ai-orb live-orb-${tone}`} />
+          <CrystalErrorBoundary>
+            <CrystalAiOrb state={orbState} size="lg" label="Live voice status" />
+          </CrystalErrorBoundary>
+          <CrystalVoiceVisualizer active={voiceActive} state={live.state === "speaking" ? "speaking" : "listening"} />
           <strong>{liveStatusLabel(live.state)}</strong>
           {live.interimTranscript && <p>{live.interimTranscript}</p>}
         </section>

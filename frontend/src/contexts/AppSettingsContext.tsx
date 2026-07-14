@@ -1,5 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type { AiProvider, ResearchProvider } from "../types";
+import { crystalFailureThreshold, crystalUiEnabled, type CrystalEffectsLevel } from "../crystal/tokens";
+import { useMotionMode } from "../motion/MotionProvider";
 export type AppLanguage = "system" | "en" | "hi" | "hinglish";
 
 export type AppSettings = {
@@ -14,6 +16,11 @@ export type AppSettings = {
   deepResearchMaxModels: number;
   deepResearchAllModels: boolean;
   deepResearchTimeoutSeconds: number;
+  visualEffectsLevel: CrystalEffectsLevel;
+  crystalOrb: boolean;
+  crystalSurfaces: boolean;
+  crystalButtonMotion: boolean;
+  crystalVoiceVisualizer: boolean;
 };
 
 type AppSettingsContextValue = {
@@ -29,6 +36,12 @@ type AppSettingsContextValue = {
   setDeepResearchMaxModels: (maxModels: number) => void;
   setDeepResearchAllModels: (enabled: boolean) => void;
   setDeepResearchTimeoutSeconds: (seconds: number) => void;
+  setVisualEffectsLevel: (level: CrystalEffectsLevel) => void;
+  setCrystalOrb: (enabled: boolean) => void;
+  setCrystalSurfaces: (enabled: boolean) => void;
+  setCrystalButtonMotion: (enabled: boolean) => void;
+  setCrystalVoiceVisualizer: (enabled: boolean) => void;
+  resetVisualEffects: () => void;
 };
 
 const STORAGE_KEY = "auto-ai-app-settings";
@@ -79,7 +92,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   deepResearchProviders: ["groq", "bedrock"],
   deepResearchMaxModels: 3,
   deepResearchAllModels: false,
-  deepResearchTimeoutSeconds: 45
+  deepResearchTimeoutSeconds: 45,
+  visualEffectsLevel: "reduced",
+  crystalOrb: true,
+  crystalSurfaces: true,
+  crystalButtonMotion: true,
+  crystalVoiceVisualizer: true
 };
 
 const LANGUAGE_VALUES = new Set<AppLanguage>(["system", "en", "hi", "hinglish"]);
@@ -122,7 +140,14 @@ function normalizeSettings(payload: unknown): AppSettings {
       DEFAULT_SETTINGS.deepResearchTimeoutSeconds,
       20,
       120
-    )
+    ),
+    visualEffectsLevel: raw.visualEffectsLevel === "off" || raw.visualEffectsLevel === "reduced" || raw.visualEffectsLevel === "full"
+      ? raw.visualEffectsLevel
+      : DEFAULT_SETTINGS.visualEffectsLevel,
+    crystalOrb: typeof raw.crystalOrb === "boolean" ? raw.crystalOrb : DEFAULT_SETTINGS.crystalOrb,
+    crystalSurfaces: typeof raw.crystalSurfaces === "boolean" ? raw.crystalSurfaces : DEFAULT_SETTINGS.crystalSurfaces,
+    crystalButtonMotion: typeof raw.crystalButtonMotion === "boolean" ? raw.crystalButtonMotion : DEFAULT_SETTINGS.crystalButtonMotion,
+    crystalVoiceVisualizer: typeof raw.crystalVoiceVisualizer === "boolean" ? raw.crystalVoiceVisualizer : DEFAULT_SETTINGS.crystalVoiceVisualizer
   };
 }
 
@@ -148,6 +173,7 @@ const AppSettingsContext = createContext<AppSettingsContextValue | undefined>(un
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => readStoredSettings());
+  const { safeMode, systemReduced } = useMotionMode();
 
   useEffect(() => {
     const nextLang =
@@ -166,6 +192,42 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       return nextSettings;
     });
   }, []);
+
+  useLayoutEffect(() => {
+    const effectiveLevel: CrystalEffectsLevel = !crystalUiEnabled || safeMode
+      ? "off"
+      : systemReduced
+        ? "reduced"
+        : settings.visualEffectsLevel;
+    const active = effectiveLevel !== "off";
+    const root = document.documentElement;
+    root.dataset.autoAiCrystal = effectiveLevel;
+    root.dataset.autoAiCrystalSurfaces = active && settings.crystalSurfaces ? "true" : "false";
+    root.dataset.autoAiCrystalButtons = active && settings.crystalButtonMotion ? "true" : "false";
+    root.dataset.autoAiCrystalOrb = active && settings.crystalOrb ? "true" : "false";
+    root.dataset.autoAiCrystalVoice = active && settings.crystalVoiceVisualizer ? "true" : "false";
+    root.classList.toggle("crystal-ui", active);
+    return () => {
+      delete root.dataset.autoAiCrystal;
+      delete root.dataset.autoAiCrystalSurfaces;
+      delete root.dataset.autoAiCrystalButtons;
+      delete root.dataset.autoAiCrystalOrb;
+      delete root.dataset.autoAiCrystalVoice;
+      root.classList.remove("crystal-ui");
+    };
+  }, [safeMode, settings.crystalButtonMotion, settings.crystalOrb, settings.crystalSurfaces, settings.crystalVoiceVisualizer, settings.visualEffectsLevel, systemReduced]);
+
+  useEffect(() => {
+    const handleFailure = (event: Event) => {
+      const failures = event instanceof CustomEvent ? Number(event.detail?.failures) : 0;
+      if (failures < crystalFailureThreshold) return;
+      updateSettings((current) => current.visualEffectsLevel === "full"
+        ? { ...current, visualEffectsLevel: "reduced" }
+        : current);
+    };
+    window.addEventListener("auto-ai-crystal-failure", handleFailure);
+    return () => window.removeEventListener("auto-ai-crystal-failure", handleFailure);
+  }, [updateSettings]);
 
   const value = useMemo<AppSettingsContextValue>(
     () => ({
@@ -206,6 +268,31 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       },
       setDeepResearchTimeoutSeconds: (seconds) => {
         updateSettings((current) => ({ ...current, deepResearchTimeoutSeconds: seconds }));
+      },
+      setVisualEffectsLevel: (level) => {
+        updateSettings((current) => ({ ...current, visualEffectsLevel: level }));
+      },
+      setCrystalOrb: (enabled) => {
+        updateSettings((current) => ({ ...current, crystalOrb: enabled }));
+      },
+      setCrystalSurfaces: (enabled) => {
+        updateSettings((current) => ({ ...current, crystalSurfaces: enabled }));
+      },
+      setCrystalButtonMotion: (enabled) => {
+        updateSettings((current) => ({ ...current, crystalButtonMotion: enabled }));
+      },
+      setCrystalVoiceVisualizer: (enabled) => {
+        updateSettings((current) => ({ ...current, crystalVoiceVisualizer: enabled }));
+      },
+      resetVisualEffects: () => {
+        updateSettings((current) => ({
+          ...current,
+          visualEffectsLevel: DEFAULT_SETTINGS.visualEffectsLevel,
+          crystalOrb: DEFAULT_SETTINGS.crystalOrb,
+          crystalSurfaces: DEFAULT_SETTINGS.crystalSurfaces,
+          crystalButtonMotion: DEFAULT_SETTINGS.crystalButtonMotion,
+          crystalVoiceVisualizer: DEFAULT_SETTINGS.crystalVoiceVisualizer
+        }));
       }
     }),
     [settings, updateSettings]

@@ -15,3 +15,16 @@ Auto-AI creates these adaptive conversation tables on backend startup:
 - `conversation_turn_analyses`: per-turn emotion, tone, intent, language, personality, state delta, and conversation flags.
 
 See `../docs/human-mode.md` for the full schema.
+
+## Content Manager Tables
+
+The CMS uses additive SQLAlchemy tables for pages, blocks, revisions, global content, UI text, FAQs, announcements, media metadata and audit logs. Backend startup creates missing tables and safely seeds current source content as drafts.
+
+Run the idempotent migration manually when needed:
+
+```powershell
+cd backend
+python scripts/migrate_cms_schema.py
+```
+
+CMS images reuse `UPLOAD_DIR/cms`. Production deployments must keep `UPLOAD_DIR` on persistent storage and continue serving `/uploads` through the backend or an equivalent trusted storage proxy.
