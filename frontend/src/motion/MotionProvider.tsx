@@ -19,7 +19,6 @@ type MotionContextValue = {
   canUseAmbient: boolean;
   canUseCinematic: boolean;
   canUsePointerEffects: boolean;
-  canUseWebGl: boolean;
 };
 
 const MotionContext = createContext<MotionContextValue | undefined>(undefined);
@@ -153,8 +152,7 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
       visible,
       canUseAmbient: enabled && visible && !callActive && mode !== "reduced",
       canUseCinematic: cinematicWebsiteEnabled && enabled && visible && mode !== "reduced" && tier !== "low",
-      canUsePointerEffects: enabled && visible && pointerFine && mode === "full" && tier !== "low",
-      canUseWebGl: false
+      canUsePointerEffects: enabled && visible && pointerFine && mode === "full" && tier !== "low"
     };
   }, [enabled, mode, preference, reduceMotion, setPreference, tier, visible]);
 

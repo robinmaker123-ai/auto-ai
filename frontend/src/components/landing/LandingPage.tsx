@@ -19,7 +19,6 @@ import { LogoIcon } from "../brand/LogoIcon";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
 import { NeuralCore } from "../../motion/NeuralCore";
 import { AnimatedPage, FlyText, Reveal, StaggerGroup, StaggerItem, TiltCard } from "../../motion/primitives";
-import { CognitiveThread } from "../../motion/CognitiveThread";
 
 const features = [
   { icon: <Brain size={18} />, title: "Adaptive memory", body: "Preference, project, and style signals shape future replies without making the assistant feel scripted." },
@@ -143,7 +142,6 @@ export function LandingPage() {
 
       <AnimatedPage className="landing-page">
       <main>
-        <CognitiveThread />
         <section className="landing-hero" data-chapter="Awaken">
           <div className="landing-lighting" aria-hidden="true" />
           <div className="hero-motion-grid" aria-hidden="true">

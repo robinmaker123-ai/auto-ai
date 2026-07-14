@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ShellProvider } from "./contexts/ShellContext";
@@ -8,7 +8,6 @@ import { SeoManager } from "./seo/SeoManager";
 import { AppErrorBoundary } from "./components/common/AppErrorBoundary";
 import { LandingPage } from "./components/landing/LandingPage";
 import { isMobileAppRuntime } from "./utils/runtime";
-import { AmbientAurora } from "./motion/AmbientAurora";
 import { MotionProvider } from "./motion/MotionProvider";
 
 const AppShell = lazy(() => import("./components/layout/AppShell").then((module) => ({ default: module.AppShell })));
@@ -58,6 +57,44 @@ function AdminRoute() {
   return user?.role === "admin" || user?.role === "super_admin" ? <Outlet /> : <Navigate to="/admin/login" replace />;
 }
 
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <AppErrorBoundary resetKey={`${location.pathname}${location.search}`}>
+      <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
+        <Routes>
+          <Route index element={<RootRedirect />} />
+          <Route path="/home" element={<Navigate to="/" replace />} />
+          <Route path="/download" element={<MobileBlockedRoute><DownloadPage /></MobileBlockedRoute>} />
+          <Route path="/pricing" element={<MobileBlockedRoute><PricingPage /></MobileBlockedRoute>} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/payment/checkout" element={<PaymentCheckoutPage />} />
+          <Route path="/payment/success" element={<PaymentStatusPage status="success" />} />
+          <Route path="/payment/failed" element={<PaymentStatusPage status="failed" />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/messages" element={<UserMessagesPage />} />
+              <Route path="/messages/:threadId" element={<UserMessagesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/calls" element={<CallsPage />} />
+            </Route>
+          </Route>
+          <Route element={<AdminRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+            </Route>
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
+  );
+}
+
 export default function App() {
   const Router = isMobileAppRuntime() ? HashRouter : BrowserRouter;
   return (
@@ -67,39 +104,7 @@ export default function App() {
           <ShellProvider>
             <Router>
               <SeoManager />
-              <AmbientAurora />
-              <AppErrorBoundary>
-                <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
-                  <Routes>
-                    <Route index element={<RootRedirect />} />
-                    <Route path="/home" element={<Navigate to="/" replace />} />
-                    <Route path="/download" element={<MobileBlockedRoute><DownloadPage /></MobileBlockedRoute>} />
-                    <Route path="/pricing" element={<MobileBlockedRoute><PricingPage /></MobileBlockedRoute>} />
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/admin/login" element={<AdminLoginPage />} />
-                    <Route path="/register" element={<RegisterPage />} />
-                    <Route path="/reset-password" element={<ResetPasswordPage />} />
-                    <Route path="/payment/checkout" element={<PaymentCheckoutPage />} />
-                    <Route path="/payment/success" element={<PaymentStatusPage status="success" />} />
-                    <Route path="/payment/failed" element={<PaymentStatusPage status="failed" />} />
-                    <Route element={<ProtectedRoute />}>
-                      <Route element={<AppShell />}>
-                        <Route path="/chat" element={<ChatPage />} />
-                        <Route path="/messages" element={<UserMessagesPage />} />
-                        <Route path="/messages/:threadId" element={<UserMessagesPage />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="/calls" element={<CallsPage />} />
-                      </Route>
-                    </Route>
-                    <Route element={<AdminRoute />}>
-                      <Route element={<AppShell />}>
-                        <Route path="/admin" element={<AdminDashboard />} />
-                      </Route>
-                    </Route>
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Suspense>
-              </AppErrorBoundary>
+              <AppRoutes />
             </Router>
           </ShellProvider>
         </AuthProvider>

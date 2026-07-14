@@ -1,5 +1,5 @@
-export const advancedMotionEnabled = import.meta.env.VITE_ENABLE_ADVANCED_MOTION !== "false";
-export const cinematicWebsiteEnabled = import.meta.env.VITE_ENABLE_CINEMATIC_WEBSITE !== "false";
+export const advancedMotionEnabled = import.meta.env.VITE_ENABLE_ADVANCED_MOTION === "true";
+export const cinematicWebsiteEnabled = import.meta.env.VITE_ENABLE_CINEMATIC_WEBSITE === "true";
 
 export type MotionPreference = "system" | "full" | "balanced" | "reduced";
 export type MotionMode = "full" | "balanced" | "reduced";

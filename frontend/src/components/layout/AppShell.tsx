@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { PanelLeftOpen } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppSettingsProvider } from "../../contexts/AppSettingsContext";
@@ -9,8 +8,6 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { CallProvider } from "../../features/calls/CallProvider";
 import { CallOverlay } from "../../features/calls/CallOverlay";
-import { useMotionMode } from "../../motion/MotionProvider";
-import { motionDurations, motionEase } from "../../motion/tokens";
 import "../../features/calls/calls.css";
 
 export function AppShell() {
@@ -22,7 +19,6 @@ export function AppShell() {
     expandSidebar,
     isSidebarCollapsed
   } = useShell();
-  const { enabled, reduceMotion } = useMotionMode();
 
   useEffect(() => {
     closeSidebar();
@@ -65,22 +61,9 @@ export function AppShell() {
             )}
             <main className="flex min-w-0 flex-1 flex-col">
               <Header />
-              {enabled && !reduceMotion ? (
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={location.pathname}
-                    className="route-transition-stage"
-                    initial={{ opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -6 }}
-                    transition={{ duration: motionDurations.page, ease: motionEase.standard }}
-                  >
-                    <Outlet />
-                  </motion.div>
-                </AnimatePresence>
-              ) : (
+              <div className="route-transition-stage">
                 <Outlet />
-              )}
+              </div>
             </main>
             <CallOverlay />
           </div>

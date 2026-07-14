@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import clsx from "clsx";
 import {
   ArrowLeft,
@@ -603,12 +602,8 @@ export function SettingsPage() {
   }
 
   return (
-    <motion.div
+    <div
       className="settings-page min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 text-white md:px-6 md:py-5"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
     >
       <div className="mx-auto w-full max-w-6xl pb-8">
         <header className="sticky top-0 z-20 -mx-3 mb-3 flex h-11 items-center justify-between border-b border-white/10 bg-slate-950/80 px-3 backdrop-blur-xl md:static md:mx-0 md:h-auto md:rounded-lg md:border md:bg-white/[0.04] md:px-4 md:py-3">
@@ -628,6 +623,6 @@ export function SettingsPage() {
           {section === "chat" && renderChatSettings()}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

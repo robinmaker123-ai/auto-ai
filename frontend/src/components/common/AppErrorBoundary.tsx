@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
+  resetKey?: string;
 };
 
 type AppErrorBoundaryState = {
@@ -31,6 +32,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     sessionStorage.removeItem(CHUNK_RELOAD_KEY);
   }
 
+  componentDidUpdate(previousProps: AppErrorBoundaryProps) {
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[Auto-AI] App render failed.", error, info);
     if (!isChunkLoadError(error)) return;
@@ -46,15 +53,20 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       <main className="app-error-page">
         <section className="app-error-card">
           <p className="settings-eyebrow">Auto-AI</p>
-          <h1>{chunkError ? "Updating workspace" : "Something went wrong"}</h1>
+          <h1>{chunkError ? "Page failed to load" : "Something went wrong"}</h1>
           <p>
             {chunkError
-              ? "The app is loading the latest files. Refresh if it does not continue automatically."
-              : "The page could not render. Refresh the app to recover."}
+              ? "The app could not load this page file. Retry or return to the main workspace."
+              : "The page could not render. Retry or return to the main workspace."}
           </p>
-          <button className="btn-primary" type="button" onClick={() => window.location.reload()}>
-            Refresh app
-          </button>
+          <div className="app-error-actions">
+            <button className="btn-primary" type="button" onClick={() => this.setState({ error: null })}>
+              Retry
+            </button>
+            <a className="btn-secondary" href="/chat">
+              Return to chat
+            </a>
+          </div>
         </section>
       </main>
     );
