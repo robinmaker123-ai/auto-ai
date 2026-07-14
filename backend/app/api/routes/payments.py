@@ -46,6 +46,9 @@ from app.services.admin_control import (
     activate_subscription_plan,
     active_subscription,
     billing_plan,
+    plan_daily_message_limit,
+    plan_monthly_token_limit,
+    plan_price_paise,
     ensure_user_subscription,
     paid_plan_amount,
     plan_upload_limit_mb,
@@ -212,7 +215,7 @@ def create_razorpay_payment_record(
 ) -> PaymentRecord:
     if amount < 100:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be at least 100 paise.")
-    validate_plan_amount(selected_plan, amount, promo_code)
+    validate_plan_amount(db, selected_plan, amount, promo_code)
 
     receipt_value = receipt or f"auto-ai-{current_user.id[:8]}-{int(datetime.utcnow().timestamp())}"
     order_payload = {
@@ -303,7 +306,7 @@ def apply_paid_razorpay_payment(
 
     subscription = ensure_user_subscription(db, user)
     if not already_paid:
-        activate_subscription_plan(subscription, plan, payment_status="active")
+        activate_subscription_plan(db, subscription, plan, payment_status="active")
         subscription.plan_id = plan
         subscription.status = "active"
         subscription.tokens_added = subscription.token_limit_monthly
@@ -316,17 +319,17 @@ def apply_paid_razorpay_payment(
     user.updated_at = now
 
 
-def expected_plan_amount(plan: str | None, promo_code: str | None = None) -> int | None:
+def expected_plan_amount(db: Session, plan: str | None, promo_code: str | None = None) -> int | None:
     if not plan:
         return None
     discount = promo_discount_percent(promo_code)
     if promo_code and discount <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid promo code.")
-    return paid_plan_amount(plan, discount)
+    return paid_plan_amount(plan, discount, db)
 
 
-def validate_plan_amount(plan: str | None, amount: int, promo_code: str | None = None) -> None:
-    expected_amount = expected_plan_amount(plan, promo_code)
+def validate_plan_amount(db: Session, plan: str | None, amount: int, promo_code: str | None = None) -> None:
+    expected_amount = expected_plan_amount(db, plan, promo_code)
     if expected_amount is None:
         return
     if amount != expected_amount:
@@ -478,6 +481,26 @@ def plan_read(plan_id: str) -> BillingPlanRead:
     )
 
 
+def plan_read_for_db(db: Session, plan_id: str) -> BillingPlanRead:
+    item = PLAN_CATALOG[plan_id]
+    return BillingPlanRead(
+        id=plan_id,
+        label=str(item["label"]),
+        price_paise=plan_price_paise(db, plan_id),
+        features=list(item["features"]),
+        token_quota=plan_monthly_token_limit(db, plan_id),
+        model_access=list(item["model_access"]),
+        upload_limit_mb=int(item["upload_limit_mb"]),
+        priority_speed=str(item["priority_speed"]),
+        daily_message_limit=plan_daily_message_limit(db, plan_id),
+    )
+
+
+@router.get("/payments/plans", response_model=list[BillingPlanRead])
+def payment_plans(db: Session = Depends(get_db)) -> list[BillingPlanRead]:
+    return [plan_read_for_db(db, plan_id) for plan_id in ("free", "pro", "premium", "ultra")]
+
+
 def payment_history_item(payment: PaymentRecord) -> PaymentHistoryRead:
     return PaymentHistoryRead(
         id=payment.id,
@@ -529,7 +552,7 @@ def billing_center(
     ).all()
     result = BillingCenterRead(
         current_plan=current_plan_read(db, current_user),
-        plans=[plan_read(plan_id) for plan_id in ("free", "pro", "premium", "ultra")],
+        plans=[plan_read_for_db(db, plan_id) for plan_id in ("free", "pro", "premium", "ultra")],
         payment_history=[payment_history_item(payment) for payment in payments],
         payment_methods=PAYMENT_METHODS,
         support_email=str(settings.ADMIN_EMAIL) if settings.ADMIN_EMAIL else None,
@@ -581,17 +604,16 @@ def download_invoice(
 
 
 @router.post("/payments/promo-code", response_model=PromoCodeResponse)
-def apply_promo_code(payload: PromoCodeRequest) -> PromoCodeResponse:
+def apply_promo_code(payload: PromoCodeRequest, db: Session = Depends(get_db)) -> PromoCodeResponse:
     discount = promo_discount_percent(payload.code)
     if discount <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid promo code.")
-    original = PLAN_PRICES_PAISE[payload.plan]
     return PromoCodeResponse(
         code=payload.code,
         discount_percent=discount,
         plan=payload.plan,
-        original_amount_paise=original,
-        discounted_amount_paise=paid_plan_amount(payload.plan, discount),
+        original_amount_paise=plan_price_paise(db, payload.plan),
+        discounted_amount_paise=paid_plan_amount(payload.plan, discount, db),
     )
 
 
@@ -626,7 +648,7 @@ def restore_purchase(
     if not payment:
         return RestorePurchaseResponse(restored=False, message="No paid purchase found.")
     subscription = ensure_user_subscription(db, current_user)
-    activate_subscription_plan(subscription, payment_plan(payment), payment_status="restored")
+    activate_subscription_plan(db, subscription, payment_plan(payment), payment_status="restored")
     subscription.razorpay_payment_id = payment.razorpay_payment_id or payment.payment_id
     current_user.subscription_status = subscription.status
     current_user.updated_at = datetime.utcnow()
@@ -641,7 +663,7 @@ def create_payment_session(
     db: Session = Depends(get_db),
 ) -> PaymentSessionResponse:
     selected_plan = request_plan(payload.plan_id, None)
-    amount = payload.amount if payload.amount is not None else expected_plan_amount(selected_plan, payload.promo_code)
+    amount = payload.amount if payload.amount is not None else expected_plan_amount(db, selected_plan, payload.promo_code)
     if amount is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to determine plan amount.")
     payment = create_razorpay_payment_record(

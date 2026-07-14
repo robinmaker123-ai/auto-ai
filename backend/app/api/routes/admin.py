@@ -60,6 +60,8 @@ from app.services.admin_control import (
     log_quota_action,
     normalize_plan,
     quota_plan_defaults,
+    plan_daily_message_limit,
+    plan_monthly_token_limit,
     recalculate_token_balance,
     refresh_quota_periods,
 )
@@ -265,6 +267,7 @@ def to_plan_limit_read(limit: PlanLimit) -> AdminPlanLimitRead:
     return AdminPlanLimitRead(
         id=limit.id,
         plan=limit.plan,
+        price_paise=limit.price_paise,
         daily_prompt_limit=limit.daily_prompt_limit,
         monthly_prompt_limit=limit.monthly_prompt_limit,
         daily_token_limit=limit.daily_token_limit,
@@ -296,6 +299,7 @@ def sync_plan_limit_subscriptions(db: Session, limit: PlanLimit, current_admin: 
             action="plan_limit_sync",
             metadata={
                 "plan": limit.plan,
+                "price_paise": limit.price_paise,
                 "daily_message_limit": limit.daily_prompt_limit,
                 "token_limit_monthly": limit.monthly_token_limit,
             },
@@ -391,8 +395,9 @@ def create_admin_user(
         defaults = quota_plan_defaults("admin")
         subscription.plan = "admin"
         subscription.plan_name = str(defaults["plan_name"])
-        subscription.token_limit_monthly = int(defaults["token_limit_monthly"])
-        subscription.daily_message_limit = int(defaults["daily_message_limit"])
+        subscription.token_limit_monthly = plan_monthly_token_limit(db, "admin")
+        subscription.tokens_added = subscription.token_limit_monthly
+        subscription.daily_message_limit = plan_daily_message_limit(db, "admin")
         subscription.tokens_used_monthly = 0
         subscription.bonus_tokens = 0
         subscription.messages_used_today = 0
@@ -634,8 +639,9 @@ def update_user_role(
         defaults = quota_plan_defaults("admin")
         subscription.plan = "admin"
         subscription.plan_name = str(defaults["plan_name"])
-        subscription.token_limit_monthly = int(defaults["token_limit_monthly"])
-        subscription.daily_message_limit = int(defaults["daily_message_limit"])
+        subscription.token_limit_monthly = plan_monthly_token_limit(db, "admin")
+        subscription.tokens_added = subscription.token_limit_monthly
+        subscription.daily_message_limit = plan_daily_message_limit(db, "admin")
         subscription.is_active = True
         subscription.payment_status = "admin"
         mark_quota_updated(subscription, current_admin)
@@ -726,9 +732,9 @@ def update_subscription(
         subscription.plan_id = subscription.plan
         defaults = quota_plan_defaults(subscription.plan)
         subscription.plan_name = str(defaults["plan_name"])
-        subscription.token_limit_monthly = int(defaults["token_limit_monthly"])
-        subscription.tokens_added = int(defaults["token_limit_monthly"])
-        subscription.daily_message_limit = int(defaults["daily_message_limit"])
+        subscription.token_limit_monthly = plan_monthly_token_limit(db, subscription.plan)
+        subscription.tokens_added = subscription.token_limit_monthly
+        subscription.daily_message_limit = plan_daily_message_limit(db, subscription.plan)
         subscription.status = "active" if subscription.is_active else "inactive"
         mark_quota_updated(subscription, current_admin)
         recalculate_token_balance(subscription)
@@ -768,7 +774,7 @@ def activate_lifetime_subscription(
 ) -> AdminSubscriptionRead:
     user = get_user_or_404(db, user_id)
     subscription = ensure_user_subscription(db, user)
-    activate_subscription_plan(subscription, subscription.plan if subscription.plan != "free" else "ultra", payment_status="lifetime")
+    activate_subscription_plan(db, subscription, subscription.plan if subscription.plan != "free" else "ultra", payment_status="lifetime")
     subscription.is_lifetime = True
     subscription.expires_at = None
     mark_quota_updated(subscription, current_admin)

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Check, CreditCard, ExternalLink, Loader2 } from "lucide-react";
 import { api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
-import type { PaidPricingPlanName, PaymentConfig, PricingPlanName } from "../../types";
+import type { BillingPlan, PaidPricingPlanName, PaymentConfig } from "../../types";
 import { createRazorpayCheckoutOptions, loadRazorpayCheckout } from "../../utils/razorpay";
 import { isMobileAppRuntime } from "../../utils/runtime";
 import { normalizeUpiId } from "../../utils/upi";
@@ -11,28 +11,17 @@ import { LogoIcon } from "../brand/LogoIcon";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
 import { UpiPaymentBox } from "../payments/UpiPaymentBox";
 
-type Plan = {
-  id: PricingPlanName;
-  label: string;
-  price: string;
-  amount: number;
-  tokens: string;
-  highlights: string[];
-};
-
-const plans: Plan[] = [
-  { id: "free", label: "Free", price: "₹0", amount: 0, tokens: "10,000 tokens/month", highlights: ["Chat access", "Voice input", "File uploads"] },
-  { id: "pro", label: "Pro", price: "₹20", amount: 2000, tokens: "100,000 tokens/month", highlights: ["More monthly tokens", "Web search", "Priority quota review"] },
-  { id: "premium", label: "Premium", price: "₹50", amount: 5000, tokens: "300,000 tokens/month", highlights: ["Deep research access", "Multi-model routing", "Higher daily messages"] },
-  { id: "ultra", label: "Ultra", price: "₹100", amount: 10000, tokens: "1,000,000 tokens/month", highlights: ["Largest quota", "Advanced research", "Best for heavy use"] }
-];
-
 const paymentInstruction = "After payment, send your registered email and payment screenshot to admin.";
+
+function money(amountPaise: number, currency = "INR") {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amountPaise / 100);
+}
 
 export function PricingPage() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [busyPlan, setBusyPlan] = useState<PaidPricingPlanName | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -45,19 +34,23 @@ export function PricingPage() {
 
   useEffect(() => {
     let active = true;
-    api.paymentConfig()
-      .then((config) => {
-        if (active) setPaymentConfig(config);
+    Promise.all([api.paymentConfig(), api.paymentPlans()])
+      .then(([config, nextPlans]) => {
+        if (!active) return;
+        setPaymentConfig(config);
+        setPlans(nextPlans);
       })
       .catch(() => {
-        if (active) setPaymentConfig(null);
+        if (!active) return;
+        setPaymentConfig(null);
+        setPlans([]);
       });
     return () => {
       active = false;
     };
   }, []);
 
-  async function startCheckout(plan: Extract<Plan, { id: PaidPricingPlanName }> | Plan) {
+  async function startCheckout(plan: BillingPlan) {
     if (plan.id === "free") return;
     if (!token || !user) {
       navigate("/login");
@@ -78,8 +71,8 @@ export function PricingPage() {
     try {
       const session = await api.createPaymentSession(token, {
         plan_id: paidPlan,
-        amount: plan.amount,
-        currency: "INR",
+        amount: plan.price_paise,
+        currency: plan.currency,
         receipt: `auto-ai-${paidPlan}-${Date.now()}`.slice(0, 40)
       });
       await loadRazorpayCheckout();
@@ -166,16 +159,16 @@ export function PricingPage() {
 
         <div className="pricing-grid pricing-grid-four">
           {plans.map((plan) => {
-            const paidPlan = plan.id !== "free" ? plan.id : null;
+            const paidPlan = plan.id !== "free" ? plan.id as PaidPricingPlanName : null;
             const paymentLink = paidPlan ? paymentConfig?.payment_links[paidPlan] : null;
             const busy = busyPlan === plan.id;
             return (
               <article key={plan.id} className={plan.id === "premium" ? "pricing-card pricing-card-featured" : "pricing-card"}>
                 <h3>{plan.label}</h3>
-                <strong className="pricing-price">{plan.price}</strong>
-                <span>{plan.tokens}</span>
+                <strong className="pricing-price">{money(plan.price_paise, plan.currency)}</strong>
+                <span>{plan.token_quota.toLocaleString()} tokens/month</span>
                 <ul className="pricing-list">
-                  {plan.highlights.map((item) => (
+                  {plan.features.map((item) => (
                     <li key={item}><Check size={14} /> {item}</li>
                   ))}
                 </ul>
@@ -183,7 +176,7 @@ export function PricingPage() {
                   <Link className="btn-secondary" to={user ? "/chat" : "/register"}>Start free</Link>
                 ) : (
                   <div className="pricing-actions">
-                    {upiId && <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={plan.amount} planLabel={plan.label} />}
+                    {upiId && <UpiPaymentBox upiId={upiId} payeeName={upiPayeeName} amountPaise={plan.price_paise} planLabel={plan.label} />}
                     <button className="btn-primary" disabled={busy} onClick={() => startCheckout(plan)} type="button">
                       {busy ? <Loader2 className="spin-icon" size={16} /> : <CreditCard size={16} />}
                       UPI QR / Cards / Wallet

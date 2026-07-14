@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Bookmark,
@@ -36,6 +36,37 @@ const OPEN_THINK_BLOCK_PATTERN = /<think\b[^>]*>[\s\S]*$/i;
 
 function stripThinkBlocks(value: string) {
   return value.replace(THINK_BLOCK_PATTERN, "").replace(OPEN_THINK_BLOCK_PATTERN, "").trim();
+}
+
+function useTypingContent(content: string, enabled: boolean) {
+  const [displayed, setDisplayed] = useState(content);
+
+  useEffect(() => {
+    if (!enabled) {
+      setDisplayed(content);
+      return;
+    }
+
+    setDisplayed((current) => (content.startsWith(current) ? current : ""));
+    const timer = window.setInterval(() => {
+      setDisplayed((current) => {
+        if (current === content) {
+          window.clearInterval(timer);
+          return current;
+        }
+        if (!content.startsWith(current)) {
+          return content.slice(0, Math.min(content.length, 4));
+        }
+        const remaining = content.length - current.length;
+        const step = remaining > 120 ? 8 : remaining > 40 ? 4 : 2;
+        return content.slice(0, current.length + step);
+      });
+    }, 18);
+
+    return () => window.clearInterval(timer);
+  }, [content, enabled]);
+
+  return displayed;
 }
 
 function attachmentsOf(message: Message): ChatAttachment[] {
@@ -138,6 +169,7 @@ function MessageBubbleComponent({
     () => (isAssistant ? stripThinkBlocks(rawContent) : rawContent),
     [isAssistant, rawContent]
   );
+  const visibleContent = useTypingContent(content, isAssistant && Boolean(isStreaming));
   const streamingMetadata = message.message_metadata?.streaming as
     | { status?: string; phase?: string; error?: string; error_detail?: string }
     | undefined;
@@ -193,7 +225,7 @@ function MessageBubbleComponent({
         ) : (
           <>
             {!isAssistant && <AttachmentList attachments={attachments} />}
-            {(content.trim() || isAssistant || isSearchingWeb) && (
+            {(visibleContent.trim() || isAssistant || isSearchingWeb) && (
               <div className="prose prose-slate max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent">
                 {isSearchingWeb && (
                   <div className="searching-web-indicator not-prose">
@@ -203,11 +235,11 @@ function MessageBubbleComponent({
                 )}
                 {isAssistant && isStreaming ? (
                   <div className="streaming-plain-text">
-                    {content}
+                    {visibleContent}
                     <StreamingPulse active={isStreaming} />
                   </div>
                 ) : (
-                  <MarkdownMessage content={content} />
+                  <MarkdownMessage content={visibleContent} />
                 )}
                 {isAssistant && isStreaming && <span className="typing-cursor" aria-hidden="true" />}
               </div>

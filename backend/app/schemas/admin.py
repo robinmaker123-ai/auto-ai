@@ -222,6 +222,7 @@ class AdminFeatureFlagUpdate(BaseModel):
 class AdminPlanLimitRead(BaseModel):
     id: str
     plan: str
+    price_paise: int
     daily_prompt_limit: int
     monthly_prompt_limit: int
     daily_token_limit: int
@@ -235,6 +236,7 @@ class AdminPlanLimitRead(BaseModel):
 
 
 class AdminPlanLimitUpdate(BaseModel):
+    price_paise: int | None = Field(default=None, ge=0)
     daily_prompt_limit: int | None = Field(default=None, ge=0)
     monthly_prompt_limit: int | None = Field(default=None, ge=0)
     daily_token_limit: int | None = Field(default=None, ge=0)

@@ -217,12 +217,9 @@ export function ContextPanel({
       <aside
         className={clsx(
           "context-panel compact-panel shrink-0 border-white/10 bg-slate-950/60 backdrop-blur-2xl transition-all duration-300 flex flex-col overflow-hidden",
-          // Desktop positioning
-          "xl:static xl:block xl:w-[21.5rem] xl:h-full xl:border-l xl:p-3 xl:translate-x-0 xl:z-0",
-          // Mobile drawer positioning
+          "xl:static xl:w-[21.5rem] xl:h-full xl:border-l xl:p-3 xl:transform-none xl:z-0",
           "fixed top-0 right-0 h-full w-[21.5rem] max-w-[90vw] border-l p-3 z-50 transform",
-          isOpen ? "translate-x-0" : "translate-x-full xl:translate-x-0",
-          !isOpen && "hidden xl:flex"
+          isOpen ? "translate-x-0" : "hidden translate-x-full"
         )}
       >
         <div className="context-panel-card glass-panel compact-card flex h-full flex-col overflow-hidden">
@@ -247,9 +244,9 @@ export function ContextPanel({
                 </button>
                 {onClose && (
                   <button
-                    className="icon-button-dark xl:hidden"
+                    className="icon-button-dark"
                     onClick={onClose}
-                    title="Close sidebar"
+                    title="Close context"
                     type="button"
                   >
                     <X size={15} />

@@ -13,6 +13,7 @@ import type {
   ApkRelease,
   ApkStats,
   BillingCenter,
+  BillingPlan,
   Chat,
   ChatGeneration,
   ChatListItem,
@@ -878,6 +879,7 @@ export const api = {
     }),
 
   paymentConfig: () => apiFetch<PaymentConfig>("/payments/config", { operation: "payments.config" }),
+  paymentPlans: () => apiFetch<BillingPlan[]>("/payments/plans", { operation: "payments.plans" }),
   billingCenter: (token: string) => apiFetch<BillingCenter>("/payments/billing", { token, operation: "payments.billing" }),
   applyPromoCode: (token: string, payload: { code: string; plan: PaidPricingPlanName }) =>
     apiFetch<PromoCodeResponse>("/payments/promo-code", {

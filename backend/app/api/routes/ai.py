@@ -32,6 +32,7 @@ from app.schemas.chat import (
 )
 from app.schemas.search import SearchResultBundle
 from app.services.admin_control import (
+    billable_usage,
     enforce_plan_and_feature_access,
     enforce_user_quota,
     infer_provider_from_model,
@@ -292,9 +293,10 @@ def record_usage(
     usage: dict[str, int],
 ) -> None:
     provider = infer_provider_from_model(model)
-    input_tokens = int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
-    output_tokens = int(usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0)
-    total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens) or 0)
+    charged_usage = billable_usage()
+    input_tokens = charged_usage["prompt_tokens"]
+    output_tokens = charged_usage["completion_tokens"]
+    total_tokens = charged_usage["total_tokens"]
     db.add(
         APIUsage(
             user_id=user_id,

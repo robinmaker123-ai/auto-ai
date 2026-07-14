@@ -82,6 +82,7 @@ type ConfirmAction = {
 };
 
 type PlanLimitEditableField =
+  | "price_paise"
   | "daily_prompt_limit"
   | "monthly_prompt_limit"
   | "daily_token_limit"
@@ -92,6 +93,7 @@ type PlanLimitEditableField =
   | "allow_web_search";
 
 const planLimitEditableFields: PlanLimitEditableField[] = [
+  "price_paise",
   "daily_prompt_limit",
   "monthly_prompt_limit",
   "daily_token_limit",
@@ -1587,7 +1589,7 @@ export function AdminDashboard() {
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Settings</h2>
-                  <p className="text-sm text-slate-400">Plan limits used for usage enforcement</p>
+                  <p className="text-sm text-slate-400">Plan price and token limits used across pricing, billing, checkout, and quota enforcement</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -1614,6 +1616,7 @@ export function AdminDashboard() {
                   <thead className="bg-white/[0.035] text-xs uppercase text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Plan</th>
+                      <th className="px-4 py-3">Price</th>
                       <th className="px-4 py-3">Daily prompts</th>
                       <th className="px-4 py-3">Monthly prompts</th>
                       <th className="px-4 py-3">Daily tokens</th>
@@ -1629,6 +1632,7 @@ export function AdminDashboard() {
                       return (
                         <tr key={plan.id} className={changed ? "bg-cyan-300/[0.045] text-slate-200" : "text-slate-200"}>
                           <td className="px-4 py-3 font-semibold text-white">{plan.plan}</td>
+                          <td className="px-4 py-3"><PriceButton value={plan.price_paise} onSave={(value) => updatePlanLimitDraft(plan, "price_paise", value)} /></td>
                           <td className="px-4 py-3"><LimitButton value={plan.daily_prompt_limit} onSave={(value) => updatePlanLimitDraft(plan, "daily_prompt_limit", value)} /></td>
                           <td className="px-4 py-3"><LimitButton value={plan.monthly_prompt_limit} onSave={(value) => updatePlanLimitDraft(plan, "monthly_prompt_limit", value)} /></td>
                           <td className="px-4 py-3"><LimitButton value={plan.daily_token_limit} onSave={(value) => updatePlanLimitDraft(plan, "daily_token_limit", value)} /></td>
@@ -1690,6 +1694,23 @@ function LimitButton({ value, onSave }: { value: number; onSave: (value: number)
       type="button"
     >
       {value === 0 ? "Unlimited" : value.toLocaleString()}
+    </button>
+  );
+}
+
+function PriceButton({ value, onSave }: { value: number; onSave: (value: number) => void }) {
+  return (
+    <button
+      className="chip-dark"
+      onClick={() => {
+        const next = window.prompt("Set plan price in paise. Use 0 for free.", String(value));
+        if (next === null) return;
+        const parsed = Number(next);
+        if (Number.isFinite(parsed) && parsed >= 0) onSave(Math.floor(parsed));
+      }}
+      type="button"
+    >
+      {value === 0 ? "Free" : money(value)}
     </button>
   );
 }

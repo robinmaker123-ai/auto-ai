@@ -15,6 +15,14 @@ const accountMenuItemClass =
 const accountMenuDangerClass =
   "compact-button flex w-full items-center justify-center gap-2 rounded-lg border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 transition hover:bg-red-500/20";
 
+function formatSubscriptionStatus(value?: string | null) {
+  const normalized = value?.trim().toLowerCase().replace(/[_-]+/g, " ") || "free";
+  if (normalized === "free") return "Free plan";
+  if (normalized === "active") return "Active subscription";
+  if (normalized === "paid") return "Paid subscription";
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)} plan`;
+}
+
 export function Sidebar() {
   const { user, logout } = useAuth();
   const { chats, activeChat, createChat, deleteChat, loadingChats, openChat, updateChat } = useChat();
@@ -33,6 +41,8 @@ export function Sidebar() {
 
   const displayName = user?.name?.trim() || "Account";
   const displayEmail = user?.email?.trim() || "";
+  const subscriptionLabel = formatSubscriptionStatus(user?.subscription_status);
+  const subscriptionHref = isMobileAppRuntime() ? "/settings?section=subscription" : "/pricing";
   const profileInitial = (displayName || displayEmail || "A").charAt(0).toUpperCase();
   const profileAvatar = resolveApiAssetUrl(user?.avatar || user?.picture);
 
@@ -271,7 +281,7 @@ export function Sidebar() {
                   setIsAccountMenuOpen(false);
                   closeSidebar();
                 }}
-                to={isMobileAppRuntime() ? "/settings?section=subscription" : "/pricing"}
+                to={subscriptionHref}
               >
                 <CreditCard size={16} />
                 Subscription
@@ -283,6 +293,7 @@ export function Sidebar() {
                 </div>
                 <p className="truncate text-slate-200">{displayName}</p>
                 <p className="truncate text-slate-400">{displayEmail}</p>
+                <p className="truncate text-cyan-200">{subscriptionLabel}</p>
               </div>
               <button
                 className={accountMenuDangerClass}
@@ -305,20 +316,40 @@ export function Sidebar() {
               </div>
             </div>
           )}
-          <button
-            className={clsx(
-              "profileicon grid h-11 w-11 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] text-sm font-bold text-white transition hover:border-cyan-200/40 hover:bg-cyan-200/12",
-              isAccountMenuOpen && "border-cyan-200/50 bg-cyan-200/15 text-cyan-50"
-            )}
-            aria-expanded={isAccountMenuOpen}
-            aria-haspopup="menu"
-            aria-label="Open profile menu"
-            onClick={() => setIsAccountMenuOpen((current) => !current)}
-            title="Profile menu"
-            type="button"
-          >
-            {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="" /> : profileInitial}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className={clsx(
+                "flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-2 text-left transition hover:border-cyan-200/40 hover:bg-cyan-200/12",
+                isAccountMenuOpen && "border-cyan-200/50 bg-cyan-200/15 text-cyan-50"
+              )}
+              aria-expanded={isAccountMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Open profile menu"
+              onClick={() => setIsAccountMenuOpen((current) => !current)}
+              title="Profile menu"
+              type="button"
+            >
+              <span className="profileicon grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] text-sm font-bold text-white">
+                {profileAvatar ? <img className="h-full w-full object-cover" src={profileAvatar} alt="" /> : profileInitial}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-white">{displayName}</span>
+                <span className="block truncate text-[11px] font-medium text-cyan-200">{subscriptionLabel}</span>
+              </span>
+            </button>
+            <Link
+              className="account-subscription-button grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-cyan-200/25 bg-cyan-200/10 text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-200/18"
+              onClick={() => {
+                setIsAccountMenuOpen(false);
+                closeSidebar();
+              }}
+              title="Subscription"
+              aria-label="Open subscription"
+              to={subscriptionHref}
+            >
+              <CreditCard size={18} />
+            </Link>
+          </div>
         </div>
       </aside>
     </>

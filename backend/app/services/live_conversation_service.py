@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.api_usage import APIUsage
 from app.models.live import LiveMessage, LiveSession
 from app.models.user import User
-from app.services.admin_control import enforce_user_quota, infer_provider_from_model
+from app.services.admin_control import billable_usage, enforce_user_quota, infer_provider_from_model, track_quota_usage
 from app.services.groq_service import groq_service
 from app.services.live_vision_service import VisualContext
 
@@ -97,8 +97,9 @@ class LiveConversationService:
             response_text=response,
         )
         db.add(message)
-        input_tokens = int(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or estimated_input)
-        output_tokens = int(usage.get("completion_tokens", usage.get("output_tokens", 0)) or max(1, len(response) // 4))
+        charged_usage = billable_usage()
+        input_tokens = charged_usage["prompt_tokens"]
+        output_tokens = charged_usage["completion_tokens"]
         db.add(
             APIUsage(
                 user_id=user.id,
@@ -109,9 +110,10 @@ class LiveConversationService:
                 output_tokens=output_tokens,
                 prompt_tokens=input_tokens,
                 completion_tokens=output_tokens,
-                total_tokens=input_tokens + output_tokens,
+                total_tokens=charged_usage["total_tokens"],
             )
         )
+        track_quota_usage(db, user.id)
         db.commit()
         db.refresh(message)
         return response, used_model, message.id

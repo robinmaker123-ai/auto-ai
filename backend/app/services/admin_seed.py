@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.user import User
-from app.services.admin_control import ensure_user_subscription, quota_plan_defaults, recalculate_token_balance
+from app.services.admin_control import (
+    ensure_user_subscription,
+    plan_daily_message_limit,
+    plan_monthly_token_limit,
+    quota_plan_defaults,
+    recalculate_token_balance,
+)
 
 
 def _clean(value: str | None) -> str | None:
@@ -56,8 +62,9 @@ def create_admin_from_env(db: Session) -> User | None:
         defaults = quota_plan_defaults("admin")
         subscription.plan = "admin"
         subscription.plan_name = str(defaults["plan_name"])
-        subscription.token_limit_monthly = int(defaults["token_limit_monthly"])
-        subscription.daily_message_limit = int(defaults["daily_message_limit"])
+        subscription.token_limit_monthly = plan_monthly_token_limit(db, "admin")
+        subscription.tokens_added = subscription.token_limit_monthly
+        subscription.daily_message_limit = plan_daily_message_limit(db, "admin")
         subscription.tokens_used_monthly = 0
         subscription.bonus_tokens = 0
         subscription.messages_used_today = 0

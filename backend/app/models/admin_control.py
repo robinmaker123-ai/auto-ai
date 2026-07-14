@@ -82,6 +82,7 @@ class PlanLimit(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     plan: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    price_paise: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     daily_prompt_limit: Mapped[int] = mapped_column(Integer, default=100)
     monthly_prompt_limit: Mapped[int] = mapped_column(Integer, default=1000)
     daily_token_limit: Mapped[int] = mapped_column(Integer, default=50000)

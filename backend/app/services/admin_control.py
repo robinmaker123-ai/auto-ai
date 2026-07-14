@@ -11,6 +11,7 @@ from app.models.user import User
 
 PLAN_NAMES = {"free", "pro", "premium", "ultra", "pro-plus", "admin"}
 TOKEN_LIMIT_EXCEEDED_MESSAGE = "Your token limit is over. Please upgrade or contact admin."
+BILLABLE_TOKENS_PER_INPUT = 1
 PLAN_PRICES_PAISE = {
     "free": 0,
     "pro": 2000,
@@ -95,6 +96,7 @@ QUOTA_DEFAULTS: dict[str, dict[str, int | str]] = {
 
 DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
     "free": {
+        "price_paise": 0,
         "daily_prompt_limit": 100,
         "monthly_prompt_limit": 1000,
         "daily_token_limit": 10000,
@@ -105,6 +107,7 @@ DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
         "allow_web_search": True,
     },
     "pro": {
+        "price_paise": 2000,
         "daily_prompt_limit": 500,
         "monthly_prompt_limit": 10000,
         "daily_token_limit": 100000,
@@ -115,6 +118,7 @@ DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
         "allow_web_search": True,
     },
     "premium": {
+        "price_paise": 5000,
         "daily_prompt_limit": 1000,
         "monthly_prompt_limit": 30000,
         "daily_token_limit": 300000,
@@ -125,6 +129,7 @@ DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
         "allow_web_search": True,
     },
     "ultra": {
+        "price_paise": 10000,
         "daily_prompt_limit": 3000,
         "monthly_prompt_limit": 100000,
         "daily_token_limit": 1000000,
@@ -135,6 +140,7 @@ DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
         "allow_web_search": True,
     },
     "pro-plus": {
+        "price_paise": 0,
         "daily_prompt_limit": 2000,
         "monthly_prompt_limit": 50000,
         "daily_token_limit": 1000000,
@@ -145,6 +151,7 @@ DEFAULT_PLAN_LIMITS: dict[str, dict[str, int | bool]] = {
         "allow_web_search": True,
     },
     "admin": {
+        "price_paise": 0,
         "daily_prompt_limit": 0,
         "monthly_prompt_limit": 0,
         "daily_token_limit": 0,
@@ -183,12 +190,41 @@ def billing_plan(plan: str) -> dict[str, int | str | list[str]]:
     return PLAN_CATALOG.get(plan.strip().lower(), PLAN_CATALOG["free"])
 
 
+def plan_limit_for(db: Session, plan: str) -> PlanLimit | None:
+    normalized = plan.strip().lower()
+    return db.scalar(select(PlanLimit).where(PlanLimit.plan == normalized))
+
+
+def plan_price_paise(db: Session, plan: str) -> int:
+    normalized = plan.strip().lower()
+    limit = plan_limit_for(db, normalized)
+    if limit:
+        return int(limit.price_paise)
+    return int(PLAN_CATALOG.get(normalized, PLAN_CATALOG["free"])["price_paise"])
+
+
+def plan_monthly_token_limit(db: Session, plan: str) -> int:
+    normalized = plan.strip().lower()
+    limit = plan_limit_for(db, normalized)
+    if limit:
+        return int(limit.monthly_token_limit)
+    return int(quota_plan_defaults(normalized)["token_limit_monthly"])
+
+
+def plan_daily_message_limit(db: Session, plan: str) -> int:
+    normalized = plan.strip().lower()
+    limit = plan_limit_for(db, normalized)
+    if limit:
+        return int(limit.daily_prompt_limit)
+    return int(quota_plan_defaults(normalized)["daily_message_limit"])
+
+
 def plan_upload_limit_mb(plan: str) -> int:
     return int(billing_plan(plan)["upload_limit_mb"])
 
 
-def paid_plan_amount(plan: str, promo_discount_percent: int = 0) -> int:
-    amount = PLAN_PRICES_PAISE.get(plan.strip().lower(), 0)
+def paid_plan_amount(plan: str, promo_discount_percent: int = 0, db: Session | None = None) -> int:
+    amount = plan_price_paise(db, plan) if db else PLAN_PRICES_PAISE.get(plan.strip().lower(), 0)
     if promo_discount_percent <= 0:
         return amount
     discount = min(100, max(0, promo_discount_percent))
@@ -225,6 +261,7 @@ def active_subscription(subscription: UserSubscription) -> bool:
 
 
 def activate_subscription_plan(
+    db: Session,
     subscription: UserSubscription,
     plan: str,
     *,
@@ -236,9 +273,9 @@ def activate_subscription_plan(
     subscription.plan = normalized
     subscription.plan_id = normalized
     subscription.plan_name = str(defaults["plan_name"])
-    subscription.token_limit_monthly = int(defaults["token_limit_monthly"])
-    subscription.tokens_added = int(defaults["token_limit_monthly"])
-    subscription.daily_message_limit = int(defaults["daily_message_limit"])
+    subscription.token_limit_monthly = plan_monthly_token_limit(db, normalized)
+    subscription.tokens_added = subscription.token_limit_monthly
+    subscription.daily_message_limit = plan_daily_message_limit(db, normalized)
     subscription.is_active = True
     subscription.status = "active"
     subscription.payment_status = payment_status
@@ -267,6 +304,10 @@ def ensure_admin_defaults(db: Session) -> None:
     for plan, defaults in DEFAULT_PLAN_LIMITS.items():
         existing = db.scalar(select(PlanLimit).where(PlanLimit.plan == plan))
         if existing:
+            default_price = int(defaults.get("price_paise", 0))
+            if default_price > 0 and existing.price_paise == 0:
+                existing.price_paise = default_price
+                changed = True
             continue
         db.add(PlanLimit(plan=plan, **defaults))
         changed = True
@@ -296,6 +337,8 @@ def ensure_user_subscription(db: Session, user: User) -> UserSubscription:
         return subscription
     plan = "admin" if user.role in {"admin", "super_admin"} else "free"
     defaults = quota_plan_defaults(plan)
+    monthly_token_limit = plan_monthly_token_limit(db, plan)
+    daily_message_limit = plan_daily_message_limit(db, plan)
     subscription = UserSubscription(
         user_id=user.id,
         plan=plan,
@@ -304,9 +347,9 @@ def ensure_user_subscription(db: Session, user: User) -> UserSubscription:
         status="active",
         payment_status="admin" if plan == "admin" else "free",
         plan_name=str(defaults["plan_name"]),
-        token_limit_monthly=int(defaults["token_limit_monthly"]),
-        tokens_added=int(defaults["token_limit_monthly"]),
-        daily_message_limit=int(defaults["daily_message_limit"]),
+        token_limit_monthly=monthly_token_limit,
+        tokens_added=monthly_token_limit,
+        daily_message_limit=daily_message_limit,
         tokens_used_monthly=0,
         bonus_tokens=0,
         messages_used_today=0,
@@ -374,18 +417,26 @@ def enforce_user_quota(db: Session, user: User, estimated_input_tokens: int = 0)
         total_quota = subscription.token_limit_monthly + subscription.bonus_tokens
         if subscription.tokens_used_monthly >= total_quota or subscription.token_balance <= 0:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=TOKEN_LIMIT_EXCEEDED_MESSAGE)
-        if estimated_input_tokens > 0 and subscription.tokens_used_monthly + estimated_input_tokens > total_quota:
+        if estimated_input_tokens > 0 and subscription.tokens_used_monthly + BILLABLE_TOKENS_PER_INPUT > total_quota:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=TOKEN_LIMIT_EXCEEDED_MESSAGE)
     return subscription
 
 
-def track_quota_usage(db: Session, user_id: str, total_tokens: int) -> None:
+def billable_usage() -> dict[str, int]:
+    return {
+        "prompt_tokens": BILLABLE_TOKENS_PER_INPUT,
+        "completion_tokens": 0,
+        "total_tokens": BILLABLE_TOKENS_PER_INPUT,
+    }
+
+
+def track_quota_usage(db: Session, user_id: str, total_tokens: int = BILLABLE_TOKENS_PER_INPUT) -> None:
     user = db.get(User, user_id)
     if not user:
         return
     subscription = ensure_user_subscription(db, user)
     refresh_quota_periods(subscription)
-    subscription.tokens_used_monthly = max(0, subscription.tokens_used_monthly + max(0, total_tokens))
+    subscription.tokens_used_monthly = max(0, subscription.tokens_used_monthly + BILLABLE_TOKENS_PER_INPUT)
     subscription.messages_used_today = max(0, subscription.messages_used_today + 1)
     subscription.updated_at = datetime.utcnow()
     recalculate_token_balance(subscription)

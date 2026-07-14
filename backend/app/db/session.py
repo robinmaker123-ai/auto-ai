@@ -144,6 +144,11 @@ def ensure_runtime_schema() -> None:
             if column_name not in subscription_columns:
                 add_column("user_subscriptions", column_name, definition)
 
+    if "plan_limits" in table_names:
+        plan_limit_columns = {column["name"] for column in inspector.get_columns("plan_limits")}
+        if "price_paise" not in plan_limit_columns:
+            add_column("plan_limits", "price_paise", "INTEGER NOT NULL DEFAULT 0")
+
     if "user_devices" in table_names:
         device_columns = {column["name"] for column in inspector.get_columns("user_devices")}
         if "fcm_token_ciphertext" not in device_columns:

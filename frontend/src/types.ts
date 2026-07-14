@@ -483,6 +483,7 @@ export type AdminFeatureFlag = {
 export type AdminPlanLimit = {
   id: string;
   plan: AdminPlanName;
+  price_paise: number;
   daily_prompt_limit: number;
   monthly_prompt_limit: number;
   daily_token_limit: number;
