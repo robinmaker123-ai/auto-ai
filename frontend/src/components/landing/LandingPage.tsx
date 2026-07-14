@@ -16,7 +16,6 @@ import { api, resolveApkDownloadUrl } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import type { ApkRelease, ApkStats } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
-import { FishAnimationToggleButton } from "../layout/FishAnimationToggleButton";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
 import { NeuralCore } from "../../motion/NeuralCore";
 import { AnimatedPage, FlyText, Reveal, StaggerGroup, StaggerItem, TiltCard } from "../../motion/primitives";
@@ -114,7 +113,6 @@ export function LandingPage() {
           <a href="#faq">FAQ</a>
         </nav>
         <div className="nav-actions">
-          <FishAnimationToggleButton />
           <Link className="btn-primary" to={user ? "/chat" : "/login"}>
             {user ? "Open app" : "Sign in"}
             <ArrowRight size={16} />

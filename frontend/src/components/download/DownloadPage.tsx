@@ -15,7 +15,6 @@ import {
 import { api, resolveApkDownloadUrl } from "../../api/client";
 import type { ApkRelease, ApkStats } from "../../types";
 import { LogoIcon } from "../brand/LogoIcon";
-import { FishAnimationToggleButton } from "../layout/FishAnimationToggleButton";
 import { ThemeToggleButton } from "../layout/ThemeToggleButton";
 
 const screenshots = [
@@ -122,7 +121,6 @@ export function DownloadPage() {
           Auto-AI
         </Link>
         <div className="nav-actions">
-          <FishAnimationToggleButton />
           <Link className="btn-secondary" to="/">
             <ArrowLeft size={16} />
             Home

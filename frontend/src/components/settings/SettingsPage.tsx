@@ -44,7 +44,7 @@ import type { ChatSettings } from "../../features/userMessages/types";
 import { useMotionMode } from "../../motion/MotionProvider";
 import type { MotionPreference } from "../../motion/tokens";
 
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 
 const THEME_OPTIONS: Array<{ value: "light" | "dark" | "system"; label: string; icon: LucideIcon }> = [
   { value: "light", label: "Light", icon: Sun },

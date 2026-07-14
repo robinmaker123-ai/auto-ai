@@ -9,7 +9,6 @@ import { LandingPage } from "./components/landing/LandingPage";
 import { isMobileAppRuntime } from "./utils/runtime";
 import { AmbientAurora } from "./motion/AmbientAurora";
 import { MotionProvider } from "./motion/MotionProvider";
-import { OceanFishField } from "./motion/OceanFishField";
 
 const AppShell = lazy(() => import("./components/layout/AppShell").then((module) => ({ default: module.AppShell })));
 const ChatPage = lazy(() => import("./components/chat/ChatPage").then((module) => ({ default: module.ChatPage })));
@@ -68,7 +67,6 @@ export default function App() {
             <Router>
               <SeoManager />
               <AmbientAurora />
-              <OceanFishField />
               <Suspense fallback={<div className="app-loading">Loading Auto-AI...</div>}>
                 <Routes>
                   <Route index element={<RootRedirect />} />

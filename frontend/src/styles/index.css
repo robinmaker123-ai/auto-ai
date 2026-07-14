@@ -1868,17 +1868,6 @@ button:disabled {
   flex: 0 0 auto;
 }
 
-.fish-toggle-button {
-  height: 40px;
-  width: 40px;
-}
-
-.fish-toggle-active {
-  border-color: rgba(45, 212, 191, 0.48) !important;
-  color: #5eead4 !important;
-  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.1), 0 0 18px rgba(45, 212, 191, 0.2) !important;
-}
-
 .theme-toggle-button {
   display: grid;
   height: 40px;
@@ -6276,219 +6265,6 @@ html[data-auto-ai-motion="reduced"] .auto-ai-ambient-aurora {
   isolation: isolate;
 }
 
-.ocean-fish-field {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  overflow: hidden;
-  pointer-events: none;
-  contain: layout paint;
-  opacity: 0.9;
-}
-
-.ocean-fish-field::before,
-.ocean-fish-field::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.ocean-fish-field::before {
-  background:
-    radial-gradient(ellipse at 14% 8%, rgba(103, 232, 249, 0.12), transparent 30%),
-    radial-gradient(ellipse at 82% 18%, rgba(14, 165, 233, 0.13), transparent 34%),
-    linear-gradient(180deg, rgba(6, 182, 212, 0.12), rgba(3, 105, 161, 0.04) 44%, transparent 78%);
-  mask-image: linear-gradient(to bottom, black, black 82%, transparent);
-}
-
-.ocean-fish-field::after {
-  opacity: 0.22;
-  background-image:
-    radial-gradient(circle at 18% 24%, rgba(224, 242, 254, 0.7) 0 1px, transparent 2px),
-    radial-gradient(circle at 62% 36%, rgba(186, 230, 253, 0.55) 0 1px, transparent 2px),
-    radial-gradient(circle at 78% 12%, rgba(125, 211, 252, 0.45) 0 1px, transparent 2px),
-    linear-gradient(115deg, transparent 0 22%, rgba(125, 211, 252, 0.12) 23%, transparent 26% 100%),
-    linear-gradient(64deg, transparent 0 40%, rgba(134, 239, 172, 0.08) 41%, transparent 44% 100%);
-  background-size: 220px 320px, 340px 420px, 260px 360px, 310px 210px, 380px 240px;
-  animation: oceanCaustics 18s linear infinite;
-}
-
-.ocean-fish {
-  --fish-size: 1.18;
-  --fish-y: 20vh;
-  --fish-delay: -3s;
-  --fish-duration: 16s;
-  position: absolute;
-  left: -120px;
-  top: var(--fish-y);
-  width: calc(88px * var(--fish-size));
-  height: calc(42px * var(--fish-size));
-  opacity: 0.86;
-  transform: translate3d(-160px, 0, 0);
-  will-change: transform;
-  animation: oceanFishSwim var(--fish-duration) linear var(--fish-delay) infinite;
-}
-
-.ocean-fish span {
-  position: absolute;
-  display: block;
-}
-
-.ocean-fish span:nth-child(1) {
-  inset: 18% 22% 12% 0;
-  border-radius: 55% 45% 48% 52%;
-  background:
-    radial-gradient(circle at 18% 42%, rgba(255, 255, 255, 0.9) 0 2px, transparent 3px),
-    linear-gradient(135deg, rgba(14, 116, 144, 0.88), rgba(45, 212, 191, 0.72) 48%, rgba(59, 130, 246, 0.62));
-}
-
-.ocean-fish span:nth-child(2) {
-  right: 0;
-  top: 17%;
-  width: 34%;
-  height: 66%;
-  clip-path: polygon(0 50%, 100% 0, 78% 50%, 100% 100%);
-  background: linear-gradient(135deg, rgba(14, 116, 144, 0.76), rgba(20, 184, 166, 0.58));
-  transform-origin: left center;
-  animation: oceanTail 760ms ease-in-out infinite alternate;
-}
-
-.ocean-fish span:nth-child(3) {
-  left: 38%;
-  bottom: 0;
-  width: 24%;
-  height: 38%;
-  clip-path: polygon(0 0, 100% 20%, 42% 100%);
-  background: rgba(14, 116, 144, 0.5);
-}
-
-.global-ocean-fish-field {
-  position: fixed;
-  inset: 0;
-  z-index: 19;
-  opacity: 1;
-}
-
-.global-ocean-fish-field::before,
-.global-ocean-fish-field::after {
-  display: none;
-}
-
-.global-ocean-fish {
-  --fish-size: 1;
-  --fish-y: 18vh;
-  --fish-delay: -2s;
-  --fish-duration: 13s;
-  left: 0;
-  top: 0;
-  opacity: 0.72;
-  animation: none;
-  transition: opacity 120ms ease;
-}
-
-.global-ocean-fish::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 140%;
-  height: 160%;
-  border: 1px solid rgba(125, 211, 252, 0.68);
-  border-radius: 999px;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.72);
-  pointer-events: none;
-}
-
-.global-ocean-fish.is-colliding {
-  opacity: 0.9;
-}
-
-.global-ocean-fish.is-colliding::after {
-  animation: oceanCollisionSplash 260ms ease-out;
-}
-
-.global-ocean-fish-coral {
-  --fish-size: 1.18;
-  --fish-y: 28vh;
-  --fish-delay: -4s;
-  --fish-duration: 12s;
-  opacity: 0.82;
-}
-
-.global-ocean-fish-reef {
-  --fish-size: 0.86;
-  --fish-y: 42vh;
-  --fish-delay: -8s;
-  --fish-duration: 15s;
-  opacity: 0.66;
-}
-
-.global-ocean-fish-azure {
-  --fish-size: 0.72;
-  --fish-y: 66vh;
-  --fish-delay: -13s;
-  --fish-duration: 18s;
-  opacity: 0.5;
-}
-
-.global-ocean-fish-current {
-  --fish-size: 1.28;
-  --fish-y: 76vh;
-  --fish-delay: -7s;
-  --fish-duration: 16s;
-  opacity: 0.58;
-}
-
-.global-ocean-fish-tidal {
-  --fish-size: 0.64;
-  --fish-y: 12vh;
-  --fish-delay: -10s;
-  --fish-duration: 20s;
-  opacity: 0.42;
-}
-
-.global-ocean-fish-pearl {
-  --fish-size: 0.96;
-  --fish-y: 54vh;
-  --fish-delay: -1s;
-  --fish-duration: 14s;
-  opacity: 0.62;
-}
-
-.global-ocean-fish-deep {
-  --fish-size: 1.42;
-  --fish-y: 88vh;
-  --fish-delay: -16s;
-  --fish-duration: 22s;
-  opacity: 0.34;
-}
-
-.global-ocean-fish-glow {
-  --fish-size: 0.78;
-  --fish-y: 36vh;
-  --fish-delay: -12s;
-  --fish-duration: 11s;
-  opacity: 0.76;
-}
-
-.global-ocean-fish-wave {
-  --fish-size: 1.08;
-  --fish-y: 6vh;
-  --fish-delay: -6s;
-  --fish-duration: 17s;
-  opacity: 0.38;
-}
-
-.global-ocean-fish-stream {
-  --fish-size: 0.9;
-  --fish-y: 82vh;
-  --fish-delay: -19s;
-  --fish-duration: 19s;
-  opacity: 0.46;
-}
-
 .cognitive-thread {
   position: absolute;
   inset: 0;
@@ -6535,47 +6311,6 @@ html[data-auto-ai-motion="reduced"] .auto-ai-ambient-aurora {
   fill: #a5f3fc;
   filter: url("#cognitive-thread-glow");
   opacity: 0.46;
-}
-
-@keyframes oceanFishSwim {
-  0% {
-    transform: translate3d(-160px, 0, 0) rotate(-1deg);
-  }
-  45% {
-    transform: translate3d(50vw, -12px, 0) rotate(1.5deg);
-  }
-  75% {
-    transform: translate3d(82vw, 8px, 0) rotate(-0.5deg);
-  }
-  100% {
-    transform: translate3d(calc(100vw + 180px), -2px, 0) rotate(0.5deg);
-  }
-}
-
-@keyframes oceanTail {
-  from {
-    transform: rotateY(0deg) skewY(-2deg);
-  }
-  to {
-    transform: rotateY(36deg) skewY(4deg);
-  }
-}
-
-@keyframes oceanCaustics {
-  to {
-    background-position: 0 -320px, 0 -420px, 0 -360px, 310px 210px, -380px 240px;
-  }
-}
-
-@keyframes oceanCollisionSplash {
-  0% {
-    opacity: 0.72;
-    transform: translate(-50%, -50%) scale(0.62);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(1.32);
-  }
 }
 
 .landing-section,
@@ -7042,30 +6777,6 @@ html[data-auto-ai-motion="reduced"] .auto-ai-ambient-aurora {
     display: none;
   }
 
-  .ocean-fish-field {
-    opacity: 0.85;
-  }
-
-  .global-ocean-fish-field {
-    z-index: 19;
-    opacity: 1;
-  }
-
-  .global-ocean-fish:nth-of-type(n+8) {
-    display: none;
-  }
-
-  .ocean-fish {
-    --fish-size: 0.82;
-    --fish-delay: -6s;
-    opacity: 0.88;
-  }
-
-  .global-ocean-fish-coral,
-  .global-ocean-fish-glow {
-    opacity: 1;
-  }
-
   .landing-section::before {
     display: none;
   }
@@ -7130,7 +6841,6 @@ html[data-auto-ai-motion="reduced"] .auto-neural-core *,
   }
 
   .cognitive-thread,
-  .ocean-fish-field,
   .auto-ai-ambient-aurora,
   .streaming-pulse,
   .neural-sweep-once,
@@ -7160,43 +6870,6 @@ html[data-auto-ai-motion="reduced"] .auto-neural-core *,
 
 .light .cognitive-thread-path {
   opacity: 0.72;
-}
-
-.light .ocean-fish-field {
-  opacity: 0.92;
-}
-
-.light .global-ocean-fish-field {
-  opacity: 1;
-}
-
-.light .ocean-fish-field::before {
-  background:
-    radial-gradient(ellipse at 14% 8%, rgba(14, 165, 233, 0.12), transparent 30%),
-    radial-gradient(ellipse at 82% 18%, rgba(45, 212, 191, 0.1), transparent 34%),
-    linear-gradient(180deg, rgba(125, 211, 252, 0.16), rgba(186, 230, 253, 0.08) 44%, transparent 78%);
-}
-
-.light .ocean-fish {
-  opacity: 0.9;
-}
-
-.light .ocean-fish span:nth-child(1) {
-  background:
-    radial-gradient(circle at 18% 42%, rgba(15, 23, 42, 0.9) 0 2px, transparent 3px),
-    linear-gradient(135deg, rgba(14, 116, 144, 0.92), rgba(20, 184, 166, 0.74) 48%, rgba(37, 99, 235, 0.66));
-}
-
-.light .ocean-fish span:nth-child(2) {
-  background: linear-gradient(135deg, rgba(14, 116, 144, 0.78), rgba(20, 184, 166, 0.62));
-}
-
-.light .ocean-fish span:nth-child(3) {
-  background: rgba(14, 116, 144, 0.52);
-}
-
-.light .global-ocean-fish.is-colliding {
-  opacity: 0.96;
 }
 
 .light .final-cta h2,
