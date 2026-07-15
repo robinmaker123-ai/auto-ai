@@ -40,6 +40,10 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<ScreenShareRole | null>(null);
   const [session, setSession] = useState<ScreenShareSession | null>(null);
   const [requestPeer, setRequestPeer] = useState<PublicCallUser | null>(null);
+<<<<<<< HEAD
+=======
+  const [inviteOnlyRequest, setInviteOnlyRequest] = useState(false);
+>>>>>>> c669187 (Add easy screen sharing)
   const [pendingInvite, setPendingInvite] = useState<ScreenShareInvite | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -91,6 +95,10 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setRole(null);
     setRequestPeer(null);
+<<<<<<< HEAD
+=======
+    setInviteOnlyRequest(false);
+>>>>>>> c669187 (Add easy screen sharing)
     setPendingInvite(null);
     setStartedAt(null);
     setPaused(false);
@@ -244,15 +252,36 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
 
   const requestShare = useCallback((peer: PublicCallUser) => {
     setError("");
+<<<<<<< HEAD
     setRequestPeer(peer);
   }, []);
 
   const cancelRequest = useCallback(() => setRequestPeer(null), []);
+=======
+    setInviteOnlyRequest(false);
+    setRequestPeer(peer);
+  }, []);
+
+  const requestInviteShare = useCallback(() => {
+    setError("");
+    setRequestPeer(null);
+    setInviteOnlyRequest(true);
+  }, []);
+
+  const cancelRequest = useCallback(() => {
+    setRequestPeer(null);
+    setInviteOnlyRequest(false);
+  }, []);
+>>>>>>> c669187 (Add easy screen sharing)
 
   const startShare = useCallback(async (source: ScreenShareSource) => {
     const currentToken = tokenRef.current;
     const peer = requestPeer;
+<<<<<<< HEAD
     if (!currentToken || !peer) return;
+=======
+    if (!currentToken || (!peer && !inviteOnlyRequest)) return;
+>>>>>>> c669187 (Add easy screen sharing)
     setUiState("preparing");
     setError("");
     try {
@@ -262,13 +291,21 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setLocalStream(stream);
       setMuted(true);
       const created = await screenShareApi.createSession(currentToken, {
+<<<<<<< HEAD
         viewer_user_id: peer.id,
+=======
+        viewer_user_id: peer?.id ?? null,
+>>>>>>> c669187 (Add easy screen sharing)
         invite_link: true,
         expires_minutes: 60,
       });
       setSession(created);
       setRole("sharer");
       setRequestPeer(null);
+<<<<<<< HEAD
+=======
+      setInviteOnlyRequest(false);
+>>>>>>> c669187 (Add easy screen sharing)
       setUiState("waiting");
       await ensureSignaling();
       const id = sessionIdOf(created);
@@ -279,7 +316,11 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("failed");
       setError(shareError instanceof Error ? shareError.message : "Screen capture permission was denied.");
     }
+<<<<<<< HEAD
   }, [ensureSignaling, requestPeer, signaling, stopLocalTracks, stopShare]);
+=======
+  }, [ensureSignaling, inviteOnlyRequest, requestPeer, signaling, stopLocalTracks, stopShare]);
+>>>>>>> c669187 (Add easy screen sharing)
 
   const joinBySession = useCallback(async (sessionId: string, inviteToken?: string | null) => {
     const currentToken = tokenRef.current;
@@ -346,6 +387,11 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     role,
     session,
     requestPeer,
+<<<<<<< HEAD
+=======
+    inviteOnlyRequest,
+    requestInviteShare,
+>>>>>>> c669187 (Add easy screen sharing)
     pendingInvite,
     localStream,
     remoteStream,
@@ -364,7 +410,11 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     togglePause,
     copyInviteLink,
     clearError: () => setError(""),
+<<<<<<< HEAD
   }), [cancelRequest, copyInviteLink, declineInvite, error, joinInvite, joinInviteLink, localStream, muted, paused, pendingInvite, remoteStream, requestPeer, requestShare, role, session, startShare, startedAt, stopShare, toggleMute, togglePause, uiState]);
+=======
+  }), [cancelRequest, copyInviteLink, declineInvite, error, inviteOnlyRequest, joinInvite, joinInviteLink, localStream, muted, paused, pendingInvite, remoteStream, requestInviteShare, requestPeer, requestShare, role, session, startShare, startedAt, stopShare, toggleMute, togglePause, uiState]);
+>>>>>>> c669187 (Add easy screen sharing)
 
   return <ScreenShareContext.Provider value={value}>{children}</ScreenShareContext.Provider>;
 }

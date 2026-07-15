@@ -39,7 +39,11 @@ export function ScreenShareOverlay() {
 
   return (
     <>
+<<<<<<< HEAD
       {share.requestPeer && (
+=======
+      {(share.requestPeer || share.inviteOnlyRequest) && (
+>>>>>>> c669187 (Add easy screen sharing)
         <div className="ss-modal-backdrop" role="dialog" aria-modal="true" aria-label="Start screen share">
           <section className="ss-modal">
             <header>

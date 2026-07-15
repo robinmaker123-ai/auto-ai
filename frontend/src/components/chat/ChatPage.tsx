@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, Brain, CornerDownRight, Menu, MessageSquarePlus, PhoneCall, RefreshCw, Settings, Sparkles, Square } from "lucide-react";
+import { ArrowDown, Brain, CornerDownRight, Menu, MessageSquarePlus, PhoneCall, RefreshCw, ScreenShare, Settings, Sparkles, Square } from "lucide-react";
 import { ApiClientError, api } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
 import { useChat } from "../../contexts/ChatContext";
@@ -17,6 +17,7 @@ import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
 import { LiveCallMode } from "../live/LiveCallMode";
 import { mediaResourceCoordinator } from "../../features/calls/services/mediaResourceCoordinator";
 import { useCallSession } from "../../features/calls/hooks/useCallSession";
+import { useScreenShare } from "../../features/screenShare/useScreenShare";
 import { CrystalAiOrb, CrystalErrorBoundary } from "../crystal/Crystal";
 import type { CrystalOrbState } from "../../crystal/tokens";
 import { usePublishedUiText } from "../../hooks/useCmsContent";
@@ -151,6 +152,7 @@ export function ChatPage() {
   const uiText = usePublishedUiText();
   const navigate = useNavigate();
   const { config: callConfig } = useCallSession();
+  const screenShare = useScreenShare();
   const { token } = useAuth();
   const { settings } = useAppSettings();
   const { activeChat, createChat, openChat, refreshChats, setActiveChat } = useChat();
@@ -958,6 +960,15 @@ export function ChatPage() {
             </button>}
             <button
               className="icon-button-dark"
+              onClick={screenShare.requestInviteShare}
+              title="Share screen"
+              aria-label="Share screen"
+              type="button"
+            >
+              <ScreenShare size={18} className="text-cyan-200" />
+            </button>
+            <button
+              className="icon-button-dark"
               onClick={() => {
                 window.dispatchEvent(new CustomEvent("open-context-panel", { detail: { tab: "memory" } }));
               }}
@@ -996,6 +1007,10 @@ export function ChatPage() {
                 Stop
               </button>
             )}
+            <button className="chat-topbar-action" onClick={screenShare.requestInviteShare} type="button">
+              <ScreenShare size={15} />
+              Share Screen
+            </button>
             <button className="chat-topbar-action" onClick={handleNewChat} type="button">
               <MessageSquarePlus size={15} />
               New chat
