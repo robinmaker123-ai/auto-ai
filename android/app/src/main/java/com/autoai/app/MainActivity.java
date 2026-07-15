@@ -102,6 +102,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AutoAiLiveSpeechPlugin.class);
         registerPlugin(LiveAudioPlugin.class);
         registerPlugin(LiveVisionPlugin.class);
+        registerPlugin(ScreenCapturePlugin.class);
         registerPlugin(AutoAiCallsPlugin.class);
         super.onCreate(savedInstanceState);
 

@@ -3,10 +3,11 @@ import { useAuth } from "../../contexts/AuthContext";
 import type { PublicCallUser } from "../calls/types";
 import { screenShareApi, ScreenShareSignaling } from "./screenShareApi";
 import { ScreenShareContext, type ScreenShareContextValue } from "./ScreenShareContext";
+import { isNativeScreenCapturePlatform, startNativeScreenCaptureStream } from "./nativeScreenCapture";
 import type { ScreenShareInvite, ScreenShareRole, ScreenShareSession, ScreenShareSignal, ScreenShareSource, ScreenShareUiState } from "./types";
 
 const RECONNECT_LIMIT = 3;
-const SCREEN_UNSUPPORTED_MESSAGE = "Screen sharing is not supported in this browser. Open AutoAI in Chrome desktop to generate a code. You can still join with a code from this device.";
+const SCREEN_UNSUPPORTED_MESSAGE = "Screen sharing is not supported in this browser. Use Chrome desktop or the AutoAI Android app to generate a code. You can still join with a code from this device.";
 const MIC_UNSUPPORTED_MESSAGE = "Microphone is not available in this browser.";
 
 function sessionIdOf(session: ScreenShareSession | null) {
@@ -52,7 +53,7 @@ function microphoneConstraint(): MediaStreamConstraints {
 }
 
 function isScreenShareSupported() {
-  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+  return (typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia) || isNativeScreenCapturePlatform();
 }
 
 function screenCaptureErrorMessage(error: unknown) {
@@ -91,6 +92,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
+  const nativeScreenStopRef = useRef<(() => Promise<void>) | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const eventHandlerRef = useRef<(event: ScreenShareSignal) => void>(() => undefined);
   const createOfferRef = useRef<(iceRestart?: boolean) => Promise<void>>(async () => undefined);
@@ -116,9 +118,21 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopLocalTracks = useCallback(() => {
+    const stopNativeScreen = nativeScreenStopRef.current;
+    nativeScreenStopRef.current = null;
+    if (stopNativeScreen) void stopNativeScreen();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     setLocalStream(null);
+  }, []);
+
+  const startDisplayStream = useCallback(async (source: ScreenShareSource) => {
+    if (navigator.mediaDevices?.getDisplayMedia) {
+      return navigator.mediaDevices.getDisplayMedia(sourceConstraint(source));
+    }
+    const nativeCapture = await startNativeScreenCaptureStream();
+    nativeScreenStopRef.current = nativeCapture.stop;
+    return nativeCapture.stream;
   }, []);
 
   const reset = useCallback((nextState: ScreenShareUiState = "idle") => {
@@ -335,14 +349,14 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     const currentToken = tokenRef.current;
     const peer = requestPeer;
     if (!currentToken || (!peer && !inviteOnlyRequest)) return;
-    if (!navigator.mediaDevices?.getDisplayMedia) {
+    if (!canShareScreen) {
       setError(SCREEN_UNSUPPORTED_MESSAGE);
       return;
     }
     setUiState("preparing");
     setError("");
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia(sourceConstraint(source));
+      const stream = await startDisplayStream(source);
       stream.getVideoTracks()[0]?.addEventListener("ended", () => void stopShare());
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -368,19 +382,19 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("idle");
       setError(screenCaptureErrorMessage(shareError));
     }
-  }, [ensureSignaling, inviteOnlyRequest, requestPeer, signaling, stopLocalTracks, stopShare]);
+  }, [canShareScreen, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
 
   const generateShareCode = useCallback(async () => {
     const currentToken = tokenRef.current;
     if (!currentToken || (!inviteOnlyRequest && !requestPeer)) return;
-    if (!navigator.mediaDevices?.getDisplayMedia) {
+    if (!canShareScreen) {
       setError(SCREEN_UNSUPPORTED_MESSAGE);
       return;
     }
     setUiState("preparing");
     setError("");
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia(sourceConstraint("screen"));
+      const stream = await startDisplayStream("screen");
       stream.getVideoTracks()[0]?.addEventListener("ended", () => void stopShare());
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -407,7 +421,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("idle");
       setError(screenCaptureErrorMessage(shareError));
     }
-  }, [ensureSignaling, inviteOnlyRequest, requestPeer, signaling, stopLocalTracks, stopShare]);
+  }, [canShareScreen, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
 
   const joinBySession = useCallback(async (sessionId: string, inviteToken?: string | null) => {
     const currentToken = tokenRef.current;

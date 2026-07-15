@@ -78,7 +78,7 @@ export function ScreenShareOverlay() {
               <button type="button" className="ss-code-action" disabled={busy || !share.canShareScreen} onClick={() => void generateCode()}>
                 <Monitor size={22} />
                 <span>Generate Code</span>
-                <small>{share.canShareScreen ? "Share your screen" : "Use Chrome desktop to share"}</small>
+                <small>{share.canShareScreen ? "Share your screen" : "Use Chrome desktop or Android app"}</small>
               </button>
               <form className="ss-code-entry" onSubmit={(event) => { event.preventDefault(); void joinCode(); }}>
                 <label htmlFor="screen-share-code">Enter Code</label>
@@ -97,7 +97,7 @@ export function ScreenShareOverlay() {
                 <button type="submit" disabled={busy || code.length !== 8}><LogIn size={17} /> Join</button>
               </form>
             </div>
-            {!share.canShareScreen && <p className="ss-support-note">This browser can join a share, but cannot start screen sharing.</p>}
+            {!share.canShareScreen && <p className="ss-support-note">This browser can join a share. To generate a code from mobile, open the AutoAI Android app.</p>}
             {share.error && <p className="ss-error">{share.error}</p>}
           </section>
         </div>
