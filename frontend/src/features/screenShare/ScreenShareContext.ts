@@ -7,10 +7,7 @@ export type ScreenShareContextValue = {
   role: ScreenShareRole | null;
   session: ScreenShareSession | null;
   requestPeer: PublicCallUser | null;
-<<<<<<< HEAD
-=======
   inviteOnlyRequest: boolean;
->>>>>>> c669187 (Add easy screen sharing)
   pendingInvite: ScreenShareInvite | null;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
@@ -28,10 +25,7 @@ export type ScreenShareContextValue = {
   toggleMute: () => void;
   togglePause: () => void;
   copyInviteLink: () => Promise<void>;
-<<<<<<< HEAD
-=======
   requestInviteShare: () => void;
->>>>>>> c669187 (Add easy screen sharing)
   clearError: () => void;
 };
 

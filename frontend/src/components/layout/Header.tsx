@@ -1,11 +1,12 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Bot, Brain, LogOut, Moon, PhoneCall, Settings, Shield, Sun, Zap } from "lucide-react";
+import { Bot, Brain, LogOut, Moon, PhoneCall, ScreenShare, Settings, Shield, Sun, Zap } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { isAdminPanelRole } from "../../utils/roles";
 import { useSettingsNavigation } from "../../hooks/useSettingsNavigation";
 import { useCallSession } from "../../features/calls/hooks/useCallSession";
+import { useScreenShare } from "../../features/screenShare/useScreenShare";
 
 export function Header() {
   const { logout, user } = useAuth();
@@ -14,6 +15,7 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { config: callConfig } = useCallSession();
+  const screenShare = useScreenShare();
 
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const isChatWorkspace = normalizedPath === "/chat" || normalizedPath.startsWith("/chat/") || normalizedPath === "/";
@@ -84,6 +86,15 @@ export function Header() {
         >
           <PhoneCall size={18} />
         </button>}
+        <button
+          className="icon-button-dark"
+          onClick={screenShare.requestInviteShare}
+          title="Share screen"
+          aria-label="Share screen"
+          type="button"
+        >
+          <ScreenShare size={18} />
+        </button>
         <button
           className="icon-button-dark"
           onClick={openSettings}
