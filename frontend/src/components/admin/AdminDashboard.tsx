@@ -1054,9 +1054,10 @@ export function AdminDashboard() {
         setSuccess("");
         try {
           const response = await api.adminRemoteStartDevice(token, selectedDeviceUserId, device.deviceId);
+          if (response.sent <= 0) throw new Error(response.message || "Remote start was not delivered");
           setDeviceCooldowns((current) => ({ ...current, [device.deviceId]: Date.now() + 10000 }));
           window.setTimeout(() => setDeviceCooldowns((current) => ({ ...current, [device.deviceId]: 0 })), 10000);
-          setSuccess(`${response.message}. Sent ${response.sent}, failed ${response.failed}.`);
+          setSuccess(`${response.message}. Status ${response.commandStatus ?? "sent"}. Command ${response.commandId ?? "n/a"}. Sent ${response.sent}, failed ${response.failed}.`);
         } catch (err) {
           setError(err instanceof Error ? err.message : "Failed to send command");
         } finally {

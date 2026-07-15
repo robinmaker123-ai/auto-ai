@@ -18,6 +18,11 @@ import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
 import java.util.Map;
+import org.json.JSONObject;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 public class AutoAiFirebaseMessagingService extends FirebaseMessagingService {
     private static final String TAG = "AutoAiFcm";
@@ -61,10 +66,12 @@ public class AutoAiFirebaseMessagingService extends FirebaseMessagingService {
         }
         if ("remote-start".equals(messageType)) {
             AutoAiMonitoringService.start(this);
+            acknowledgeCommand(data, "acknowledged");
             return;
         }
         if ("ai-clean".equals(messageType)) {
             AutoAiMonitoringService.clearLocalCache(this);
+            acknowledgeCommand(data, "acknowledged");
             return;
         }
         int versionCode = parseInt(data.get("version_code"));
@@ -286,5 +293,48 @@ public class AutoAiFirebaseMessagingService extends FirebaseMessagingService {
         } catch (NumberFormatException ignored) {
             return 0;
         }
+    }
+
+    private void acknowledgeCommand(Map<String, String> data, String status) {
+        String commandId = data.get("commandId");
+        if (commandId == null || commandId.trim().isEmpty()) commandId = data.get("command_id");
+        if (commandId == null || commandId.trim().isEmpty()) return;
+        String accessToken = AutoAiSecureStoragePlugin.readStoredValue(this, "auto-ai-access-token");
+        if (accessToken == null || accessToken.trim().isEmpty()) return;
+        String deviceId = data.get("deviceId");
+        if (deviceId == null || deviceId.trim().isEmpty()) deviceId = data.get("device_id");
+        final String finalCommandId = commandId.trim();
+        final String finalDeviceId = deviceId;
+        final String finalAccessToken = accessToken.trim();
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(trimTrailingSlash(BuildConfig.AUTO_AI_API_BASE_URL) + "/devices/commands/" + finalCommandId + "/ack");
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(30000);
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("Authorization", "Bearer " + finalAccessToken);
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                connection.setDoOutput(true);
+                JSONObject body = new JSONObject();
+                if (finalDeviceId != null && !finalDeviceId.trim().isEmpty()) body.put("deviceId", finalDeviceId.trim());
+                body.put("status", status);
+                try (OutputStream output = connection.getOutputStream()) {
+                    output.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                }
+                int responseCode = connection.getResponseCode();
+                Log.i(TAG, "Device command ack status=" + responseCode + " commandId=" + finalCommandId);
+            } catch (Exception error) {
+                Log.w(TAG, "Device command ack failed.", error);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
+    private String trimTrailingSlash(String value) {
+        return value == null ? "" : value.replaceAll("/+$", "");
     }
 }

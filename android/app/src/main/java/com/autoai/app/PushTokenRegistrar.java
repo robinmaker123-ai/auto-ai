@@ -100,7 +100,7 @@ public final class PushTokenRegistrar {
         }
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(trimTrailingSlash(BuildConfig.AUTO_AI_API_BASE_URL) + "/calls/devices/register");
+            URL url = new URL(trimTrailingSlash(BuildConfig.AUTO_AI_API_BASE_URL) + "/devices/register");
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
@@ -111,12 +111,14 @@ public final class PushTokenRegistrar {
             connection.setDoOutput(true);
 
             JSONObject body = new JSONObject();
-            body.put("device_id", deviceId(context, "auto_ai_call_device", "fallback_device_id"));
+            body.put("deviceId", deviceId(context, "auto_ai_call_device", "fallback_device_id"));
             body.put("platform", "android");
-            body.put("fcm_token", token);
-            body.put("app_version", BuildConfig.VERSION_NAME);
-            body.put("app_version_code", BuildConfig.VERSION_CODE);
-            body.put("device_name", deviceName());
+            body.put("fcmToken", token);
+            body.put("appVersion", BuildConfig.VERSION_NAME);
+            body.put("deviceName", deviceName());
+            body.put("manufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+            body.put("model", Build.MODEL == null ? "" : Build.MODEL);
+            body.put("osVersion", Build.VERSION.RELEASE == null ? "Android" : "Android " + Build.VERSION.RELEASE);
             try (OutputStream output = connection.getOutputStream()) {
                 output.write(body.toString().getBytes(StandardCharsets.UTF_8));
             }

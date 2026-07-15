@@ -171,6 +171,18 @@ def ensure_runtime_schema() -> None:
             add_column("user_devices", "device_name", "VARCHAR(120)")
         if "os_version" not in device_columns:
             add_column("user_devices", "os_version", "VARCHAR(80)")
+        extra_device_columns = {
+            "manufacturer": "VARCHAR(80)",
+            "model": "VARCHAR(80)",
+            "battery_level": "INTEGER",
+            "charging": "BOOLEAN",
+            "network_type": "VARCHAR(80)",
+            "screen_status": "VARCHAR(16)",
+            "status": "VARCHAR(16) NOT NULL DEFAULT 'offline'",
+        }
+        for column_name, definition in extra_device_columns.items():
+            if column_name not in device_columns:
+                add_column("user_devices", column_name, definition)
 
     if "user_device_activities" in table_names:
         activity_columns = {column["name"] for column in inspector.get_columns("user_device_activities")}

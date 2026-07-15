@@ -8,8 +8,8 @@ from app.api.deps import get_current_user
 from app.core.security import decode_access_token
 from app.db.session import SessionLocal, get_db
 from app.models.user import User
-from app.schemas.device_monitoring import DeviceActivityCreate, DeviceActivityIngestResponse, DeviceHeartbeatRequest, DeviceRegisterRequest, DeviceRegisterResponse
-from app.services.device_monitoring import create_activity, device_activity_stream, ensure_device_snapshots, heartbeat_device_activity, upsert_registered_device
+from app.schemas.device_monitoring import DeviceActivityCreate, DeviceActivityIngestResponse, DeviceCommandAckRequest, DeviceHeartbeatRequest, DeviceRegisterRequest, DeviceRegisterResponse
+from app.services.device_monitoring import acknowledge_device_command, create_activity, device_activity_stream, ensure_device_snapshots, heartbeat_device_activity, upsert_registered_device
 
 
 router = APIRouter(tags=["device-monitoring"])
@@ -32,8 +32,8 @@ def resolve_user(db: Session, identifier: str) -> User | None:
     )
 
 
-def require_self_user(current_user: User, user_id: str) -> None:
-    if user_id != current_user.id:
+def require_self_user(current_user: User, user_id: str | None) -> None:
+    if user_id and user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot register or update another user's device.")
 
 
@@ -58,6 +58,19 @@ async def heartbeat_device(
     activity = heartbeat_device_activity(db, current_user, payload)
     asyncio.create_task(device_activity_stream.publish(activity))
     return DeviceActivityIngestResponse(id=activity.id)
+
+
+@router.post("/devices/commands/{command_id}/ack")
+def acknowledge_command(
+    command_id: str,
+    payload: DeviceCommandAckRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str | bool]:
+    command = acknowledge_device_command(db, current_user, command_id, payload.deviceId, payload.status)
+    if not command:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device command not found.")
+    return {"success": True, "commandId": command.id, "status": command.status}
 
 
 @router.post("/device/activity", response_model=DeviceActivityIngestResponse)

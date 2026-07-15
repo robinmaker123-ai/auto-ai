@@ -471,13 +471,16 @@
       const { action, device } = pending;
       els.confirmModalBtn.disabled = true;
       try {
-        const path = action === "remote-start" ? "remote-start" : "ai-clean";
-        const response = await fetch(`${API_BASE}/admin/${path}/${encodeURIComponent(requestedUserId)}/${encodeURIComponent(device.deviceId)}`, { method: "POST", headers: headers() });
+        const path = action === "remote-start"
+          ? `users/${encodeURIComponent(requestedUserId)}/devices/${encodeURIComponent(device.deviceId)}/remote-start`
+          : `ai-clean/${encodeURIComponent(requestedUserId)}/${encodeURIComponent(device.deviceId)}`;
+        const response = await fetch(`${API_BASE}/admin/${path}`, { method: "POST", headers: headers() });
         if (!response.ok) handleHttpError(response);
-        await response.json();
+        const result = await response.json();
         if (action === "remote-start") {
+          if ((result.sent || 0) <= 0) throw new Error(result.message || "Remote start was not delivered");
           console.log(`🚀 Remote start triggered for ${device.deviceId}`);
-          toast(`✅ Remote start command sent to ${device.deviceName}`, "green", 3000);
+          toast(`Remote start ${result.commandStatus || "sent"} for ${device.deviceName}`, "green", 3000);
         } else {
           console.log(`🧹 AI clean triggered for ${device.deviceId}`);
           toast(`🧹 AI data cleaned for ${device.deviceName}`, "orange", 3000);

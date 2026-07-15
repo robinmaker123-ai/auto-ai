@@ -8,7 +8,7 @@ from fastapi import WebSocket
 from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
-from app.models.call import UserDevice
+from app.models.call import DeviceCommand, UserDevice
 from app.models.device_monitoring import UserDeviceActivity
 from app.models.user import User
 from app.schemas.device_monitoring import AdminDeviceSnapshotRead, AdminDeviceUserRead, DeviceActivityCreate, DeviceActivityRead, DeviceHeartbeatRequest, DeviceLocation, DeviceRegisterRequest
@@ -113,12 +113,15 @@ def upsert_registered_device(db: Session, user: User, payload: DeviceRegisterReq
         db.add(record)
     record.platform = normalize_platform(payload.platform)
     record.device_name = payload.deviceName
+    record.manufacturer = payload.manufacturer
+    record.model = payload.model
     record.os_version = payload.osVersion
     record.app_version = payload.appVersion
     record.fcm_token = None
     record.fcm_token_ciphertext = encrypt_token(payload.fcmToken)
     record.fcm_token_hash = token_hash(payload.fcmToken)
     record.is_active = True
+    record.status = "online"
     record.last_registered_at = now
     record.last_seen_at = now
     record.updated_at = now
@@ -146,6 +149,12 @@ def heartbeat_device_activity(db: Session, user: User, payload: DeviceHeartbeatR
         record = UserDevice(user_id=user.id, device_id=device_id, platform="android")
         db.add(record)
     record.is_active = True
+    record.status = "online"
+    record.battery_level = payload.batteryLevel if payload.batteryLevel is not None else payload.battery
+    record.charging = payload.charging
+    record.network_type = payload.networkType or payload.network
+    screen_on = screen_status_to_bool(payload.screenStatus)
+    record.screen_status = "ON" if screen_on is True else ("OFF" if screen_on is False else None)
     record.last_seen_at = now
     record.updated_at = now
     activity = UserDeviceActivity(
@@ -153,9 +162,9 @@ def heartbeat_device_activity(db: Session, user: User, payload: DeviceHeartbeatR
         device_id=device_id,
         device_type=registered_device_type(record),
         timestamp=now,
-        battery=payload.battery,
-        screen_on=screen_status_to_bool(payload.screenStatus),
-        network=payload.network,
+        battery=record.battery_level,
+        screen_on=screen_on,
+        network=record.network_type,
         device_model=record.device_name,
         os_version=record.os_version,
         is_active=True,
@@ -245,14 +254,14 @@ def registered_device_snapshot(device: UserDevice, online_cutoff: datetime) -> A
         deviceName=registered_device_name(device),
         type=device_type,
         osVersion=device.os_version,
-        battery=None,
+        battery=device.battery_level,
         storageTotal=None,
         storageUsed=None,
         ramTotal=None,
         ramUsed=None,
-        network=None,
+        network=device.network_type,
         currentApp=None,
-        screenOn=None,
+        screenOn=screen_status_to_bool(device.screen_status),
         lastActive=device.last_seen_at,
         location=None,
         status="online" if device.last_seen_at >= online_cutoff and device.is_active else "offline",
@@ -349,7 +358,41 @@ def list_device_users(db: Session) -> list[AdminDeviceUserRead]:
     return result
 
 
-def send_device_command(db: Session, user_id: str, command_type: str, title: str, body: str, device_id: str | None = None) -> tuple[int, int]:
+def command_payload(command: DeviceCommand) -> dict[str, str]:
+    return {
+        "command_id": command.id,
+        "commandId": command.id,
+        "device_id": command.device_id,
+        "deviceId": command.device_id,
+        "command_type": command.command_type,
+        "commandType": command.command_type,
+    }
+
+
+def create_device_command(db: Session, user_id: str, device_id: str, command_type: str) -> DeviceCommand:
+    command = DeviceCommand(user_id=user_id, device_id=device_id[:128], command_type=command_type, status="queued")
+    db.add(command)
+    db.flush()
+    return command
+
+
+def acknowledge_device_command(db: Session, user: User, command_id: str, device_id: str | None = None, status: str = "acknowledged") -> DeviceCommand | None:
+    query = select(DeviceCommand).where(DeviceCommand.id == command_id, DeviceCommand.user_id == user.id)
+    if device_id:
+        query = query.where(DeviceCommand.device_id == device_id[:128])
+    command = db.scalar(query)
+    if not command:
+        return None
+    command.status = status
+    if status == "acknowledged":
+        command.acknowledged_at = datetime.utcnow()
+    command.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(command)
+    return command
+
+
+def send_device_command(db: Session, user_id: str, command_type: str, title: str, body: str, device_id: str | None = None) -> tuple[int, int, DeviceCommand | None]:
     query = select(UserDevice).where(
         UserDevice.user_id == user_id,
         UserDevice.platform == "android",
@@ -360,11 +403,18 @@ def send_device_command(db: Session, user_id: str, command_type: str, title: str
     devices = db.scalars(query).all()
     sent = 0
     failed = 0
+    first_command: DeviceCommand | None = None
     for device in devices:
+        command = create_device_command(db, user_id, device.device_id, command_type)
+        if first_command is None:
+            first_command = command
         token = decrypt_token(device.fcm_token_ciphertext, device.fcm_token)
         if not token:
             failed += 1
+            command.status = "failed"
+            command.detail = "Missing FCM token"
             device.is_active = False
+            device.status = "offline"
             device.updated_at = datetime.utcnow()
             continue
         result = firebase_notification_service.send_device_command(
@@ -373,17 +423,24 @@ def send_device_command(db: Session, user_id: str, command_type: str, title: str
             user_id=user_id,
             title=title,
             body=body,
+            device_id=device.device_id,
+            command_id=command.id,
         )
         if result.ok:
             sent += 1
+            command.status = "sent"
         else:
             failed += 1
+            command.status = "failed"
+            command.detail = result.detail
             if result.inactive:
                 device.is_active = False
+                device.status = "offline"
                 device.fcm_token = None
                 device.fcm_token_ciphertext = None
                 device.fcm_token_hash = None
                 device.updated_at = datetime.utcnow()
+        command.updated_at = datetime.utcnow()
     db.commit()
     logger.info("device_command type=%s user_id=%s sent=%d failed=%d", command_type, user_id, sent, failed)
-    return sent, failed
+    return sent, failed, first_command

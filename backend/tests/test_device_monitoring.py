@@ -4,11 +4,12 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
-from app.models.call import UserDevice
+from app.models.call import DeviceCommand, UserDevice
 from app.models.device_monitoring import UserDeviceActivity
 from app.models.user import User
 from app.schemas.device_monitoring import DeviceActivityCreate, DeviceHeartbeatRequest, DeviceLocation, DeviceRegisterRequest
-from app.services.device_monitoring import clean_old_activities, create_activity, ensure_device_snapshots, heartbeat_device_activity, latest_activities, list_device_users, upsert_registered_device
+from app.services.device_monitoring import acknowledge_device_command, clean_old_activities, create_activity, ensure_device_snapshots, heartbeat_device_activity, latest_activities, list_device_users, send_device_command, upsert_registered_device
+from app.services.firebase_notifications import FcmSendResult
 
 
 def db_session() -> Session:
@@ -190,6 +191,46 @@ def test_device_heartbeat_updates_card_telemetry() -> None:
         assert snapshots["mobile"][0].battery == 74
         assert snapshots["mobile"][0].network == "5G"
         assert snapshots["mobile"][0].screenOn is True
+
+
+def test_remote_start_command_is_sent_and_acknowledged(monkeypatch) -> None:
+    with db_session() as db:
+        user = create_user(db, "command-user")
+        upsert_registered_device(
+            db,
+            user,
+            DeviceRegisterRequest(
+                deviceId="android-command-1",
+                userId=user.id,
+                platform="android",
+                deviceName="Command Android",
+                fcmToken="a" * 32,
+            ),
+        )
+
+        sent_payloads = []
+
+        def fake_send_device_command(token: str, **payload):
+            sent_payloads.append((token, payload))
+            return FcmSendResult(ok=True)
+
+        monkeypatch.setattr("app.services.device_monitoring.firebase_notification_service.send_device_command", fake_send_device_command)
+        sent, failed, command = send_device_command(db, user.id, "remote-start", "Start", "Start monitoring", "android-command-1")
+
+        assert sent == 1
+        assert failed == 0
+        assert command is not None
+        assert command.status == "sent"
+        assert sent_payloads[0][1]["command_id"] == command.id
+
+        acknowledged = acknowledge_device_command(db, user, command.id, "android-command-1")
+
+        assert acknowledged is not None
+        assert acknowledged.status == "acknowledged"
+        assert acknowledged.acknowledged_at is not None
+        stored = db.get(DeviceCommand, command.id)
+        assert stored is not None
+        assert stored.status == "acknowledged"
 
 
 def test_device_snapshots_are_scoped_to_selected_user() -> None:

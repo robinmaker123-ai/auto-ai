@@ -65,15 +65,17 @@ class DeviceActivityIngestResponse(BaseModel):
 
 class DeviceRegisterRequest(BaseModel):
     deviceId: str = Field(min_length=1, max_length=128)
-    userId: str = Field(min_length=1, max_length=64)
+    userId: str | None = Field(default=None, min_length=1, max_length=64)
     platform: str = Field(default="android", max_length=32)
     deviceName: str | None = Field(default=None, max_length=120)
+    manufacturer: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=80)
     osVersion: str | None = Field(default=None, max_length=80)
     appVersion: str | None = Field(default=None, max_length=64)
     fcmToken: str | None = Field(default=None, max_length=512)
     lastSeenAt: datetime | None = None
 
-    @field_validator("deviceId", "userId", "platform", "deviceName", "osVersion", "appVersion", "fcmToken")
+    @field_validator("deviceId", "userId", "platform", "deviceName", "manufacturer", "model", "osVersion", "appVersion", "fcmToken")
     @classmethod
     def normalize_text(cls, value: str | None) -> str | None:
         if not isinstance(value, str):
@@ -90,13 +92,16 @@ class DeviceRegisterResponse(BaseModel):
 
 class DeviceHeartbeatRequest(BaseModel):
     deviceId: str = Field(min_length=1, max_length=128)
-    userId: str = Field(min_length=1, max_length=64)
+    userId: str | None = Field(default=None, min_length=1, max_length=64)
     battery: int | None = Field(default=None, ge=0, le=100)
+    batteryLevel: int | None = Field(default=None, ge=0, le=100)
+    charging: bool | None = None
     network: str | None = Field(default=None, max_length=80)
+    networkType: str | None = Field(default=None, max_length=80)
     screenStatus: str | bool | None = None
     lastSeenAt: datetime | None = None
 
-    @field_validator("deviceId", "userId", "network")
+    @field_validator("deviceId", "userId", "network", "networkType")
     @classmethod
     def normalize_heartbeat_text(cls, value: str | None) -> str | None:
         if not isinstance(value, str):
@@ -105,11 +110,18 @@ class DeviceHeartbeatRequest(BaseModel):
         return cleaned or None
 
 
+class DeviceCommandAckRequest(BaseModel):
+    deviceId: str | None = Field(default=None, min_length=1, max_length=128)
+    status: str = Field(default="acknowledged", pattern="^(acknowledged|failed)$")
+
+
 class AdminDeviceCommandResponse(BaseModel):
     success: bool = True
     message: str
     sent: int = 0
     failed: int = 0
+    commandId: str | None = None
+    commandStatus: str | None = None
 
 
 class AdminLiveDataResponse(BaseModel):

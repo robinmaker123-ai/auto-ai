@@ -22,7 +22,18 @@ export const callApi = {
   updateSettings: (token: string, payload: Partial<CallSettings>) =>
     apiFetch<CallSettings>("/calls/settings", { method: "PATCH", token, operation: "calls.settings.update", body: JSON.stringify(payload) }),
   registerDevice: (token: string, payload: { device_id: string; platform: "android" | "web"; fcm_token?: string | null; app_version?: string | null; app_version_code?: number; device_name?: string | null }) =>
-    apiFetch<{ device_id: string; registered: boolean }>("/calls/devices/register", { method: "POST", token, operation: "calls.devices.register", body: JSON.stringify(payload) }),
+    apiFetch<{ deviceId: string; registered: boolean }>("/devices/register", {
+      method: "POST",
+      token,
+      operation: "devices.register",
+      body: JSON.stringify({
+        deviceId: payload.device_id,
+        platform: payload.platform,
+        fcmToken: payload.fcm_token,
+        appVersion: payload.app_version,
+        deviceName: payload.device_name
+      })
+    }),
   removeDevice: (token: string, deviceId: string) =>
     apiFetch<void>(`/calls/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE", token, operation: "calls.devices.remove" }),
   wsTicket: (token: string) => apiFetch<{ ticket: string; expires_in: number }>("/calls/ws-ticket", { method: "POST", token, operation: "calls.wsTicket" }),

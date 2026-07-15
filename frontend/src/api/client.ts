@@ -1159,7 +1159,7 @@ export const api = {
       operation: "admin.remoteStart"
     }),
   adminRemoteStartDevice: (token: string, userId: string, deviceId: string) =>
-    apiFetch<AdminDeviceCommandResponse>(`/admin/remote-start/${encodeURIComponent(userId)}/${encodeURIComponent(deviceId)}`, {
+    apiFetch<AdminDeviceCommandResponse>(`/admin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/remote-start`, {
       method: "POST",
       token,
       operation: "admin.remoteStartDevice"

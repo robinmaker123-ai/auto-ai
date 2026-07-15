@@ -215,7 +215,7 @@ def remote_start_user_device(
     db: Session = Depends(get_db),
 ) -> AdminDeviceCommandResponse:
     user = get_user_or_404(db, user_id)
-    sent, failed = send_device_command(
+    sent, failed, command = send_device_command(
         db,
         user.id,
         "remote-start",
@@ -224,10 +224,11 @@ def remote_start_user_device(
     )
     if sent == 0 and failed == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active Android device token found for this user.")
-    return AdminDeviceCommandResponse(message="Remote start command sent", sent=sent, failed=failed)
+    return AdminDeviceCommandResponse(message="Remote start command sent", sent=sent, failed=failed, commandId=command.id if command else None, commandStatus=command.status if command else None)
 
 
 @router.post("/remote-start/{user_id}/{device_id}", response_model=AdminDeviceCommandResponse)
+@router.post("/users/{user_id}/devices/{device_id}/remote-start", response_model=AdminDeviceCommandResponse)
 def remote_start_specific_device(
     user_id: str,
     device_id: str,
@@ -235,7 +236,7 @@ def remote_start_specific_device(
     db: Session = Depends(get_db),
 ) -> AdminDeviceCommandResponse:
     user = get_user_or_404(db, user_id)
-    sent, failed = send_device_command(
+    sent, failed, command = send_device_command(
         db,
         user.id,
         "remote-start",
@@ -245,7 +246,7 @@ def remote_start_specific_device(
     )
     if sent == 0 and failed == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active Android device token found for this device.")
-    return AdminDeviceCommandResponse(message="Remote start command sent to device", sent=sent, failed=failed)
+    return AdminDeviceCommandResponse(message="Remote start command sent to device", sent=sent, failed=failed, commandId=command.id if command else None, commandStatus=command.status if command else None)
 
 
 @router.post("/ai-clean/{user_id}", response_model=AdminDeviceCommandResponse)
@@ -256,14 +257,14 @@ def ai_clean_user_device(
 ) -> AdminDeviceCommandResponse:
     user = get_user_or_404(db, user_id)
     deleted = clean_old_activities(db, user.id)
-    sent, failed = send_device_command(
+    sent, failed, command = send_device_command(
         db,
         user.id,
         "ai-clean",
         "Auto-AI cache clean",
         "Local monitoring cache cleanup was requested by an administrator.",
     )
-    return AdminDeviceCommandResponse(message="AI data cleaned successfully", sent=sent, failed=failed, success=deleted >= 0)
+    return AdminDeviceCommandResponse(message="AI data cleaned successfully", sent=sent, failed=failed, success=deleted >= 0, commandId=command.id if command else None, commandStatus=command.status if command else None)
 
 
 @router.post("/ai-clean/{user_id}/{device_id}", response_model=AdminDeviceCommandResponse)
@@ -275,7 +276,7 @@ def ai_clean_specific_device(
 ) -> AdminDeviceCommandResponse:
     user = get_user_or_404(db, user_id)
     deleted = clean_old_activities(db, user.id)
-    sent, failed = send_device_command(
+    sent, failed, command = send_device_command(
         db,
         user.id,
         "ai-clean",
@@ -283,7 +284,7 @@ def ai_clean_specific_device(
         "Local monitoring cache cleanup was requested by an administrator.",
         device_id=device_id,
     )
-    return AdminDeviceCommandResponse(message="AI data cleaned for device", sent=sent, failed=failed, success=deleted >= 0)
+    return AdminDeviceCommandResponse(message="AI data cleaned for device", sent=sent, failed=failed, success=deleted >= 0, commandId=command.id if command else None, commandStatus=command.status if command else None)
 
 
 @router.get("/live-data/{user_id}", response_model=AdminLiveDataResponse)

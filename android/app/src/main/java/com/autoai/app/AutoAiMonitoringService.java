@@ -153,6 +153,7 @@ public class AutoAiMonitoringService extends Service {
         try {
             JSONObject payload = collectPayload();
             if (sendPayload(accessToken.trim(), payload)) {
+                sendHeartbeat(accessToken.trim(), payload);
                 syncQueued(accessToken.trim());
             } else {
                 pendingDataStore.enqueue(payload.toString());
@@ -302,6 +303,36 @@ public class AutoAiMonitoringService extends Service {
         } catch (Exception error) {
             Log.w(TAG, "Device telemetry send failed.", error);
             return false;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private void sendHeartbeat(String accessToken, JSONObject telemetry) {
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(trimTrailingSlash(BuildConfig.AUTO_AI_API_BASE_URL) + "/devices/heartbeat");
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Authorization", "Bearer " + accessToken);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setDoOutput(true);
+            JSONObject payload = new JSONObject();
+            payload.put("deviceId", telemetry.optString("deviceId"));
+            payload.put("batteryLevel", telemetry.optInt("battery"));
+            payload.put("networkType", telemetry.optString("network"));
+            payload.put("screenStatus", telemetry.optBoolean("screenOn") ? "ON" : "OFF");
+            payload.put("lastSeenAt", telemetry.optString("timestamp"));
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) Log.w(TAG, "Device heartbeat failed status=" + status);
+        } catch (Exception error) {
+            Log.w(TAG, "Device heartbeat send failed.", error);
         } finally {
             if (connection != null) connection.disconnect();
         }

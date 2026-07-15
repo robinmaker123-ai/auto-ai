@@ -113,7 +113,17 @@ class FirebaseNotificationService:
         }
         return self._send(message)
 
-    def send_device_command(self, token: str, *, command_type: str, user_id: str, title: str, body: str) -> FcmSendResult:
+    def send_device_command(
+        self,
+        token: str,
+        *,
+        command_type: str,
+        user_id: str,
+        title: str,
+        body: str,
+        device_id: str | None = None,
+        command_id: str | None = None,
+    ) -> FcmSendResult:
         message = {
             "message": {
                 "token": token,
@@ -122,6 +132,10 @@ class FirebaseNotificationService:
                     "type": command_type,
                     "userId": user_id,
                     "user_id": user_id,
+                    "deviceId": device_id or "",
+                    "device_id": device_id or "",
+                    "commandId": command_id or "",
+                    "command_id": command_id or "",
                     "title": title,
                     "body": body,
                 },

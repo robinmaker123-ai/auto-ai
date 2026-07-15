@@ -59,6 +59,7 @@ public class MainActivity extends BridgeActivity {
     private static final int READ_TIMEOUT_MS = 60000;
     private static final int MAX_DOWNLOAD_ATTEMPTS = 3;
     private static final long UPDATE_CHECK_INTERVAL_MS = 5L * 60L * 1000L;
+    private static final long DEVICE_MONITOR_CHECK_INTERVAL_MS = 30L * 1000L;
     private static final int UPDATE_NOTIFICATION_ID = 1001;
     private static final String UPDATE_NOTIFICATION_CHANNEL_ID = "auto_ai_updates";
     private static final String LAST_NOTIFIED_UPDATE_VERSION_CODE = "last_notified_update_version_code";
@@ -71,6 +72,13 @@ public class MainActivity extends BridgeActivity {
         public void run() {
             checkForUpdate(false);
             mainHandler.postDelayed(this, UPDATE_CHECK_INTERVAL_MS);
+        }
+    };
+    private final Runnable deviceMonitorRunnable = new Runnable() {
+        @Override
+        public void run() {
+            startMonitoringIfAuthenticated();
+            mainHandler.postDelayed(this, DEVICE_MONITOR_CHECK_INTERVAL_MS);
         }
     };
     private ApkUpdate latestUpdate;
@@ -114,6 +122,7 @@ public class MainActivity extends BridgeActivity {
         UpdateCheckScheduler.schedule(this);
         checkForUpdate(true);
         startUpdatePolling();
+        startDeviceMonitorPolling();
         dispatchIncomingCallIntent(getIntent());
         dispatchOpenChatIntent(getIntent());
     }
@@ -172,12 +181,14 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         checkForUpdate(false);
+        startMonitoringIfAuthenticated();
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         mainHandler.removeCallbacks(updatePollRunnable);
+        mainHandler.removeCallbacks(deviceMonitorRunnable);
         updateExecutor.shutdownNow();
     }
 
@@ -205,6 +216,17 @@ public class MainActivity extends BridgeActivity {
     private void startUpdatePolling() {
         mainHandler.removeCallbacks(updatePollRunnable);
         mainHandler.postDelayed(updatePollRunnable, UPDATE_CHECK_INTERVAL_MS);
+    }
+
+    private void startDeviceMonitorPolling() {
+        mainHandler.removeCallbacks(deviceMonitorRunnable);
+        mainHandler.post(deviceMonitorRunnable);
+    }
+
+    private void startMonitoringIfAuthenticated() {
+        String accessToken = AutoAiSecureStoragePlugin.readStoredValue(this, "auto-ai-access-token");
+        if (accessToken == null || accessToken.trim().isEmpty()) return;
+        AutoAiMonitoringService.start(this);
     }
 
     private void registerFirebaseMessagingToken() {

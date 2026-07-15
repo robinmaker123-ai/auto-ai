@@ -50,6 +50,13 @@ class UserDevice(Base):
     app_version_code: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     device_name: Mapped[str] = mapped_column(String(120), nullable=True)
     os_version: Mapped[str] = mapped_column(String(80), nullable=True)
+    manufacturer: Mapped[str] = mapped_column(String(80), nullable=True)
+    model: Mapped[str] = mapped_column(String(80), nullable=True)
+    battery_level: Mapped[int] = mapped_column(Integer, nullable=True)
+    charging: Mapped[bool] = mapped_column(Boolean, nullable=True)
+    network_type: Mapped[str] = mapped_column(String(80), nullable=True)
+    screen_status: Mapped[str] = mapped_column(String(16), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="offline", index=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True, nullable=False)
     last_registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -59,6 +66,23 @@ class UserDevice(Base):
     )
 
     user = relationship("User", back_populates="call_devices")
+
+
+class DeviceCommand(Base):
+    __tablename__ = "device_commands"
+    __table_args__ = (UniqueConstraint("id", "user_id", "device_id", name="uq_device_commands_user_device"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    command_type: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
 
 class Call(Base):

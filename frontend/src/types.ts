@@ -588,6 +588,8 @@ export type AdminDeviceCommandResponse = {
   message: string;
   sent: number;
   failed: number;
+  commandId?: string | null;
+  commandStatus?: string | null;
 };
 
 export type AdminLiveDataResponse = {
