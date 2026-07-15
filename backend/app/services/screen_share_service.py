@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,10 @@ def utcnow() -> datetime:
 
 def hash_invite_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_numeric_code() -> str:
+    return f"{secrets.randbelow(100_000_000):08d}"
 
 
 def screen_share_event(
@@ -58,7 +63,8 @@ class ScreenShareService:
         viewer_user_id: str | None,
         invite_link: bool,
         expires_minutes: int,
-    ) -> tuple[ScreenShareSession, str | None]:
+        code_mode: bool = False,
+    ) -> tuple[ScreenShareSession, str | None, str | None]:
         if viewer_user_id == sharer.id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot share with yourself.")
         if viewer_user_id:
@@ -69,18 +75,32 @@ class ScreenShareService:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Screen sharing is blocked for this user.")
 
         invite_token = secrets.token_urlsafe(32) if invite_link else None
+        share_code: str | None = None
+        share_code_hash: str | None = None
+        if code_mode:
+            for _ in range(20):
+                candidate = generate_numeric_code()
+                candidate_hash = hash_invite_token(candidate)
+                exists = db.scalar(select(ScreenShareSession.session_id).where(ScreenShareSession.screen_code_hash == candidate_hash))
+                if not exists:
+                    share_code = candidate
+                    share_code_hash = candidate_hash
+                    break
+            if not share_code:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Unable to generate screen share code.")
         session = ScreenShareSession(
             session_id=str(uuid.uuid4()),
             sharer_user_id=sharer.id,
             viewer_user_id=viewer_user_id,
             invite_token_hash=hash_invite_token(invite_token) if invite_token else None,
+            screen_code_hash=share_code_hash,
             status="waiting",
             expires_at=utcnow() + timedelta(minutes=expires_minutes),
         )
         db.add(session)
         db.commit()
         db.refresh(session)
-        return session, invite_token
+        return session, invite_token, share_code
 
     async def notify_created(self, db: Session, session: ScreenShareSession, sharer: User, invite_link: str | None) -> None:
         if not session.viewer_user_id:
@@ -97,7 +117,12 @@ class ScreenShareService:
             screen_share_event("screen-share-invite", sender_user_id=sharer.id, session_id=session.session_id, payload=payload),
         )
 
-    def serialize(self, session: ScreenShareSession, invite_token: str | None = None) -> ScreenShareSessionRead:
+    def serialize(
+        self,
+        session: ScreenShareSession,
+        invite_token: str | None = None,
+        share_code: str | None = None,
+    ) -> ScreenShareSessionRead:
         invite_link = self.invite_link(session.session_id, invite_token) if invite_token else None
         return ScreenShareSessionRead(
             session_id=session.session_id,
@@ -109,7 +134,33 @@ class ScreenShareService:
             ended_at=session.ended_at,
             expires_at=session.expires_at,
             invite_link=invite_link,
+            share_code=share_code,
         )
+
+    def claim_by_code(self, db: Session, user_id: str, code: str) -> ScreenShareSession:
+        code_hash = hash_invite_token(code)
+        session = db.scalar(select(ScreenShareSession).where(ScreenShareSession.screen_code_hash == code_hash))
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Screen share code is invalid.")
+        if session.expires_at and session.expires_at < utcnow() and session.status not in TERMINAL_STATUSES:
+            session.status = "ended"
+            session.ended_at = utcnow()
+            session.updated_at = utcnow()
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Screen share code has expired.")
+        if session.status in TERMINAL_STATUSES:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Screen share session has ended.")
+        if user_id == session.sharer_user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot view your own screen share.")
+        if social_service.users_blocked(db, session.sharer_user_id, user_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Screen sharing is blocked for this user.")
+        if session.viewer_user_id and session.viewer_user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Screen share code is already in use.")
+        session.viewer_user_id = user_id
+        session.updated_at = utcnow()
+        db.commit()
+        db.refresh(session)
+        return session
 
     def invite_link(self, session_id: str, invite_token: str) -> str:
         return f"{settings.frontend_url}/#/screen-share/{session_id}?invite={invite_token}"

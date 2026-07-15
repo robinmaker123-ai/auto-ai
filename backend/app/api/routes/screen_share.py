@@ -5,7 +5,12 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.screen_share import ScreenShareSessionCreate, ScreenShareSessionRead, ScreenShareTicket
+from app.schemas.screen_share import (
+    ScreenShareJoinCodeRequest,
+    ScreenShareSessionCreate,
+    ScreenShareSessionRead,
+    ScreenShareTicket,
+)
 from app.services.presence_service import presence_service
 from app.services.screen_share_service import screen_share_event, screen_share_service
 
@@ -19,16 +24,27 @@ async def create_screen_share_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ScreenShareSessionRead:
-    session, invite_token = screen_share_service.create(
+    session, invite_token, share_code = screen_share_service.create(
         db,
         current_user,
         viewer_user_id=payload.viewer_user_id,
         invite_link=payload.invite_link,
+        code_mode=payload.code_mode,
         expires_minutes=payload.expires_minutes,
     )
     invite_link = screen_share_service.invite_link(session.session_id, invite_token) if invite_token else None
     await screen_share_service.notify_created(db, session, current_user, invite_link)
-    return screen_share_service.serialize(session, invite_token)
+    return screen_share_service.serialize(session, invite_token, share_code)
+
+
+@router.post("/session/join-code", response_model=ScreenShareSessionRead)
+def join_screen_share_code(
+    payload: ScreenShareJoinCodeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ScreenShareSessionRead:
+    session = screen_share_service.claim_by_code(db, current_user.id, payload.code)
+    return screen_share_service.serialize(session)
 
 
 @router.get("/session/{session_id}", response_model=ScreenShareSessionRead)

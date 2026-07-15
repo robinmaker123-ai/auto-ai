@@ -238,6 +238,11 @@ def ensure_runtime_schema() -> None:
         if "mode" not in chat_columns:
             add_column("chats", "mode", "VARCHAR(32) NOT NULL DEFAULT 'normal'")
 
+    if "screen_share_sessions" in table_names:
+        screen_share_columns = {column["name"] for column in inspector.get_columns("screen_share_sessions")}
+        if "screenCodeHash" not in screen_share_columns:
+            add_column("screen_share_sessions", "screenCodeHash", "VARCHAR(64)")
+
     if "messages" in table_names:
         message_columns = {column["name"] for column in inspector.get_columns("messages")}
         if "metadata" not in message_columns:

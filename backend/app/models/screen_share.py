@@ -18,6 +18,7 @@ class ScreenShareSession(Base):
         "viewerUserId", String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
     )
     invite_token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    screen_code_hash: Mapped[str] = mapped_column("screenCodeHash", String(64), unique=True, index=True, nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="waiting", index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, default=datetime.utcnow, nullable=False)
     started_at: Mapped[datetime] = mapped_column("startedAt", DateTime, nullable=True)

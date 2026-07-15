@@ -15,9 +15,12 @@ export type ScreenShareContextValue = {
   muted: boolean;
   paused: boolean;
   startedAt: number | null;
+  shareCode: string | null;
   requestShare: (peer: PublicCallUser) => void;
   cancelRequest: () => void;
   startShare: (source: ScreenShareSource) => Promise<void>;
+  generateShareCode: () => Promise<void>;
+  joinWithCode: (code: string) => Promise<void>;
   joinInvite: (invite?: ScreenShareInvite | null) => Promise<void>;
   joinInviteLink: (sessionId: string, inviteToken?: string | null) => Promise<void>;
   declineInvite: () => Promise<void>;
@@ -25,6 +28,7 @@ export type ScreenShareContextValue = {
   toggleMute: () => void;
   togglePause: () => void;
   copyInviteLink: () => Promise<void>;
+  copyShareCode: () => Promise<void>;
   requestInviteShare: () => void;
   clearError: () => void;
 };

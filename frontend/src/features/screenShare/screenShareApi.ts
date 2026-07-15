@@ -9,12 +9,19 @@ function websocketUrl(ticket: string) {
 }
 
 export const screenShareApi = {
-  createSession: (token: string, payload: { viewer_user_id?: string | null; invite_link?: boolean; expires_minutes?: number }) =>
+  createSession: (token: string, payload: { viewer_user_id?: string | null; invite_link?: boolean; code_mode?: boolean; expires_minutes?: number }) =>
     apiFetch<ScreenShareSession>("/screen-share/session", {
       method: "POST",
       token,
       operation: "screenShare.session.create",
       body: JSON.stringify(payload),
+    }),
+  joinCode: (token: string, code: string) =>
+    apiFetch<ScreenShareSession>("/screen-share/session/join-code", {
+      method: "POST",
+      token,
+      operation: "screenShare.session.joinCode",
+      body: JSON.stringify({ code }),
     }),
   getSession: (token: string, sessionId: string, invite?: string | null) =>
     apiFetch<ScreenShareSession>(

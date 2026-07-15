@@ -23,6 +23,8 @@ export type ScreenShareSession = {
   expires_at?: string | null;
   inviteLink?: string | null;
   invite_link?: string | null;
+  shareCode?: string | null;
+  share_code?: string | null;
 };
 
 export type ScreenShareInvite = {

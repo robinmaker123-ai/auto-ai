@@ -15,6 +15,10 @@ function inviteLinkOf(session: ScreenShareSession | null) {
   return session?.inviteLink ?? session?.invite_link ?? "";
 }
 
+function shareCodeOf(session: ScreenShareSession | null) {
+  return session?.shareCode ?? session?.share_code ?? "";
+}
+
 function normalizeIceServers(iceServers?: RTCIceServer[]) {
   return (iceServers ?? []).filter((server) => {
     const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
@@ -48,6 +52,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(true);
   const [paused, setPaused] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [shareCode, setShareCode] = useState<string | null>(null);
   const tokenRef = useRef(token);
   const roleRef = useRef<ScreenShareRole | null>(null);
   const sessionRef = useRef<ScreenShareSession | null>(null);
@@ -95,6 +100,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     setInviteOnlyRequest(false);
     setPendingInvite(null);
     setStartedAt(null);
+    setShareCode(null);
     setPaused(false);
     setMuted(true);
     setUiState(nextState);
@@ -280,8 +286,45 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       });
       setSession(created);
       setRole("sharer");
+      setShareCode(null);
       setRequestPeer(null);
       setInviteOnlyRequest(false);
+      setStartedAt(Date.now());
+      setUiState("waiting");
+      await ensureSignaling();
+      const id = sessionIdOf(created);
+      signaling.send("join-session", id);
+      signaling.send("screen-share-started", id);
+    } catch (shareError) {
+      stopLocalTracks();
+      setUiState("failed");
+      setError(shareError instanceof Error ? shareError.message : "Screen capture permission was denied.");
+    }
+  }, [ensureSignaling, inviteOnlyRequest, requestPeer, signaling, stopLocalTracks, stopShare]);
+
+  const generateShareCode = useCallback(async () => {
+    const currentToken = tokenRef.current;
+    if (!currentToken || (!inviteOnlyRequest && !requestPeer)) return;
+    setUiState("preparing");
+    setError("");
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia(sourceConstraint("screen"));
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => void stopShare());
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      setMuted(true);
+      const created = await screenShareApi.createSession(currentToken, {
+        viewer_user_id: null,
+        invite_link: false,
+        code_mode: true,
+        expires_minutes: 60,
+      });
+      setSession(created);
+      setRole("sharer");
+      setShareCode(shareCodeOf(created));
+      setRequestPeer(null);
+      setInviteOnlyRequest(false);
+      setStartedAt(Date.now());
       setUiState("waiting");
       await ensureSignaling();
       const id = sessionIdOf(created);
@@ -303,9 +346,39 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       const nextSession = await screenShareApi.getSession(currentToken, sessionId, inviteToken);
       setSession(nextSession);
       setRole("viewer");
+      setShareCode(null);
       setPendingInvite(null);
+      setRequestPeer(null);
+      setInviteOnlyRequest(false);
       await ensureSignaling();
       signaling.send("join-session", sessionId, inviteToken ? { inviteToken } : {});
+      await ensurePeer();
+    } catch (joinError) {
+      setUiState("failed");
+      setError(joinError instanceof Error ? joinError.message : "Unable to join screen share.");
+    }
+  }, [ensurePeer, ensureSignaling, signaling]);
+
+  const joinWithCode = useCallback(async (code: string) => {
+    const currentToken = tokenRef.current;
+    const normalizedCode = code.replace(/\D/g, "").slice(0, 8);
+    if (!currentToken || normalizedCode.length !== 8) {
+      setError("Enter an 8 digit screen share code.");
+      return;
+    }
+    setUiState("connecting");
+    setError("");
+    try {
+      const nextSession = await screenShareApi.joinCode(currentToken, normalizedCode);
+      const id = sessionIdOf(nextSession);
+      setSession(nextSession);
+      setRole("viewer");
+      setShareCode(null);
+      setPendingInvite(null);
+      setRequestPeer(null);
+      setInviteOnlyRequest(false);
+      await ensureSignaling();
+      signaling.send("join-session", id);
       await ensurePeer();
     } catch (joinError) {
       setUiState("failed");
@@ -354,6 +427,11 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     if (link) await navigator.clipboard.writeText(link);
   }, []);
 
+  const copyShareCode = useCallback(async () => {
+    const code = shareCode || shareCodeOf(sessionRef.current);
+    if (code) await navigator.clipboard.writeText(code);
+  }, [shareCode]);
+
   const value = useMemo<ScreenShareContextValue>(() => ({
     uiState,
     role,
@@ -368,9 +446,12 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     muted,
     paused,
     startedAt,
+    shareCode,
     requestShare,
     cancelRequest,
     startShare,
+    generateShareCode,
+    joinWithCode,
     joinInvite,
     joinInviteLink,
     declineInvite,
@@ -378,8 +459,9 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     toggleMute,
     togglePause,
     copyInviteLink,
+    copyShareCode,
     clearError: () => setError(""),
-  }), [cancelRequest, copyInviteLink, declineInvite, error, inviteOnlyRequest, joinInvite, joinInviteLink, localStream, muted, paused, pendingInvite, remoteStream, requestInviteShare, requestPeer, requestShare, role, session, startShare, startedAt, stopShare, toggleMute, togglePause, uiState]);
+  }), [cancelRequest, copyInviteLink, copyShareCode, declineInvite, error, generateShareCode, inviteOnlyRequest, joinInvite, joinInviteLink, joinWithCode, localStream, muted, paused, pendingInvite, remoteStream, requestInviteShare, requestPeer, requestShare, role, session, shareCode, startShare, startedAt, stopShare, toggleMute, togglePause, uiState]);
 
   return <ScreenShareContext.Provider value={value}>{children}</ScreenShareContext.Provider>;
 }

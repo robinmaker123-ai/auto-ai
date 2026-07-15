@@ -10,7 +10,19 @@ ScreenShareStatus = Literal["waiting", "active", "ended", "failed"]
 class ScreenShareSessionCreate(BaseModel):
     viewer_user_id: str | None = Field(default=None, min_length=8, max_length=64)
     invite_link: bool = False
+    code_mode: bool = False
     expires_minutes: int = Field(default=60, ge=5, le=1440)
+
+
+class ScreenShareJoinCodeRequest(BaseModel):
+    code: str = Field(min_length=8, max_length=8)
+
+    @field_validator("code")
+    @classmethod
+    def numeric_code(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("Screen share code must be 8 digits.")
+        return value
 
 
 class ScreenShareSessionRead(BaseModel):
@@ -23,6 +35,7 @@ class ScreenShareSessionRead(BaseModel):
     ended_at: datetime | None = Field(default=None, serialization_alias="endedAt")
     expires_at: datetime | None = Field(default=None, serialization_alias="expiresAt")
     invite_link: str | None = Field(default=None, serialization_alias="inviteLink")
+    share_code: str | None = Field(default=None, serialization_alias="shareCode")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
