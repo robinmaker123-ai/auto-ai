@@ -169,6 +169,8 @@ def ensure_runtime_schema() -> None:
             add_column("user_devices", "app_version_code", "INTEGER NOT NULL DEFAULT 0")
         if "device_name" not in device_columns:
             add_column("user_devices", "device_name", "VARCHAR(120)")
+        if "os_version" not in device_columns:
+            add_column("user_devices", "os_version", "VARCHAR(80)")
 
     if "user_device_activities" in table_names:
         activity_columns = {column["name"] for column in inspector.get_columns("user_device_activities")}

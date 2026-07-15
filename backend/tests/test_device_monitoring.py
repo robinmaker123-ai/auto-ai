@@ -7,8 +7,8 @@ from app.db.base import Base
 from app.models.call import UserDevice
 from app.models.device_monitoring import UserDeviceActivity
 from app.models.user import User
-from app.schemas.device_monitoring import DeviceActivityCreate, DeviceLocation
-from app.services.device_monitoring import clean_old_activities, create_activity, ensure_device_snapshots, latest_activities, list_device_users
+from app.schemas.device_monitoring import DeviceActivityCreate, DeviceHeartbeatRequest, DeviceLocation, DeviceRegisterRequest
+from app.services.device_monitoring import clean_old_activities, create_activity, ensure_device_snapshots, heartbeat_device_activity, latest_activities, list_device_users, upsert_registered_device
 
 
 def db_session() -> Session:
@@ -118,6 +118,78 @@ def test_registered_android_device_appears_without_telemetry() -> None:
         assert snapshots["mobile"][0].deviceName == "Shyam Android"
         assert snapshots["mobile"][0].status == "online"
         assert snapshots["laptop"] == []
+
+
+def test_device_register_upserts_by_user_and_device_id() -> None:
+    with db_session() as db:
+        user = create_user(db, "registered-upsert-user")
+
+        upsert_registered_device(
+            db,
+            user,
+            DeviceRegisterRequest(
+                deviceId="android-upsert-1",
+                userId=user.id,
+                platform="android",
+                deviceName="First Name",
+                osVersion="Android 14",
+                appVersion="1.0.0",
+            ),
+        )
+        upsert_registered_device(
+            db,
+            user,
+            DeviceRegisterRequest(
+                deviceId="android-upsert-1",
+                userId=user.id,
+                platform="android",
+                deviceName="Updated Name",
+                osVersion="Android 15",
+                appVersion="1.0.1",
+            ),
+        )
+
+        devices = db.scalars(select(UserDevice).where(UserDevice.user_id == user.id)).all()
+        assert len(devices) == 1
+        assert devices[0].device_name == "Updated Name"
+        assert devices[0].os_version == "Android 15"
+
+
+def test_device_heartbeat_updates_card_telemetry() -> None:
+    with db_session() as db:
+        user = create_user(db, "heartbeat-user")
+        upsert_registered_device(
+            db,
+            user,
+            DeviceRegisterRequest(
+                deviceId="android-heartbeat-1",
+                userId=user.id,
+                platform="android",
+                deviceName="Heartbeat Android",
+                osVersion="Android 15",
+                appVersion="1.0.0",
+            ),
+        )
+
+        activity = heartbeat_device_activity(
+            db,
+            user,
+            DeviceHeartbeatRequest(
+                deviceId="android-heartbeat-1",
+                userId=user.id,
+                battery=74,
+                network="5G",
+                screenStatus="on",
+                lastSeenAt=datetime.utcnow(),
+            ),
+        )
+        snapshots = ensure_device_snapshots(db, user.id)
+
+        assert activity.deviceId == "android-heartbeat-1"
+        assert snapshots["mobile"][0].deviceName == "Heartbeat Android"
+        assert snapshots["mobile"][0].battery == 74
+        assert snapshots["mobile"][0].network == "5G"
+        assert snapshots["mobile"][0].screenOn is True
 
 
 def test_device_snapshots_are_scoped_to_selected_user() -> None:

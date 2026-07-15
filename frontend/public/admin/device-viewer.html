@@ -240,7 +240,7 @@
     const WS_BASE = API_BASE.replace(/^http/i, "ws").replace(/\/api\/v1\/?$/, "");
     const token = localStorage.getItem("auto-ai-access-token") || localStorage.getItem("auto-ai-token") || "";
     const userLabel = params.get("label") || requestedUserId;
-    const state = { devices: { mobile: [], laptop: [] }, tab: "mobile", socket: null, lastUpdatedAt: null, loadingToast: null, pendingAction: null, refreshTimer: null, canonicalUserId: requestedUserId };
+    const state = { devices: { mobile: [], laptop: [] }, tab: "mobile", socket: null, socketConnected: false, liveDeviceStreamConnected: false, lastUpdatedAt: null, loadingToast: null, pendingAction: null, refreshTimer: null, canonicalUserId: requestedUserId };
     const els = {
       userLabel: document.getElementById("userLabel"),
       socketDot: document.getElementById("socketDot"),
@@ -274,10 +274,21 @@
       if (timeout > 0) setTimeout(() => item.remove(), timeout);
       return item;
     }
+    function updateConnectionStatus() {
+      els.socketDot.classList.toggle("online", state.socketConnected);
+      if (!state.socketConnected) {
+        els.socketStatus.textContent = "Socket offline";
+        return;
+      }
+      els.socketStatus.textContent = state.liveDeviceStreamConnected
+        ? "Live device stream connected"
+        : "Socket connected - Connected to server. Waiting for this user's device data...";
+    }
     function setConnected(connected) {
-      els.socketDot.classList.toggle("online", connected);
-      els.socketStatus.textContent = connected ? "Device stream connected" : "Device stream offline";
-      if (connected) console.log("🔌 Socket connected");
+      state.socketConnected = connected;
+      if (!connected) state.liveDeviceStreamConnected = false;
+      updateConnectionStatus();
+      if (connected) console.log("Socket connected");
     }
     function setLastUpdated() {
       state.lastUpdatedAt = Date.now();
@@ -346,7 +357,7 @@
         els.content.innerHTML = '<div class="panel"><div><div class="spinner"></div><div>Loading devices...</div></div></div>';
       }
       try {
-        const response = await fetch(`${API_BASE}/admin/user-devices/${encodeURIComponent(requestedUserId)}`, { headers: headers() });
+        const response = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(requestedUserId)}/devices`, { headers: headers() });
         if (!response.ok) handleHttpError(response);
         const payload = await response.json();
         state.loadingToast?.remove();
@@ -485,7 +496,7 @@
       const url = `${WS_BASE}/api/v1/admin/device-stream?token=${encodeURIComponent(token)}&user_id=${encodeURIComponent(requestedUserId)}`;
       state.socket?.close();
       state.socket = new WebSocket(url);
-      state.socket.onopen = () => { els.socketStatus.textContent = "Connecting to device stream..."; };
+      state.socket.onopen = () => setConnected(true);
       state.socket.onclose = () => {
         setConnected(false);
         setTimeout(connectSocket, 2500);
@@ -506,6 +517,9 @@
         }
         if (payload.type !== "device-update" || !payload.data) return;
         const device = normalizeDevice(payload.data);
+        if (!device.deviceId) return;
+        state.liveDeviceStreamConnected = true;
+        updateConnectionStatus();
         console.log(`📡 Real-time update received for ${device.deviceId}`);
         const bucket = device.type === "laptop" ? "laptop" : "mobile";
         state.devices[bucket] = [device, ...state.devices[bucket].filter((item) => item.deviceId !== device.deviceId)];

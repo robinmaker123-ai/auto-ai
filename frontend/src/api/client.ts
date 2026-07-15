@@ -1148,7 +1148,7 @@ export const api = {
       operation: "admin.liveData"
     }),
   adminUserDevices: (token: string, userId: string) =>
-    apiFetch<AdminUserDevicesResponse>(`/admin/user-devices/${encodeURIComponent(userId)}`, {
+    apiFetch<AdminUserDevicesResponse>(`/admin/users/${encodeURIComponent(userId)}/devices`, {
       token,
       operation: "admin.userDevices"
     }),

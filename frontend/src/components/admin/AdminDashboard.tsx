@@ -405,7 +405,8 @@ export function AdminDashboard() {
   const [changedDeviceIds, setChangedDeviceIds] = useState<Set<string>>(new Set());
   const [deviceCooldowns, setDeviceCooldowns] = useState<Record<string, number>>({});
   const [liveData, setLiveData] = useState<DeviceActivity[]>([]);
-  const [deviceConnected, setDeviceConnected] = useState(false);
+  const [deviceSocketConnected, setDeviceSocketConnected] = useState(false);
+  const [liveDeviceStreamConnected, setLiveDeviceStreamConnected] = useState(false);
   const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
   const [remoteStartCooldownUntil, setRemoteStartCooldownUntil] = useState(0);
   const [, setDeviceClockTick] = useState(0);
@@ -501,12 +502,14 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (!token || activeSection !== "devices" || !selectedDeviceUserId) {
-      setDeviceConnected(false);
+      setDeviceSocketConnected(false);
+      setLiveDeviceStreamConnected(false);
       setDeviceDashboard(emptyDeviceDashboard);
       return;
     }
     let closed = false;
-    setDeviceConnected(false);
+    setDeviceSocketConnected(false);
+    setLiveDeviceStreamConnected(false);
     setDeviceDashboard(emptyDeviceDashboard);
     const loadTimer = window.setTimeout(() => {
       setDeviceLoading(true);
@@ -526,7 +529,7 @@ export function AdminDashboard() {
     }, 300);
     const socket = new WebSocket(createWebSocketUrl("/api/v1/admin/device-stream", { token, user_id: selectedDeviceUserId }));
     socket.onopen = () => {
-      if (!closed) setDeviceConnected(true);
+      if (!closed) setDeviceSocketConnected(true);
     };
     socket.onmessage = (event) => {
       try {
@@ -534,9 +537,11 @@ export function AdminDashboard() {
         const eventUserId = payload.userId || payload.data?.userId;
         if (eventUserId && eventUserId !== selectedDeviceUserId) return;
         if (!payload.data || (payload.type !== "device-update" && payload.type !== "live-update")) return;
+        if (!payload.data.deviceId) return;
         const snapshot = activityToDeviceSnapshot(payload.data);
         window.requestAnimationFrame(() => {
           if (closed) return;
+          setLiveDeviceStreamConnected(true);
           setDeviceDashboard((current) => {
             const next = {
               ...current,
@@ -571,16 +576,23 @@ export function AdminDashboard() {
       }
     };
     socket.onclose = () => {
-      if (!closed) setDeviceConnected(false);
+      if (!closed) {
+        setDeviceSocketConnected(false);
+        setLiveDeviceStreamConnected(false);
+      }
     };
     socket.onerror = () => {
-      if (!closed) setDeviceConnected(false);
+      if (!closed) {
+        setDeviceSocketConnected(false);
+        setLiveDeviceStreamConnected(false);
+      }
     };
     return () => {
       closed = true;
       window.clearTimeout(loadTimer);
       socket.close();
-      setDeviceConnected(false);
+      setDeviceSocketConnected(false);
+      setLiveDeviceStreamConnected(false);
     };
   }, [activeSection, selectedDeviceUserId, token]);
 
@@ -1837,7 +1849,11 @@ export function AdminDashboard() {
                   </button>
                   <SectionTitle title={selectedDeviceUser?.name ? `${selectedDeviceUser.name} Devices` : "User Device Dashboard"} subtitle="Real-time mobile and laptop telemetry with per-device controls" />
                   <p className="text-sm text-slate-400">
-                    <span className={deviceConnected ? "text-emerald-300" : "text-red-300"}>{deviceConnected ? "Device stream connected" : "Device stream offline"}</span>
+                    <span className={deviceSocketConnected ? "text-emerald-300" : "text-red-300"}>{deviceSocketConnected ? "Socket connected" : "Socket offline"}</span>
+                    <span> - </span>
+                    <span className={liveDeviceStreamConnected ? "text-emerald-300" : "text-slate-400"}>
+                      {liveDeviceStreamConnected ? "Live device stream connected" : deviceSocketConnected ? "Connected to server. Waiting for this user's device data..." : "Waiting for socket connection..."}
+                    </span>
                     <span> - Last updated {secondsAgo(lastLiveUpdateAt ?? liveData[0]?.timestamp)}</span>
                   </p>
                 </div>

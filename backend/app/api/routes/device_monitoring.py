@@ -8,8 +8,8 @@ from app.api.deps import get_current_user
 from app.core.security import decode_access_token
 from app.db.session import SessionLocal, get_db
 from app.models.user import User
-from app.schemas.device_monitoring import DeviceActivityCreate, DeviceActivityIngestResponse
-from app.services.device_monitoring import create_activity, device_activity_stream, ensure_device_snapshots
+from app.schemas.device_monitoring import DeviceActivityCreate, DeviceActivityIngestResponse, DeviceHeartbeatRequest, DeviceRegisterRequest, DeviceRegisterResponse
+from app.services.device_monitoring import create_activity, device_activity_stream, ensure_device_snapshots, heartbeat_device_activity, upsert_registered_device
 
 
 router = APIRouter(tags=["device-monitoring"])
@@ -30,6 +30,34 @@ def resolve_user(db: Session, identifier: str) -> User | None:
             )
         )
     )
+
+
+def require_self_user(current_user: User, user_id: str) -> None:
+    if user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot register or update another user's device.")
+
+
+@router.post("/devices/register", response_model=DeviceRegisterResponse)
+def register_device(
+    payload: DeviceRegisterRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeviceRegisterResponse:
+    require_self_user(current_user, payload.userId)
+    device = upsert_registered_device(db, current_user, payload)
+    return DeviceRegisterResponse(deviceId=device.device_id)
+
+
+@router.post("/devices/heartbeat", response_model=DeviceActivityIngestResponse)
+async def heartbeat_device(
+    payload: DeviceHeartbeatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeviceActivityIngestResponse:
+    require_self_user(current_user, payload.userId)
+    activity = heartbeat_device_activity(db, current_user, payload)
+    asyncio.create_task(device_activity_stream.publish(activity))
+    return DeviceActivityIngestResponse(id=activity.id)
 
 
 @router.post("/device/activity", response_model=DeviceActivityIngestResponse)

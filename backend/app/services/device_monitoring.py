@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 from app.models.call import UserDevice
 from app.models.device_monitoring import UserDeviceActivity
 from app.models.user import User
-from app.schemas.device_monitoring import AdminDeviceSnapshotRead, AdminDeviceUserRead, DeviceActivityCreate, DeviceActivityRead, DeviceLocation
-from app.services.device_token_security import decrypt_token
+from app.schemas.device_monitoring import AdminDeviceSnapshotRead, AdminDeviceUserRead, DeviceActivityCreate, DeviceActivityRead, DeviceHeartbeatRequest, DeviceLocation, DeviceRegisterRequest
+from app.services.device_token_security import decrypt_token, encrypt_token, token_hash
 from app.services.firebase_notifications import firebase_notification_service
 
 logger = logging.getLogger("auto_ai.device_monitoring")
@@ -68,6 +68,15 @@ def ensure_device_snapshots(db: Session, user_id: str) -> dict[str, list[AdminDe
     return latest_device_snapshots(db, user_id)
 
 
+def normalize_platform(value: str | None) -> str:
+    platform = (value or "android").strip().lower()
+    if platform in {"desktop", "windows", "macos", "linux", "electron"}:
+        return "desktop"
+    if platform in {"android", "ios", "web"}:
+        return platform
+    return "android"
+
+
 def activity_to_read(activity: UserDeviceActivity) -> DeviceActivityRead:
     location = None
     if activity.latitude is not None or activity.longitude is not None:
@@ -93,6 +102,69 @@ def activity_to_read(activity: UserDeviceActivity) -> DeviceActivityRead:
         osVersion=activity.os_version,
         isActive=activity.is_active,
     )
+
+
+def upsert_registered_device(db: Session, user: User, payload: DeviceRegisterRequest) -> UserDevice:
+    now = payload.lastSeenAt or datetime.utcnow()
+    device_id = payload.deviceId[:128]
+    record = db.scalar(select(UserDevice).where(UserDevice.user_id == user.id, UserDevice.device_id == device_id))
+    if not record:
+        record = UserDevice(user_id=user.id, device_id=device_id)
+        db.add(record)
+    record.platform = normalize_platform(payload.platform)
+    record.device_name = payload.deviceName
+    record.os_version = payload.osVersion
+    record.app_version = payload.appVersion
+    record.fcm_token = None
+    record.fcm_token_ciphertext = encrypt_token(payload.fcmToken)
+    record.fcm_token_hash = token_hash(payload.fcmToken)
+    record.is_active = True
+    record.last_registered_at = now
+    record.last_seen_at = now
+    record.updated_at = now
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def screen_status_to_bool(value: str | bool | None) -> bool | None:
+    if isinstance(value, bool) or value is None:
+        return value
+    normalized = value.strip().lower()
+    if normalized in {"on", "true", "active", "awake", "1"}:
+        return True
+    if normalized in {"off", "false", "locked", "sleep", "0"}:
+        return False
+    return None
+
+
+def heartbeat_device_activity(db: Session, user: User, payload: DeviceHeartbeatRequest) -> DeviceActivityRead:
+    now = payload.lastSeenAt or datetime.utcnow()
+    device_id = payload.deviceId[:128]
+    record = db.scalar(select(UserDevice).where(UserDevice.user_id == user.id, UserDevice.device_id == device_id))
+    if not record:
+        record = UserDevice(user_id=user.id, device_id=device_id, platform="android")
+        db.add(record)
+    record.is_active = True
+    record.last_seen_at = now
+    record.updated_at = now
+    activity = UserDeviceActivity(
+        user_id=user.id,
+        device_id=device_id,
+        device_type=registered_device_type(record),
+        timestamp=now,
+        battery=payload.battery,
+        screen_on=screen_status_to_bool(payload.screenStatus),
+        network=payload.network,
+        device_model=record.device_name,
+        os_version=record.os_version,
+        is_active=True,
+    )
+    db.add(activity)
+    user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(activity)
+    return activity_to_read(activity)
 
 
 def create_activity(db: Session, user: User, payload: DeviceActivityCreate) -> DeviceActivityRead:
@@ -172,7 +244,7 @@ def registered_device_snapshot(device: UserDevice, online_cutoff: datetime) -> A
         deviceId=device.device_id,
         deviceName=registered_device_name(device),
         type=device_type,
-        osVersion=None,
+        osVersion=device.os_version,
         battery=None,
         storageTotal=None,
         storageUsed=None,
