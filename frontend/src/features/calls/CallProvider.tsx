@@ -664,12 +664,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       setConfig(nextConfig);
       callSettingsRef.current = callSettings;
+      deviceIdRef.current = registration.device_id;
+      await callApi.registerDevice(token, registration).catch(() => undefined);
       if (!nextConfig.enabled || !nextConfig.realtime_configured) {
         signaling.close();
         return;
       }
-      deviceIdRef.current = registration.device_id;
-      await callApi.registerDevice(token, registration).catch(() => undefined);
       await callNative.requestNotificationPermission().catch(() => undefined);
       await signaling.connect(token);
       const nativeCall: { callId?: string | null; action?: NativeIncomingAction | null } = await callNative.consumeIncomingCall().catch(() => ({}));

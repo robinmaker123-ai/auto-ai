@@ -150,6 +150,43 @@ def device_snapshot(activity: UserDeviceActivity, online_cutoff: datetime) -> Ad
     )
 
 
+def registered_device_type(device: UserDevice) -> str:
+    return "mobile" if device.platform in {"android", "ios"} else "laptop"
+
+
+def registered_device_name(device: UserDevice) -> str:
+    if device.device_name:
+        return device.device_name
+    if device.platform == "android":
+        return "Unknown Android Device"
+    if device.platform == "ios":
+        return "Unknown iOS Device"
+    if device.platform == "web":
+        return "Web Browser"
+    return "Registered Device"
+
+
+def registered_device_snapshot(device: UserDevice, online_cutoff: datetime) -> AdminDeviceSnapshotRead:
+    device_type = registered_device_type(device)
+    return AdminDeviceSnapshotRead(
+        deviceId=device.device_id,
+        deviceName=registered_device_name(device),
+        type=device_type,
+        osVersion=None,
+        battery=None,
+        storageTotal=None,
+        storageUsed=None,
+        ramTotal=None,
+        ramUsed=None,
+        network=None,
+        currentApp=None,
+        screenOn=None,
+        lastActive=device.last_seen_at,
+        location=None,
+        status="online" if device.last_seen_at >= online_cutoff and device.is_active else "offline",
+    )
+
+
 def latest_device_snapshots(db: Session, user_id: str, limit: int = 500) -> dict[str, list[AdminDeviceSnapshotRead]]:
     rows = db.scalars(
         select(UserDeviceActivity)
@@ -166,6 +203,18 @@ def latest_device_snapshots(db: Session, user_id: str, limit: int = 500) -> dict
             continue
         seen.add(device_id)
         snapshot = device_snapshot(row, online_cutoff)
+        result[snapshot.type].append(snapshot)
+    registered_devices = db.scalars(
+        select(UserDevice)
+        .where(UserDevice.user_id == user_id, UserDevice.is_active == True)  # noqa: E712
+        .order_by(desc(UserDevice.last_seen_at))
+        .limit(max(1, min(limit, 1000)))
+    ).all()
+    for device in registered_devices:
+        if device.device_id in seen:
+            continue
+        seen.add(device.device_id)
+        snapshot = registered_device_snapshot(device, online_cutoff)
         result[snapshot.type].append(snapshot)
     return result
 
@@ -203,15 +252,26 @@ def list_device_users(db: Session) -> list[AdminDeviceUserRead]:
             .order_by(desc(UserDeviceActivity.timestamp))
             .limit(1)
         )
+        registered_device = None
+        if not activity:
+            registered_device = db.scalar(
+                select(UserDevice)
+                .where(UserDevice.user_id == user.id, UserDevice.is_active == True)  # noqa: E712
+                .order_by(desc(UserDevice.last_seen_at))
+                .limit(1)
+            )
         result.append(
             AdminDeviceUserRead(
                 userId=user.id,
                 name=user.name,
                 email=user.email,
-                deviceModel=activity.device_model if activity else None,
+                deviceModel=activity.device_model if activity else (registered_device_name(registered_device) if registered_device else None),
                 osVersion=activity.os_version if activity else None,
-                lastActive=activity.timestamp if activity else None,
-                online=bool(activity and activity.timestamp >= online_cutoff and activity.is_active),
+                lastActive=activity.timestamp if activity else (registered_device.last_seen_at if registered_device else None),
+                online=bool(
+                    (activity and activity.timestamp >= online_cutoff and activity.is_active)
+                    or (registered_device and registered_device.last_seen_at >= online_cutoff and registered_device.is_active)
+                ),
             )
         )
     return result

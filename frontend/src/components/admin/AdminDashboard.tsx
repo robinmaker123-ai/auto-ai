@@ -324,7 +324,7 @@ function DeviceCard({
       <div className="grid gap-3 text-sm text-slate-300">
         <div>
           <div className="flex justify-between gap-2"><span>Battery</span><span>{device.battery != null ? `${device.battery}%` : "Unknown"}</span></div>
-          <ProgressBar value={battery} color={batteryColor(device.battery)} />
+          <ProgressBar value={device.battery == null ? 0 : battery} color={batteryColor(device.battery)} />
         </div>
         <div>
           <div className="flex justify-between gap-2"><span>Storage</span><span>{device.storageUsed || "Unknown"} / {device.storageTotal || "Unknown"}</span></div>
@@ -339,7 +339,7 @@ function DeviceCard({
       <dl className="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
         <div><dt>Network</dt><dd className="text-slate-100">{device.network || "Unknown"}</dd></div>
         <div><dt>Current app</dt><dd className="text-slate-100">{device.currentApp || "Unknown"}</dd></div>
-        <div><dt>Screen</dt><dd className="text-slate-100">{device.screenOn ? "ON" : "OFF"}</dd></div>
+        <div><dt>Screen</dt><dd className="text-slate-100">{device.screenOn == null ? "Unknown" : device.screenOn ? "ON" : "OFF"}</dd></div>
         <div><dt>Status</dt><dd className={offline ? "text-red-300" : "text-emerald-300"}>{offline ? "Offline" : "Online"}</dd></div>
         <div><dt>Last active</dt><dd className="text-slate-100">{activeNow ? "Active Now" : formatDateTime(device.lastActive)}</dd></div>
         <div>

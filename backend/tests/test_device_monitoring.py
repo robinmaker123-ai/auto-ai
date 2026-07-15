@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.models.call import UserDevice
 from app.models.device_monitoring import UserDeviceActivity
 from app.models.user import User
 from app.schemas.device_monitoring import DeviceActivityCreate, DeviceLocation
@@ -93,6 +94,30 @@ def test_empty_user_devices_do_not_generate_demo_devices() -> None:
 
         assert snapshots == {"mobile": [], "laptop": []}
         assert db.scalars(select(UserDeviceActivity).where(UserDeviceActivity.user_id == user.id)).all() == []
+
+
+def test_registered_android_device_appears_without_telemetry() -> None:
+    with db_session() as db:
+        user = create_user(db, "registered-device-user")
+        db.add(
+            UserDevice(
+                user_id=user.id,
+                device_id="android-real-1",
+                platform="android",
+                device_name="Shyam Android",
+                is_active=True,
+                last_seen_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+
+        snapshots = ensure_device_snapshots(db, user.id)
+
+        assert len(snapshots["mobile"]) == 1
+        assert snapshots["mobile"][0].deviceId == "android-real-1"
+        assert snapshots["mobile"][0].deviceName == "Shyam Android"
+        assert snapshots["mobile"][0].status == "online"
+        assert snapshots["laptop"] == []
 
 
 def test_device_snapshots_are_scoped_to_selected_user() -> None:
