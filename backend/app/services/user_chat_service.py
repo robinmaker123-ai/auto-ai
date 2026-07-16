@@ -203,6 +203,7 @@ class UserChatService:
             archived=participant.archived,
             pinned=participant.pinned,
             muted=participant.muted,
+            restricted_reason=None if self.can_message(db, viewer_id, peer.id) else "Connection ended",
         )
 
     async def list_threads(self, db: Session, user_id: str, page: int, limit: int, archived: bool | None = None) -> tuple[list[ChatThreadRead], bool]:
@@ -213,6 +214,7 @@ class UserChatService:
         )
         if archived is not None:
             statement = statement.where(ChatParticipant.archived == archived)
+        statement = statement.where(ChatThread.last_message_id.is_not(None))
         rows = list(
             db.scalars(
                 statement.order_by(ChatParticipant.pinned.desc(), ChatThread.updated_at.desc())
@@ -441,39 +443,9 @@ class UserChatService:
         return participant
 
     async def search_users(self, db: Session, current_user: User, query: str, page: int, limit: int) -> tuple[list[ChatPublicUser], bool]:
-        normalized = " ".join(query.strip().split())
-        if len(normalized) < 2:
-            return [], False
-        blocked = exists(
-            select(BlockedUser.id).where(
-                or_(
-                    and_(BlockedUser.blocker_id == current_user.id, BlockedUser.blocked_user_id == User.id),
-                    and_(BlockedUser.blocker_id == User.id, BlockedUser.blocked_user_id == current_user.id),
-                )
-            )
-        )
-        escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        pattern = f"%{escaped}%"
-        rows = list(
-            db.execute(
-                select(User, UserCallSettings)
-                .join(UserCallSettings, UserCallSettings.user_id == User.id)
-                .where(
-                    User.id != current_user.id,
-                    User.is_active == True,  # noqa: E712
-                    User.username.is_not(None),
-                    User.username != "",
-                    User.name != "",
-                    UserCallSettings.is_discoverable == True,  # noqa: E712
-                    or_(User.name.ilike(pattern, escape="\\"), User.username.ilike(pattern, escape="\\")),
-                    ~blocked,
-                )
-                .order_by(User.name.asc(), User.id.asc())
-                .offset((page - 1) * limit)
-                .limit(limit + 1)
-            ).all()
-        )
-        return [await self.public_user(db, user, current_user.id) for user, _ in rows[:limit]], len(rows) > limit
+        profiles, has_more = social_service.accepted_connections(db, current_user, query, page, limit)
+        users = [db.get(User, profile.id) for profile in profiles]
+        return [await self.public_user(db, user, current_user.id) for user in users if user], has_more
 
     async def save_attachment(self, file: UploadFile, user_id: str) -> dict[str, Any]:
         content_type = file.content_type or "application/octet-stream"

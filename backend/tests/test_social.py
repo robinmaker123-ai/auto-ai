@@ -60,9 +60,10 @@ async def test_private_follow_request_unlocks_message_audio_and_video(db: Sessio
     assert call_allowed(db, user_a.id, user_b.id, "audio")[0] is False
 
     requested = social_service.follow_or_request(db, user_a, user_b.id)
-    assert requested.follow_status == "pending"
+    assert requested.follow_status == "pending_sent"
     incoming, _ = social_service.requests(db, user_b, "incoming", 1, 10)
     assert incoming[0].user.id == user_a.id
+    assert incoming[0].user.follow_status == "pending_received"
 
     social_service.accept_request(db, user_b, incoming[0].id)
     assert db.query(SocialFollow).filter_by(follower_id=user_a.id, following_id=user_b.id, status="accepted").count() == 1
@@ -82,6 +83,105 @@ async def test_private_follow_request_unlocks_message_audio_and_video(db: Sessio
     assert audio.call_type == "audio"
     assert video.call_type == "video"
     assert db.query(Call).count() == 2
+
+
+def test_user_cannot_follow_self(db: Session) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    with pytest.raises(HTTPException):
+        social_service.follow_or_request(db, user_a, user_a.id)
+
+
+def test_duplicate_and_reverse_requests_do_not_create_duplicate_relationships(db: Session) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    user_b = create_user(db, "public-user-b", "User B")
+
+    first = social_service.follow_or_request(db, user_a, user_b.id)
+    second = social_service.follow_or_request(db, user_a, user_b.id)
+    reverse = social_service.follow_or_request(db, user_b, user_a.id)
+
+    assert first.request_id == second.request_id == reverse.request_id
+    assert second.follow_status == "pending_sent"
+    assert reverse.follow_status == "pending_received"
+    assert db.query(SocialFollow).count() == 1
+
+
+def test_only_receiver_can_accept_or_reject_and_sender_can_cancel(db: Session) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    user_b = create_user(db, "public-user-b", "User B")
+    user_c = create_user(db, "public-user-c", "User C")
+
+    request_profile = social_service.follow_or_request(db, user_a, user_b.id)
+    assert request_profile.request_id
+
+    with pytest.raises(HTTPException):
+        social_service.accept_request(db, user_c, request_profile.request_id)
+    with pytest.raises(HTTPException):
+        social_service.reject_request(db, user_c, request_profile.request_id)
+
+    cancelled = social_service.cancel_request(db, user_a, user_b.id)
+    assert cancelled.follow_status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_chat_search_and_list_follow_connection_rules(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    user_b = create_user(db, "public-user-b", "User B")
+    user_c = create_user(db, "public-user-c", "User C")
+    monkeypatch.setattr(chat_service_module, "send_chat_message_notifications", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(user_chat_service, "publish", AsyncMock(return_value=1))
+
+    social_service.follow_or_request(db, user_a, user_b.id)
+    pending_results, _ = await user_chat_service.search_users(db, user_a, "user", 1, 10)
+    assert user_b.id not in {item.id for item in pending_results}
+
+    request = db.query(SocialFollow).filter_by(follower_id=user_a.id, following_id=user_b.id).one()
+    social_service.accept_request(db, user_b, request.id)
+    accepted_results, _ = await user_chat_service.search_users(db, user_a, "user", 1, 10)
+    assert user_b.id in {item.id for item in accepted_results}
+    assert user_c.id not in {item.id for item in accepted_results}
+
+    thread = user_chat_service.create_or_get_thread(db, user_a, user_b.id)
+    empty_threads, _ = await user_chat_service.list_threads(db, user_a.id, 1, 10)
+    assert empty_threads == []
+
+    await user_chat_service.send_message(db, thread.id, user_a, {"text_content": "hello", "client_message_id": "first-message"})
+    visible_threads, _ = await user_chat_service.list_threads(db, user_a.id, 1, 10)
+    assert [item.id for item in visible_threads] == [thread.id]
+
+    with pytest.raises(HTTPException):
+        user_chat_service.create_or_get_thread(db, user_a, user_c.id)
+
+
+@pytest.mark.asyncio
+async def test_unaccepted_user_cannot_call(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    user_b = create_user(db, "public-user-b", "User B")
+    monkeypatch.setattr(call_service_module.presence_service, "allow_rate", AsyncMock(return_value=True))
+
+    with pytest.raises(HTTPException):
+        await call_service.initiate(db, user_a, user_b.id, "audio", None)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_preserves_message_history_and_disables_new_messages(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    user_a = create_user(db, "public-user-a", "User A")
+    user_b = create_user(db, "public-user-b", "User B")
+    monkeypatch.setattr(chat_service_module, "send_chat_message_notifications", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(user_chat_service, "publish", AsyncMock(return_value=1))
+
+    social_service.follow_or_request(db, user_a, user_b.id)
+    request = db.query(SocialFollow).filter_by(follower_id=user_a.id, following_id=user_b.id).one()
+    social_service.accept_request(db, user_b, request.id)
+    thread = user_chat_service.create_or_get_thread(db, user_a, user_b.id)
+    await user_chat_service.send_message(db, thread.id, user_a, {"text_content": "saved", "client_message_id": "kept"})
+
+    social_service.unfollow(db, user_a, user_b.id)
+    messages, _ = user_chat_service.list_messages(db, thread.id, user_a.id, None, 20)
+    assert messages[0].text_content == "saved"
+    serialized = await user_chat_service.serialize_thread(db, thread, user_a.id)
+    assert serialized.restricted_reason == "Connection ended"
+    with pytest.raises(HTTPException):
+        await user_chat_service.send_message(db, thread.id, user_a, {"text_content": "blocked"})
 
 
 @pytest.mark.asyncio

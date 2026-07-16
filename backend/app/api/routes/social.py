@@ -113,15 +113,7 @@ def remove_follower(user_id: str, db: Session = Depends(get_db), current_user: U
 
 @router.post("/users/{user_id}/block", status_code=status.HTTP_204_NO_CONTENT)
 def block_user(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Response:
-    target_id = user_id[:64]
-    if target_id == current_user.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot block yourself.")
-    if not db.get(User, target_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-    existing = db.scalar(select(BlockedUser).where(BlockedUser.blocker_id == current_user.id, BlockedUser.blocked_user_id == target_id))
-    if not existing:
-        db.add(BlockedUser(blocker_id=current_user.id, blocked_user_id=target_id))
-        db.commit()
+    social_service.block_user(db, current_user, user_id[:64])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -154,6 +146,29 @@ def sent_requests(
 ) -> FollowRequestPage:
     items, has_more = social_service.requests(db, current_user, "sent", page, limit)
     return FollowRequestPage(items=items, page=page, limit=limit, has_more=has_more)
+
+
+@router.get("/requests/history", response_model=FollowRequestPage)
+def request_history(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=30, ge=1, le=80),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FollowRequestPage:
+    items, has_more = social_service.requests(db, current_user, "history", page, limit)
+    return FollowRequestPage(items=items, page=page, limit=limit, has_more=has_more)
+
+
+@router.get("/connections", response_model=SocialUserPage)
+def accepted_connections(
+    query: str = Query(default="", max_length=80),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=30, ge=1, le=80),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SocialUserPage:
+    items, has_more = social_service.accepted_connections(db, current_user, query, page, limit)
+    return SocialUserPage(items=items, page=page, limit=limit, has_more=has_more, unread_notifications=social_service.unread_count(db, current_user.id))
 
 
 @router.get("/notifications", response_model=SocialNotificationPage)

@@ -27,7 +27,7 @@ function asCallUser(profile: SocialProfile): PublicCallUser {
     username: profile.username,
     avatar_url: profile.avatar_url,
     presence: "offline",
-    availability: profile.follow_status === "following" ? "Connected" : "Follow approval required",
+    availability: profile.follow_status === "following" || profile.follow_status === "accepted" ? "Connected" : "Follow approval required",
     can_audio_call: profile.can_audio_call,
     can_video_call: profile.can_video_call,
   };
@@ -39,8 +39,21 @@ function Avatar({ profile }: { profile: Pick<SocialProfile, "display_name" | "av
 }
 
 function FollowBadge({ profile }: { profile: SocialProfile }) {
-  const label = profile.follow_status === "following" ? "Following" : profile.follow_status === "pending" ? "Requested" : profile.is_private ? "Private" : "Public";
+  const label = profile.follow_status === "following" || profile.follow_status === "accepted"
+    ? "Connected"
+    : profile.follow_status === "pending_received"
+      ? "Respond"
+      : profile.follow_status === "pending" || profile.follow_status === "pending_sent"
+        ? "Requested"
+        : profile.is_private ? "Private" : "Public";
   return <small>{label}</small>;
+}
+
+function followButtonLabel(profile: SocialProfile) {
+  if (profile.follow_status === "following" || profile.follow_status === "accepted") return "Connected";
+  if (profile.follow_status === "pending_received") return "Accept";
+  if (profile.follow_status === "pending" || profile.follow_status === "pending_sent") return "Requested";
+  return "Follow";
 }
 
 export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps) {
@@ -54,6 +67,7 @@ export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps
   const [selected, setSelected] = useState<SocialProfile | null>(null);
   const [incoming, setIncoming] = useState<SocialRequest[]>([]);
   const [sent, setSent] = useState<SocialRequest[]>([]);
+  const [historyRequests, setHistoryRequests] = useState<SocialRequest[]>([]);
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -110,8 +124,10 @@ export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps
     setLoading(true);
     try {
       const [incomingPage, sentPage] = await Promise.all([socialApi.incomingRequests(token), socialApi.sentRequests(token)]);
+      const historyPage = await socialApi.requestHistory(token);
       setIncoming(incomingPage.items);
       setSent(sentPage.items);
+      setHistoryRequests(historyPage.items);
     } catch (loadError) {
       showToast(errorText(loadError, "Unable to load follow requests."));
     } finally {
@@ -198,13 +214,19 @@ export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps
   async function applyFollowAction(profile: SocialProfile) {
     if (!token) return;
     try {
-      const next = profile.follow_status === "following"
+      if (profile.follow_status === "pending_received" && profile.request_id) {
+        const accepted = await socialApi.acceptRequest(token, profile.request_id);
+        updateProfileInLists(accepted);
+        void loadRequests();
+        return;
+      }
+      const next = profile.follow_status === "following" || profile.follow_status === "accepted"
         ? await socialApi.unfollow(token, profile.id)
-        : profile.follow_status === "pending"
+        : profile.follow_status === "pending" || profile.follow_status === "pending_sent"
           ? await socialApi.cancelRequest(token, profile.id)
           : await socialApi.follow(token, profile.id);
       updateProfileInLists(next);
-      if (next.follow_status === "pending") void loadRequests();
+      if (next.follow_status === "pending" || next.follow_status === "pending_sent" || next.follow_status === "pending_received") void loadRequests();
     } catch (actionError) {
       showToast(errorText(actionError, "Unable to update follow state."));
     }
@@ -348,10 +370,12 @@ export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps
                 <strong>{selected.display_name}</strong>
                 <small>@{selected.username} - {selected.is_private ? "Private" : "Public"}</small>
                 <p>{selected.profile_restricted ? "Follow approval is required to view this profile." : selected.bio || "No bio yet."}</p>
+                {!selected.can_message && selected.follow_status !== "blocked" && selected.follow_status !== "self" && <p className="social-help-text">Follow request accept hone ke baad message aur call kar sakte hain.</p>}
                 <div className="social-profile-actions">
                   <button type="button" onClick={() => void applyFollowAction(selected)} disabled={selected.follow_status === "self" || selected.follow_status === "blocked"}>
-                    {selected.follow_status === "following" ? "Following" : selected.follow_status === "pending" ? "Requested" : selected.is_private ? "Request" : "Follow"}
+                    {followButtonLabel(selected)}
                   </button>
+                  {selected.follow_status === "pending_received" && selected.request_id && <button type="button" onClick={() => void reject({ id: selected.request_id || "", status: "pending", requested_at: new Date().toISOString(), user: selected })}><X size={15} /> Reject</button>}
                   <button type="button" onClick={() => void openMessage(selected)} disabled={!selected.can_message}><MessageCircle size={15} /> Message</button>
                   <button type="button" onClick={() => placeCall(selected, "audio")} disabled={!selected.can_audio_call}><Phone size={15} /> Voice</button>
                   <button type="button" onClick={() => placeCall(selected, "video")} disabled={!selected.can_video_call}><Video size={15} /> Video</button>
@@ -385,6 +409,18 @@ export function CallsTab({ refreshRequestId, onRefreshingChange }: CallsTabProps
             </div>
           ))}
           {!sent.length && !loading && <div className="calls-empty">No sent requests</div>}
+          <p className="calls-section-label calls-section-label-spaced">Accepted / History</p>
+          {historyRequests.map((request) => (
+            <div className="social-request-row" key={request.id}>
+              <Avatar profile={request.user} />
+              <span>
+                <strong>{request.user.display_name}</strong>
+                <small>{request.actor_label || request.status} {request.responded_at ? `- ${new Date(request.responded_at).toLocaleString()}` : ""}</small>
+              </span>
+              {request.status === "accepted" && <button type="button" onClick={() => void openMessage(request.user)} disabled={!request.user.can_message}><MessageCircle size={15} /> Message</button>}
+            </div>
+          ))}
+          {!historyRequests.length && !loading && <div className="calls-empty">No request history</div>}
         </div>
       )}
 

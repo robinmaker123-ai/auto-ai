@@ -506,7 +506,7 @@ export function UserMessagesPage() {
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!token || !displayedThread || sending || (!composer.trim() && !attachment)) return;
+    if (!token || !displayedThread || displayedThread.restricted_reason || sending || (!composer.trim() && !attachment)) return;
     setSending(true);
     setShowRetry(false);
     setError("");
@@ -604,7 +604,7 @@ export function UserMessagesPage() {
   }
 
   async function startCall(type: "audio" | "video") {
-    if (!displayedThread?.peer) {
+    if (!displayedThread?.peer || displayedThread.restricted_reason) {
       setError("Calling service is temporarily unavailable.");
       return;
     }
@@ -679,8 +679,8 @@ export function UserMessagesPage() {
               <button type="button" className="back" onClick={returnToList}><ArrowLeft size={18} /></button>
               <Avatar user={displayedThread.peer} />
               <span><strong>{displayedThread.peer.display_name}</strong><small>{typing ? "typing..." : `@${displayedThread.peer.username} · ${displayedThread.peer.availability}`}</small></span>
-              <button type="button" onClick={() => void startCall("audio")} disabled={!displayedThread.peer.can_audio_call} aria-label="Audio call"><Phone size={18} /></button>
-              <button type="button" onClick={() => void startCall("video")} disabled={!displayedThread.peer.can_video_call} aria-label="Video call"><Video size={19} /></button>
+              <button type="button" onClick={() => void startCall("audio")} disabled={!displayedThread.peer.can_audio_call || Boolean(displayedThread.restricted_reason)} aria-label="Audio call"><Phone size={18} /></button>
+              <button type="button" onClick={() => void startCall("video")} disabled={!displayedThread.peer.can_video_call || Boolean(displayedThread.restricted_reason)} aria-label="Video call"><Video size={19} /></button>
               <button type="button" onClick={() => screenShare.requestShare(displayedThread.peer)} aria-label="Share screen"><ScreenShare size={18} /></button>
               <button type="button" onClick={() => void togglePin()} disabled={pinning} aria-label="Pin"><MoreVertical size={18} /></button>
             </header>
@@ -724,12 +724,13 @@ export function UserMessagesPage() {
               </button>
             )}
             {error && <div className="um-error"><span>{error}</span>{showRetry && <button type="button" className="um-retry" onClick={() => void retryPendingTextMessages()}>Retry</button>}<button type="button" onClick={() => { setError(""); setShowRetry(false); }}><X size={14} /></button></div>}
+            {displayedThread.restricted_reason && <div className="um-error"><span>{displayedThread.restricted_reason}</span></div>}
             {attachment && <div className="um-attachment-preview">{attachment.type.startsWith("image/") ? <Image size={16} /> : <FileText size={16} />}<span>{attachment.name}</span><button type="button" onClick={() => setAttachment(null)}><X size={14} /></button></div>}
             <form className="um-composer" onSubmit={sendMessage}>
               <label className="um-attach"><Paperclip size={18} /><input type="file" accept="image/*,.pdf,.txt,.doc,.docx,.zip" onChange={pickAttachment} /></label>
               <button type="button" className="um-voice" onClick={() => void requestMicrophone()} aria-label="Microphone"><Mic size={18} /></button>
-              <textarea value={composer} onFocus={() => sendTyping(true)} onBlur={() => sendTyping(false)} onChange={(event) => { setComposer(event.target.value); sendTyping(true); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(event); } }} placeholder="Message" rows={1} />
-              <button type="submit" disabled={sending || (!composer.trim() && !attachment)} aria-label="Send"><Send size={18} /></button>
+              <textarea value={composer} onFocus={() => sendTyping(true)} onBlur={() => sendTyping(false)} onChange={(event) => { setComposer(event.target.value); sendTyping(true); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(event); } }} placeholder={displayedThread.restricted_reason || "Message"} rows={1} disabled={Boolean(displayedThread.restricted_reason)} />
+              <button type="submit" disabled={Boolean(displayedThread.restricted_reason) || sending || (!composer.trim() && !attachment)} aria-label="Send"><Send size={18} /></button>
             </form>
           </>
         ) : chatIsOpen ? (

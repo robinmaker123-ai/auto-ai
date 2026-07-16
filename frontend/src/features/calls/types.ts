@@ -95,7 +95,7 @@ export type BlockedCallUser = {
   blocked_at: string;
 };
 
-export type FollowStatus = "self" | "none" | "pending" | "following" | "blocked";
+export type FollowStatus = "self" | "none" | "pending" | "pending_sent" | "pending_received" | "following" | "accepted" | "rejected" | "cancelled" | "disconnected" | "blocked";
 export type SocialProfile = {
   id: string;
   display_name: string;
@@ -104,13 +104,16 @@ export type SocialProfile = {
   bio?: string | null;
   is_private: boolean;
   follow_status: FollowStatus;
+  request_id?: string | null;
+  requested_by_me?: boolean;
+  requested_by_them?: boolean;
   can_message: boolean;
   can_audio_call: boolean;
   can_video_call: boolean;
   profile_restricted: boolean;
 };
 export type SocialUserPage = { items: SocialProfile[]; page: number; limit: number; has_more: boolean; unread_notifications: number };
-export type SocialRequest = { id: string; requested_at: string; user: SocialProfile };
+export type SocialRequest = { id: string; status: string; requested_at: string; responded_at?: string | null; actor_label?: string | null; user: SocialProfile };
 export type SocialRequestPage = { items: SocialRequest[]; page: number; limit: number; has_more: boolean };
 export type SocialNotification = {
   id: string;

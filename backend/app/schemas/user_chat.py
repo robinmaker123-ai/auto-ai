@@ -56,6 +56,7 @@ class ChatThreadRead(BaseModel):
     archived: bool = False
     pinned: bool = False
     muted: bool = False
+    restricted_reason: str | None = None
 
 
 class ChatThreadPage(BaseModel):

@@ -14,6 +14,7 @@ from app.api.routes.calls import call_health, discoverable_users_query, register
 from app.core.config import settings
 from app.db.base import Base
 from app.models.call import BlockedUser, Call, UserCallSettings, UserDevice
+from app.models.social import SocialFollow
 from app.models.user import User
 from app.schemas.call import CallActionRequest, DeviceRegisterRequest, PublicCallUser, SignalEvent
 from app.services.call_permission_service import call_allowed, get_or_create_call_settings, users_blocked
@@ -84,6 +85,9 @@ def test_call_permissions_respect_type_contact_and_block(db: Session) -> None:
     db.commit()
     assert call_allowed(db, caller.id, callee.id, "audio") == (False, False)
     db.add(Call(caller_id=caller.id, callee_id=callee.id, call_type="audio", status="ended"))
+    db.commit()
+    assert call_allowed(db, caller.id, callee.id, "audio") == (False, True)
+    db.add(SocialFollow(follower_id=caller.id, following_id=callee.id, pair_key=":".join(sorted([caller.id, callee.id])), status="accepted"))
     db.commit()
     assert call_allowed(db, caller.id, callee.id, "audio") == (True, True)
     assert call_allowed(db, caller.id, callee.id, "video") == (False, False)

@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 import re
+import uuid
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -50,6 +51,7 @@ def ensure_runtime_schema() -> None:
     backfill_subscriptions = "user_subscriptions" in table_names
     backfill_apk_versions = "apk_versions" in table_names
     backfill_chat_storage = {"chats", "messages", "chat_sessions", "chat_messages"}.issubset(table_names)
+    backfill_social_relationships = "social_follows" in table_names
     migrate_legacy_apk_releases = "apk_versions" in table_names and "apk_releases" in table_names
 
     def column_definition(kind: str) -> str:
@@ -252,6 +254,19 @@ def ensure_runtime_schema() -> None:
         if "model" not in message_columns:
             add_column("messages", "model", "VARCHAR(120)")
 
+    if "social_follows" in table_names:
+        social_columns = {column["name"] for column in inspector.get_columns("social_follows")}
+        social_columns_to_add = {
+            "pair_key": "VARCHAR(73)",
+            "responder_user_id": "VARCHAR(36)",
+            "cancelled_at": "datetime",
+            "disconnected_at": "datetime",
+            "rejection_reason_category": "VARCHAR(32)",
+        }
+        for column_name, definition in social_columns_to_add.items():
+            if column_name not in social_columns:
+                add_column("social_follows", column_name, definition)
+
     if "chat_generations" in table_names:
         generation_columns = {column["name"] for column in inspector.get_columns("chat_generations")}
         if "error" not in generation_columns:
@@ -293,6 +308,7 @@ def ensure_runtime_schema() -> None:
         and not backfill_apk_versions
         and not migrate_legacy_apk_releases
         and not backfill_chat_storage
+        and not backfill_social_relationships
     ):
         return
 
@@ -462,6 +478,74 @@ def ensure_runtime_schema() -> None:
             from app.services.chat_storage import backfill_chat_storage_tables
 
             backfill_chat_storage_tables(connection, quote)
+        if "social_follows" in table_names:
+            social_follows = quote("social_follows")
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_social_follows_pair_key ON {social_follows} ({quote('pair_key')})"))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_social_follows_status_created ON {social_follows} ({quote('status')}, {quote('requested_at')})"))
+            rows = connection.execute(
+                text(
+                    f"SELECT {quote('id')}, {quote('follower_id')}, {quote('following_id')} "
+                    f"FROM {social_follows} WHERE {quote('pair_key')} IS NULL OR TRIM({quote('pair_key')}) = ''"
+                )
+            ).mappings()
+            for row in rows:
+                key = ":".join(sorted([str(row["follower_id"]), str(row["following_id"])]))
+                connection.execute(
+                    text(f"UPDATE {social_follows} SET {quote('pair_key')} = :pair_key WHERE {quote('id')} = :row_id"),
+                    {"pair_key": key, "row_id": str(row["id"])},
+                )
+            if {"chat_participants", "chat_threads", "user_chat_messages"}.issubset(table_names):
+                message_threads = [
+                    str(row["thread_id"])
+                    for row in connection.execute(
+                        text(f"SELECT DISTINCT {quote('thread_id')} FROM {quote('user_chat_messages')}")
+                    ).mappings()
+                ]
+                for thread_id in message_threads:
+                    participants = [
+                        str(row["user_id"])
+                        for row in connection.execute(
+                            text(
+                                f"SELECT {quote('user_id')} FROM {quote('chat_participants')} "
+                                f"WHERE {quote('thread_id')} = :thread_id ORDER BY {quote('user_id')} ASC"
+                            ),
+                            {"thread_id": thread_id},
+                        ).mappings()
+                    ]
+                    if len(participants) != 2:
+                        continue
+                    first_id, second_id = participants
+                    key = ":".join([first_id, second_id])
+                    existing = connection.execute(
+                        text(
+                            f"SELECT {quote('id')} FROM {social_follows} "
+                            f"WHERE ({quote('pair_key')} = :pair_key OR "
+                            f"(({quote('follower_id')} = :first_id AND {quote('following_id')} = :second_id) OR "
+                            f"({quote('follower_id')} = :second_id AND {quote('following_id')} = :first_id))) "
+                            f"AND {quote('status')} IN ('pending', 'accepted') LIMIT 1"
+                        ),
+                        {"pair_key": key, "first_id": first_id, "second_id": second_id},
+                    ).first()
+                    if existing:
+                        continue
+                    connection.execute(
+                        text(
+                            f"INSERT INTO {social_follows} "
+                            f"({quote('id')}, {quote('follower_id')}, {quote('following_id')}, {quote('pair_key')}, "
+                            f"{quote('status')}, {quote('requested_at')}, {quote('responded_at')}, {quote('responder_user_id')}, "
+                            f"{quote('created_at')}, {quote('updated_at')}) "
+                            "VALUES (:id, :first_id, :second_id, :pair_key, 'accepted', CURRENT_TIMESTAMP, "
+                            ":responded_at, :responder_user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                        ),
+                        {
+                            "id": str(uuid.uuid4()),
+                            "first_id": first_id,
+                            "second_id": second_id,
+                            "pair_key": key,
+                            "responded_at": None,
+                            "responder_user_id": None,
+                        },
+                    )
         if "apk_versions" in table_names:
             apk_versions = quote("apk_versions")
             connection.execute(

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.models.call import BlockedUser, UserCallSettings
+from app.models.social import SocialFollow
 from app.models.user import User
 from app.models.user_chat import ChatMessage
 from app.services import user_chat_service as service_module
@@ -36,11 +37,24 @@ def create_user(db: Session, user_id: str, name: str) -> User:
     return user
 
 
+def connect_users(db: Session, first: User, second: User) -> None:
+    db.add(
+        SocialFollow(
+            follower_id=first.id,
+            following_id=second.id,
+            pair_key=":".join(sorted([first.id, second.id])),
+            status="accepted",
+        )
+    )
+    db.commit()
+
+
 @pytest.mark.asyncio
 async def test_user_search_is_public_and_privacy_aware(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     viewer = create_user(db, "viewer-user", "Viewer")
     peer = create_user(db, "hava-user", "Hava")
     blocked = create_user(db, "blocked-user", "Blocked")
+    connect_users(db, viewer, peer)
     db.add(BlockedUser(blocker_id=blocked.id, blocked_user_id=viewer.id))
     db.commit()
     monkeypatch.setattr(global_presence_service, "presence_for_user", AsyncMock(return_value={"state": "online", "last_seen_at": None, "reachable": True}))
@@ -57,6 +71,7 @@ async def test_user_search_is_public_and_privacy_aware(db: Session, monkeypatch:
 async def test_send_message_dedupes_and_read_resets_unread(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     sender = create_user(db, "sender-user", "Sender")
     recipient = create_user(db, "recipient-user", "Recipient")
+    connect_users(db, sender, recipient)
     monkeypatch.setattr(global_presence_service, "publish", AsyncMock(return_value=1))
     monkeypatch.setattr(service_module, "send_chat_message_notifications", lambda *args, **kwargs: 0)
     monkeypatch.setattr(global_presence_service, "presence_for_user", AsyncMock(return_value={"state": "online", "last_seen_at": None, "reachable": True}))
@@ -82,6 +97,7 @@ async def test_send_message_dedupes_and_read_resets_unread(db: Session, monkeypa
 async def test_pending_messages_are_delivered_when_recipient_reconnects(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     sender = create_user(db, "sender-user", "Sender")
     recipient = create_user(db, "recipient-user", "Recipient")
+    connect_users(db, sender, recipient)
     publish = AsyncMock(return_value=0)
     monkeypatch.setattr(global_presence_service, "publish", publish)
     monkeypatch.setattr(service_module, "send_chat_message_notifications", lambda *args, **kwargs: 0)
@@ -104,6 +120,7 @@ async def test_pending_messages_are_delivered_when_recipient_reconnects(db: Sess
 async def test_sender_can_delete_own_message_and_thread_preview_updates(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     sender = create_user(db, "sender-user", "Sender")
     recipient = create_user(db, "recipient-user", "Recipient")
+    connect_users(db, sender, recipient)
     monkeypatch.setattr(global_presence_service, "publish", AsyncMock(return_value=1))
     monkeypatch.setattr(service_module, "send_chat_message_notifications", lambda *args, **kwargs: 0)
     monkeypatch.setattr(global_presence_service, "presence_for_user", AsyncMock(return_value={"state": "online", "last_seen_at": None, "reachable": True}))

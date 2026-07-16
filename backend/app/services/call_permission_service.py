@@ -1,8 +1,9 @@
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.call import BlockedUser, Call, UserCallSettings
 from app.models.social import SocialFollow
+from app.models.user import User
 
 
 CONTACT_STATUSES = {"accepted", "connecting", "active", "ended"}
@@ -54,8 +55,11 @@ def accepted_follow(db: Session, follower_id: str, following_id: str) -> bool:
     return bool(
         db.scalar(
             select(SocialFollow.id).where(
-                SocialFollow.follower_id == follower_id,
-                SocialFollow.following_id == following_id,
+                or_(
+                    and_(SocialFollow.follower_id == follower_id, SocialFollow.following_id == following_id),
+                    and_(SocialFollow.follower_id == following_id, SocialFollow.following_id == follower_id),
+                    SocialFollow.pair_key == ":".join(sorted([follower_id, following_id])),
+                ),
                 SocialFollow.status == "accepted",
             )
         )
@@ -69,6 +73,16 @@ def mutual_follow(db: Session, first_user_id: str, second_user_id: str) -> bool:
 def call_allowed(db: Session, caller_id: str, callee_id: str, call_type: str) -> tuple[bool, bool]:
     if users_blocked(db, caller_id, callee_id):
         return False, False
+    users_active = int(
+        db.scalar(
+            select(func.count(User.id)).where(User.id.in_([caller_id, callee_id]), User.is_active == True)  # noqa: E712
+        )
+        or 0
+    )
+    if users_active != 2:
+        return False, False
+    if not accepted_follow(db, caller_id, callee_id):
+        return False, previously_contacted(db, caller_id, callee_id)
     settings_record = get_or_create_call_settings(db, callee_id)
     if call_type == "video" and not settings_record.allow_video_calls:
         return False, False

@@ -18,6 +18,12 @@ export const socialApi = {
     apiFetch<SocialRequestPage>(`/social/requests/incoming?page=${page}&limit=${limit}`, { token, operation: "social.requests.incoming" }),
   sentRequests: (token: string, page = 1, limit = 30) =>
     apiFetch<SocialRequestPage>(`/social/requests/sent?page=${page}&limit=${limit}`, { token, operation: "social.requests.sent" }),
+  requestHistory: (token: string, page = 1, limit = 30) =>
+    apiFetch<SocialRequestPage>(`/social/requests/history?page=${page}&limit=${limit}`, { token, operation: "social.requests.history" }),
+  connections: (token: string, query = "", page = 1, limit = 30, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ query, page: String(page), limit: String(limit) });
+    return apiFetch<SocialUserPage>(`/social/connections?${params}`, { token, signal, operation: "social.connections" });
+  },
   acceptRequest: (token: string, requestId: string) =>
     apiFetch<SocialProfile>(`/social/requests/${encodeURIComponent(requestId)}/accept`, { method: "POST", token, operation: "social.requests.accept" }),
   rejectRequest: (token: string, requestId: string) =>

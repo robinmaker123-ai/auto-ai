@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,11 +13,21 @@ from app.models.social import SocialFollow, SocialNotification
 from app.models.user import User
 from app.schemas.social import FollowRequestRead, SocialNotificationRead, SocialProfile
 from app.services.call_permission_service import call_allowed
+from app.services.social_notification_service import send_social_push_notification
 
 
 ACCEPTED = "accepted"
 PENDING = "pending"
-TERMINAL = {"cancelled", "rejected"}
+REJECTED = "rejected"
+CANCELLED = "cancelled"
+DISCONNECTED = "disconnected"
+BLOCKED = "blocked"
+TERMINAL = {CANCELLED, REJECTED, DISCONNECTED, BLOCKED}
+ACTIVE_STATUSES = {PENDING, ACCEPTED}
+
+
+def pair_key(first_user_id: str, second_user_id: str) -> str:
+    return ":".join(sorted([first_user_id, second_user_id]))
 
 
 def clean_username(value: str) -> str:
@@ -42,50 +52,84 @@ class SocialService:
             )
         ) is not None
 
-    def accepted_follow(self, db: Session, follower_id: str, following_id: str) -> bool:
+    def relationship_between(self, db: Session, first_user_id: str, second_user_id: str) -> SocialFollow | None:
+        key = pair_key(first_user_id, second_user_id)
+        record = db.scalar(
+            select(SocialFollow)
+            .where(SocialFollow.pair_key == key)
+            .order_by(SocialFollow.updated_at.desc(), SocialFollow.created_at.desc())
+            .limit(1)
+        )
+        if record:
+            return record
         return db.scalar(
-            select(SocialFollow.id).where(
-                SocialFollow.follower_id == follower_id,
-                SocialFollow.following_id == following_id,
-                SocialFollow.status == ACCEPTED,
+            select(SocialFollow)
+            .where(
+                or_(
+                    and_(SocialFollow.follower_id == first_user_id, SocialFollow.following_id == second_user_id),
+                    and_(SocialFollow.follower_id == second_user_id, SocialFollow.following_id == first_user_id),
+                )
             )
-        ) is not None
+            .order_by(SocialFollow.updated_at.desc(), SocialFollow.created_at.desc())
+            .limit(1)
+        )
+
+    def accepted_connection(self, db: Session, first_user_id: str, second_user_id: str) -> bool:
+        key = pair_key(first_user_id, second_user_id)
+        return bool(
+            db.scalar(
+                select(SocialFollow.id)
+                .where(
+                    or_(
+                        SocialFollow.pair_key == key,
+                        and_(SocialFollow.follower_id == first_user_id, SocialFollow.following_id == second_user_id),
+                        and_(SocialFollow.follower_id == second_user_id, SocialFollow.following_id == first_user_id),
+                    ),
+                    SocialFollow.status == ACCEPTED,
+                )
+                .limit(1)
+            )
+        )
+
+    def accepted_follow(self, db: Session, follower_id: str, following_id: str) -> bool:
+        return self.accepted_connection(db, follower_id, following_id)
 
     def mutual_follow(self, db: Session, first_user_id: str, second_user_id: str) -> bool:
-        return self.accepted_follow(db, first_user_id, second_user_id) and self.accepted_follow(db, second_user_id, first_user_id)
+        return self.accepted_connection(db, first_user_id, second_user_id)
 
     def follow_status(self, db: Session, viewer_id: str, target_id: str) -> str:
         if viewer_id == target_id:
             return "self"
         if self.users_blocked(db, viewer_id, target_id):
             return "blocked"
-        record = db.scalar(
-            select(SocialFollow).where(SocialFollow.follower_id == viewer_id, SocialFollow.following_id == target_id)
-        )
-        if not record or record.status in TERMINAL:
+        if self.accepted_connection(db, viewer_id, target_id):
+            return "following"
+        record = self.relationship_between(db, viewer_id, target_id)
+        if not record:
             return "none"
-        return "following" if record.status == ACCEPTED else "pending"
+        if record.status == PENDING:
+            return "pending_sent" if record.follower_id == viewer_id else "pending_received"
+        if record.status in {REJECTED, CANCELLED, DISCONNECTED}:
+            return record.status
+        return "none"
 
     def can_view_private_profile(self, db: Session, viewer_id: str, target: User) -> bool:
-        return viewer_id == target.id or target.profile_visibility != "private" or self.accepted_follow(db, viewer_id, target.id)
+        return viewer_id == target.id or target.profile_visibility != "private" or self.accepted_connection(db, viewer_id, target.id)
 
     def can_message(self, db: Session, sender_id: str, recipient_id: str) -> bool:
         if sender_id == recipient_id or self.users_blocked(db, sender_id, recipient_id):
             return False
+        sender = db.get(User, sender_id)
+        if not sender or not sender.is_active:
+            return False
         recipient = db.get(User, recipient_id)
         if not recipient or not recipient.is_active:
             return False
-        permission = recipient.message_permission or "followers"
-        if permission == "everyone":
-            return True
-        if permission == "followers":
-            return self.accepted_follow(db, sender_id, recipient_id)
-        if permission == "mutual_followers":
-            return self.mutual_follow(db, sender_id, recipient_id)
-        return False
+        return self.accepted_connection(db, sender_id, recipient_id)
 
     def profile_for(self, db: Session, target: User, viewer_id: str) -> SocialProfile:
         status_value = self.follow_status(db, viewer_id, target.id)
+        relationship = None if viewer_id == target.id else self.relationship_between(db, viewer_id, target.id)
         blocked = status_value == "blocked"
         private_restricted = not blocked and not self.can_view_private_profile(db, viewer_id, target)
         show_private_fields = not blocked and not private_restricted
@@ -97,6 +141,9 @@ class SocialService:
             bio=target.bio if show_private_fields else None,
             is_private=target.profile_visibility == "private",
             follow_status=status_value,
+            request_id=relationship.id if relationship and relationship.status == PENDING else None,
+            requested_by_me=bool(relationship and relationship.status == PENDING and relationship.follower_id == viewer_id),
+            requested_by_them=bool(relationship and relationship.status == PENDING and relationship.following_id == viewer_id),
             can_message=not blocked and self.can_message(db, viewer_id, target.id),
             can_audio_call=not blocked and call_allowed(db, viewer_id, target.id, "audio")[0],
             can_video_call=not blocked and call_allowed(db, viewer_id, target.id, "video")[0],
@@ -171,6 +218,9 @@ class SocialService:
         db.add(record)
         try:
             db.flush()
+            actor = db.get(User, actor_id) if actor_id else None
+            if notification_type in {"follow_request", "follow_accept"}:
+                send_social_push_notification(db, record, actor)
         except IntegrityError:
             db.rollback()
             return None
@@ -183,48 +233,60 @@ class SocialService:
         if not target or not target.is_active or self.users_blocked(db, viewer.id, target_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
         now = datetime.utcnow()
-        next_status = PENDING if target.profile_visibility == "private" else ACCEPTED
-        record = db.scalar(select(SocialFollow).where(SocialFollow.follower_id == viewer.id, SocialFollow.following_id == target.id))
+        key = pair_key(viewer.id, target.id)
+        record = self.relationship_between(db, viewer.id, target.id)
+        if record and record.status == PENDING and record.following_id == viewer.id:
+            return self.profile_for(db, target, viewer.id)
+        if record and record.status == ACCEPTED:
+            return self.profile_for(db, target, viewer.id)
         if not record:
-            record = SocialFollow(follower_id=viewer.id, following_id=target.id, status=next_status, requested_at=now)
+            record = SocialFollow(follower_id=viewer.id, following_id=target.id, pair_key=key, status=PENDING, requested_at=now)
             db.add(record)
-        elif record.status != ACCEPTED:
-            record.status = next_status
+            db.flush()
+        elif record.status not in ACTIVE_STATUSES:
+            record.follower_id = viewer.id
+            record.following_id = target.id
+            record.pair_key = key
+            record.status = PENDING
             record.requested_at = now
-            record.responded_at = now if next_status == ACCEPTED else None
+            record.responded_at = None
+            record.responder_user_id = None
+            record.cancelled_at = None
+            record.disconnected_at = None
+            record.rejection_reason_category = None
             record.updated_at = now
-        if next_status == ACCEPTED:
-            self.create_notification(
-                db,
-                user_id=target.id,
-                actor_id=viewer.id,
-                notification_type="follow",
-                target_type="profile",
-                target_id=viewer.id,
-                title=f"{viewer.name} followed you",
-                dedupe_key=f"follow:{viewer.id}:{target.id}",
-            )
         else:
-            self.create_notification(
-                db,
-                user_id=target.id,
-                actor_id=viewer.id,
-                notification_type="follow_request",
-                target_type="follow_requests",
-                target_id=record.id,
-                title=f"{viewer.name} requested to follow you",
-                dedupe_key=f"follow_request:{viewer.id}:{target.id}:{int(now.timestamp())}",
-            )
+            return self.profile_for(db, target, viewer.id)
+        self.create_notification(
+            db,
+            user_id=target.id,
+            actor_id=viewer.id,
+            notification_type="follow_request",
+            target_type="follow_requests",
+            target_id=record.id,
+            title=f"{viewer.name} requested to follow you",
+            dedupe_key=f"follow_request:{record.id}:{target.id}",
+        )
         db.commit()
         return self.profile_for(db, target, viewer.id)
 
     def accept_request(self, db: Session, current_user: User, request_id: str) -> SocialProfile:
-        record = db.scalar(select(SocialFollow).where(SocialFollow.id == request_id, SocialFollow.following_id == current_user.id, SocialFollow.status == PENDING))
+        record = db.scalar(select(SocialFollow).where(SocialFollow.id == request_id))
         if not record:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Follow request not found.")
+        if record.following_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the request receiver can accept it.")
+        if record.status == ACCEPTED:
+            requester = db.get(User, record.follower_id)
+            return self.profile_for(db, requester, current_user.id)
+        if record.status != PENDING:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Follow request is no longer pending.")
         record.status = ACCEPTED
-        record.responded_at = datetime.utcnow()
-        record.updated_at = datetime.utcnow()
+        now = datetime.utcnow()
+        record.responded_at = now
+        record.responder_user_id = current_user.id
+        record.updated_at = now
+        record.pair_key = record.pair_key or pair_key(record.follower_id, record.following_id)
         self.create_notification(
             db,
             user_id=record.follower_id,
@@ -239,20 +301,31 @@ class SocialService:
         requester = db.get(User, record.follower_id)
         return self.profile_for(db, requester, current_user.id)
 
-    def reject_request(self, db: Session, current_user: User, request_id: str) -> None:
-        record = db.scalar(select(SocialFollow).where(SocialFollow.id == request_id, SocialFollow.following_id == current_user.id, SocialFollow.status == PENDING))
+    def reject_request(self, db: Session, current_user: User, request_id: str, reason_category: str | None = None) -> None:
+        record = db.scalar(select(SocialFollow).where(SocialFollow.id == request_id))
         if not record:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Follow request not found.")
-        record.status = "rejected"
-        record.responded_at = datetime.utcnow()
-        record.updated_at = datetime.utcnow()
+        if record.following_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the request receiver can reject it.")
+        if record.status != PENDING:
+            return
+        now = datetime.utcnow()
+        record.status = REJECTED
+        record.responded_at = now
+        record.responder_user_id = current_user.id
+        record.rejection_reason_category = (reason_category or "not_shared")[:32]
+        record.updated_at = now
         db.commit()
 
     def cancel_request(self, db: Session, viewer: User, target_id: str) -> SocialProfile:
-        record = db.scalar(select(SocialFollow).where(SocialFollow.follower_id == viewer.id, SocialFollow.following_id == target_id, SocialFollow.status == PENDING))
+        record = self.relationship_between(db, viewer.id, target_id)
+        if record and record.status == PENDING and record.follower_id != viewer.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the request sender can cancel it.")
         if record:
-            record.status = "cancelled"
-            record.updated_at = datetime.utcnow()
+            record.status = CANCELLED
+            now = datetime.utcnow()
+            record.cancelled_at = now
+            record.updated_at = now
             db.commit()
         target = db.get(User, target_id)
         if not target:
@@ -260,10 +333,17 @@ class SocialService:
         return self.profile_for(db, target, viewer.id)
 
     def unfollow(self, db: Session, viewer: User, target_id: str) -> SocialProfile:
-        record = db.scalar(select(SocialFollow).where(SocialFollow.follower_id == viewer.id, SocialFollow.following_id == target_id, SocialFollow.status == ACCEPTED))
+        record = self.relationship_between(db, viewer.id, target_id)
         if record:
-            record.status = "cancelled"
-            record.updated_at = datetime.utcnow()
+            if record.status == ACCEPTED:
+                record.status = DISCONNECTED
+                now = datetime.utcnow()
+                record.disconnected_at = now
+                record.updated_at = now
+            elif record.status == PENDING and record.follower_id == viewer.id:
+                record.status = CANCELLED
+                record.cancelled_at = datetime.utcnow()
+                record.updated_at = datetime.utcnow()
             db.commit()
         target = db.get(User, target_id)
         if not target:
@@ -271,24 +351,108 @@ class SocialService:
         return self.profile_for(db, target, viewer.id)
 
     def remove_follower(self, db: Session, viewer: User, follower_id: str) -> None:
-        record = db.scalar(select(SocialFollow).where(SocialFollow.follower_id == follower_id, SocialFollow.following_id == viewer.id, SocialFollow.status == ACCEPTED))
-        if record:
-            record.status = "cancelled"
-            record.updated_at = datetime.utcnow()
+        record = self.relationship_between(db, viewer.id, follower_id)
+        if record and record.status == ACCEPTED:
+            record.status = DISCONNECTED
+            now = datetime.utcnow()
+            record.disconnected_at = now
+            record.updated_at = now
             db.commit()
 
     def requests(self, db: Session, current_user: User, direction: str, page: int, limit: int) -> tuple[list[FollowRequestRead], bool]:
         if direction == "incoming":
             statement = select(SocialFollow, User).join(User, User.id == SocialFollow.follower_id).where(SocialFollow.following_id == current_user.id, SocialFollow.status == PENDING)
             viewer_id = current_user.id
-        else:
+        elif direction == "sent":
             statement = select(SocialFollow, User).join(User, User.id == SocialFollow.following_id).where(SocialFollow.follower_id == current_user.id, SocialFollow.status == PENDING)
             viewer_id = current_user.id
+        else:
+            statement = (
+                select(SocialFollow, User)
+                .join(
+                    User,
+                    or_(
+                        and_(SocialFollow.follower_id == current_user.id, User.id == SocialFollow.following_id),
+                        and_(SocialFollow.following_id == current_user.id, User.id == SocialFollow.follower_id),
+                    ),
+                )
+                .where(
+                    or_(SocialFollow.follower_id == current_user.id, SocialFollow.following_id == current_user.id),
+                    SocialFollow.status.in_([ACCEPTED, REJECTED, CANCELLED, DISCONNECTED]),
+                )
+            )
+            viewer_id = current_user.id
         rows = list(db.execute(statement.order_by(SocialFollow.requested_at.desc()).offset((page - 1) * limit).limit(limit + 1)).all())
-        return [
-            FollowRequestRead(id=record.id, requested_at=record.requested_at, user=self.profile_for(db, user, viewer_id))
-            for record, user in rows[:limit]
-        ], len(rows) > limit
+        items: list[FollowRequestRead] = []
+        for record, user in rows[:limit]:
+            responder = db.get(User, record.responder_user_id) if record.responder_user_id else None
+            label = None
+            if record.status == ACCEPTED and responder:
+                label = f"You accepted @{public_username(user)}" if responder.id == current_user.id else f"Accepted by @{public_username(responder)}"
+            items.append(
+                FollowRequestRead(
+                    id=record.id,
+                    status=record.status,
+                    requested_at=record.requested_at,
+                    responded_at=record.responded_at,
+                    actor_label=label,
+                    user=self.profile_for(db, user, viewer_id),
+                )
+            )
+        return items, len(rows) > limit
+
+    def accepted_connections(self, db: Session, current_user: User, query: str, page: int, limit: int) -> tuple[list[SocialProfile], bool]:
+        normalized = " ".join(query.strip().split())
+        escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        statement = (
+            select(SocialFollow, User)
+            .join(
+                User,
+                or_(
+                    and_(SocialFollow.follower_id == current_user.id, User.id == SocialFollow.following_id),
+                    and_(SocialFollow.following_id == current_user.id, User.id == SocialFollow.follower_id),
+                ),
+            )
+            .where(
+                SocialFollow.status == ACCEPTED,
+                or_(SocialFollow.follower_id == current_user.id, SocialFollow.following_id == current_user.id),
+                User.is_active == True,  # noqa: E712
+            )
+        )
+        if normalized:
+            statement = statement.where(or_(User.name.ilike(pattern, escape="\\"), User.username.ilike(pattern, escape="\\")))
+        rows = list(db.execute(statement.order_by(User.name.asc(), User.id.asc()).offset((page - 1) * limit).limit(limit + 1)).all())
+        return [self.profile_for(db, user, current_user.id) for _, user in rows[:limit]], len(rows) > limit
+
+    def block_user(self, db: Session, current_user: User, target_id: str) -> None:
+        if target_id == current_user.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot block yourself.")
+        if not db.get(User, target_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+        existing = db.scalar(select(BlockedUser).where(BlockedUser.blocker_id == current_user.id, BlockedUser.blocked_user_id == target_id))
+        now = datetime.utcnow()
+        if not existing:
+            db.add(BlockedUser(blocker_id=current_user.id, blocked_user_id=target_id))
+        record = self.relationship_between(db, current_user.id, target_id)
+        if record and record.status in ACTIVE_STATUSES:
+            record.status = BLOCKED
+            record.responded_at = record.responded_at or now
+            record.responder_user_id = current_user.id
+            record.updated_at = now
+        db.execute(
+            update(SocialFollow)
+            .where(
+                or_(
+                    and_(SocialFollow.follower_id == current_user.id, SocialFollow.following_id == target_id),
+                    and_(SocialFollow.follower_id == target_id, SocialFollow.following_id == current_user.id),
+                    SocialFollow.pair_key == pair_key(current_user.id, target_id),
+                ),
+                SocialFollow.status == PENDING,
+            )
+            .values(status=BLOCKED, responder_user_id=current_user.id, responded_at=now, updated_at=now)
+        )
+        db.commit()
 
     def unread_count(self, db: Session, user_id: str) -> int:
         return int(db.scalar(select(func.count(SocialNotification.id)).where(SocialNotification.user_id == user_id, SocialNotification.read_at.is_(None))) or 0)

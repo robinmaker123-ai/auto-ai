@@ -31,6 +31,7 @@ export type UserThread = {
   archived: boolean;
   pinned: boolean;
   muted: boolean;
+  restricted_reason?: string | null;
 };
 
 export type ThreadPage = { items: UserThread[]; page: number; limit: number; has_more: boolean };

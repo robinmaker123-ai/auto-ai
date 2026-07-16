@@ -4,7 +4,19 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-FollowStatus = Literal["self", "none", "pending", "following", "blocked"]
+FollowStatus = Literal[
+    "self",
+    "none",
+    "pending",
+    "pending_sent",
+    "pending_received",
+    "following",
+    "accepted",
+    "rejected",
+    "cancelled",
+    "disconnected",
+    "blocked",
+]
 
 
 class SocialProfile(BaseModel):
@@ -15,6 +27,9 @@ class SocialProfile(BaseModel):
     bio: str | None = None
     is_private: bool = False
     follow_status: FollowStatus = "none"
+    request_id: str | None = None
+    requested_by_me: bool = False
+    requested_by_them: bool = False
     can_message: bool = False
     can_audio_call: bool = False
     can_video_call: bool = False
@@ -31,7 +46,10 @@ class SocialUserPage(BaseModel):
 
 class FollowRequestRead(BaseModel):
     id: str
+    status: str = "pending"
     requested_at: datetime
+    responded_at: datetime | None = None
+    actor_label: str | None = None
     user: SocialProfile
 
 
