@@ -244,6 +244,10 @@ def ensure_runtime_schema() -> None:
         screen_share_columns = {column["name"] for column in inspector.get_columns("screen_share_sessions")}
         if "screenCodeHash" not in screen_share_columns:
             add_column("screen_share_sessions", "screenCodeHash", "VARCHAR(64)")
+        if "sharerGuestId" not in screen_share_columns:
+            add_column("screen_share_sessions", "sharerGuestId", "VARCHAR(36)")
+        if "viewerGuestId" not in screen_share_columns:
+            add_column("screen_share_sessions", "viewerGuestId", "VARCHAR(36)")
 
     if "messages" in table_names:
         message_columns = {column["name"] for column in inspector.get_columns("messages")}

@@ -14,7 +14,13 @@ from app.db.session import SessionLocal
 from app.models.user import User
 from app.schemas.screen_share import ScreenShareSignalEvent
 from app.services.presence_service import RealtimeUnavailable, presence_service
-from app.services.screen_share_service import screen_share_event, screen_share_service
+from app.services.screen_share_service import (
+    is_guest_identity,
+    participant_identities,
+    screen_share_event,
+    screen_share_service,
+    sharer_identity,
+)
 
 
 router = APIRouter(prefix="/screen-share", tags=["screen-share-signaling"])
@@ -134,8 +140,7 @@ async def forward_screen_share_events(websocket: WebSocket, user_id: str, ready:
 
 async def publish_to_session(session, event_type: str, sender_user_id: str, payload: dict[str, Any] | None = None) -> None:
     event = screen_share_event(event_type, sender_user_id=sender_user_id, session_id=session.session_id, payload=payload or {})
-    recipients = {session.sharer_user_id, session.viewer_user_id} - {None}
-    await asyncio.gather(*(presence_service.publish(str(user_id), event) for user_id in recipients), return_exceptions=True)
+    await asyncio.gather(*(presence_service.publish(identity_id, event) for identity_id in participant_identities(session)), return_exceptions=True)
 
 
 async def handle_signal(websocket: WebSocket, user_id: str, connection_id: str, event: ScreenShareSignalEvent) -> None:
@@ -171,12 +176,12 @@ async def handle_signal(websocket: WebSocket, user_id: str, connection_id: str, 
                 {
                     "sessionId": session.session_id,
                     "userId": user_id,
-                    "role": "sharer" if user_id == session.sharer_user_id else "viewer",
+                    "role": "sharer" if user_id == sharer_identity(session) else "viewer",
                 },
             )
             return
         if event.type == "screen-share-started":
-            if user_id != session.sharer_user_id:
+            if user_id != sharer_identity(session):
                 raise HTTPException(status_code=403, detail="Only the sharer can start this session.")
             session = screen_share_service.mark_started(db, session)
             await publish_to_session(session, "screen-share-started", user_id, {"status": session.status})
@@ -186,13 +191,13 @@ async def handle_signal(websocket: WebSocket, user_id: str, connection_id: str, 
             await publish_to_session(session, "screen-share-ended", user_id, {"status": session.status})
             return
         if event.type == "screen-share-declined":
-            if user_id == session.sharer_user_id:
+            if user_id == sharer_identity(session):
                 raise HTTPException(status_code=403, detail="Only the viewer can decline this session.")
             session = screen_share_service.end(db, session.session_id, user_id)
             await publish_to_session(session, "screen-share-declined", user_id, {"status": session.status})
             return
         if event.type in {"screen-share-paused", "screen-share-resumed"}:
-            if user_id != session.sharer_user_id:
+            if user_id != sharer_identity(session):
                 raise HTTPException(status_code=403, detail="Only the sharer can pause this session.")
             await publish_to_session(session, event.type, user_id, {})
             return
@@ -223,11 +228,12 @@ async def screen_share_socket(websocket: WebSocket, ticket: str = "") -> None:
     if not user_id:
         await websocket.close(code=1008, reason="Invalid or expired realtime ticket.")
         return
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        if not user or not user.is_active or (user.subscription_status or "").lower() in {"blocked", "suspended"}:
-            await websocket.close(code=1008, reason="Inactive account.")
-            return
+    if not is_guest_identity(user_id):
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if not user or not user.is_active or (user.subscription_status or "").lower() in {"blocked", "suspended"}:
+                await websocket.close(code=1008, reason="Inactive account.")
+                return
 
     connection_id = str(uuid.uuid4())
     await websocket.accept()

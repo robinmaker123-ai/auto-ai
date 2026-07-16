@@ -32,6 +32,17 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.JWT_ALGORITHM)
 
 
+def create_screen_share_guest_token(subject: str, expires_delta: timedelta) -> str:
+    expire = datetime.now(timezone.utc) + expires_delta
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "exp": expire,
+        "typ": "screen_share_guest",
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.JWT_ALGORITHM)
+
+
 def create_refresh_token(
     subject: str,
     token_id: str,
@@ -53,6 +64,17 @@ def decode_access_token(token: str) -> str | None:
         subject = payload.get("sub")
         return str(subject) if subject else None
     except JWTError:
+        return None
+
+
+def decode_screen_share_guest_token(token: str) -> str | None:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("typ") != "screen_share_guest":
+            return None
+        subject = str(payload.get("sub") or "")
+        return str(uuid.UUID(subject)) if subject else None
+    except (JWTError, ValueError):
         return None
 
 

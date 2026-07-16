@@ -9,6 +9,11 @@ function websocketUrl(ticket: string) {
 }
 
 export const screenShareApi = {
+  guestToken: () =>
+    apiFetch<{ access_token: string; token_type: "bearer"; expires_in: number }>("/screen-share/guest-token", {
+      method: "POST",
+      operation: "screenShare.guestToken",
+    }),
   createSession: (token: string, payload: { viewer_user_id?: string | null; invite_link?: boolean; code_mode?: boolean; expires_minutes?: number }) =>
     apiFetch<ScreenShareSession>("/screen-share/session", {
       method: "POST",
@@ -41,7 +46,7 @@ export const screenShareApi = {
       token,
       operation: "screenShare.wsTicket",
     }),
-  turnCredentials: (token: string) => apiFetch<{ iceServers?: RTCIceServer[]; ice_servers?: RTCIceServer[] }>("/calls/turn-credentials", { token, operation: "screenShare.turn" }),
+  turnCredentials: (token: string) => apiFetch<{ iceServers?: RTCIceServer[]; ice_servers?: RTCIceServer[] }>("/screen-share/turn-credentials", { token, operation: "screenShare.turn" }),
 };
 
 export class ScreenShareSignaling {

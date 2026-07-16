@@ -8,6 +8,7 @@ from app.db.base import Base
 
 
 class UserDeviceActivity(Base):
+    # Deprecated: retained only so existing production tables/data are not dropped.
     __tablename__ = "user_device_activities"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

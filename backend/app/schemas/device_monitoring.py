@@ -41,36 +41,11 @@ class DeviceActivityCreate(BaseModel):
         return cleaned or None
 
 
-class DeviceActivityRead(BaseModel):
-    id: str
-    userId: str
-    deviceId: str
-    type: str
-    timestamp: datetime
-    battery: int | None = None
-    screenOn: bool | None = None
-    currentApp: str | None = None
-    foregroundAppName: str | None = None
-    foregroundPackageName: str | None = None
-    activityType: str | None = None
-    source: str = "app_internal"
-    permissionGranted: bool = False
-    location: DeviceLocation | None = None
-    network: str | None = None
-    storageTotal: str | None = None
-    storageUsed: str | None = None
-    storageFree: str | None = None
-    ramTotal: str | None = None
-    ramUsed: str | None = None
-    ramUsage: str | None = None
-    deviceModel: str | None = None
-    osVersion: str | None = None
-    isActive: bool
-
-
 class DeviceActivityIngestResponse(BaseModel):
     success: bool = True
     id: str
+    activation_required: bool = False
+    approved: bool = True
 
 
 class DeviceRegisterRequest(BaseModel):
@@ -99,6 +74,8 @@ class DeviceRegisterResponse(BaseModel):
     success: bool = True
     deviceId: str
     registered: bool = True
+    activation_required: bool = False
+    approved: bool = True
 
 
 class DeviceHeartbeatRequest(BaseModel):
@@ -129,79 +106,3 @@ class DeviceHeartbeatRequest(BaseModel):
 class DeviceCommandAckRequest(BaseModel):
     deviceId: str | None = Field(default=None, min_length=1, max_length=128)
     status: str = Field(default="acknowledged", pattern="^(acknowledged|failed)$")
-
-
-class AdminDeviceCommandResponse(BaseModel):
-    success: bool = True
-    message: str
-    sent: int = 0
-    failed: int = 0
-    commandId: str | None = None
-    commandStatus: str | None = None
-
-
-class AdminLiveDataResponse(BaseModel):
-    success: bool = True
-    data: list[DeviceActivityRead]
-
-
-class AdminDeviceSnapshotRead(BaseModel):
-    deviceId: str
-    deviceName: str
-    type: str
-    manufacturer: str | None = None
-    model: str | None = None
-    osVersion: str | None = None
-    appVersion: str | None = None
-    battery: int | None = None
-    charging: bool | None = None
-    storageTotal: str | None = None
-    storageUsed: str | None = None
-    ramTotal: str | None = None
-    ramUsed: str | None = None
-    network: str | None = None
-    currentApp: str | None = None
-    foregroundAppName: str | None = None
-    foregroundPackageName: str | None = None
-    activityType: str | None = None
-    activitySource: str | None = None
-    permissionGranted: bool = False
-    permissionsStatus: dict[str, bool] = Field(default_factory=dict)
-    fcmStatus: str = "missing"
-    screenOn: bool | None = None
-    lastActive: datetime
-    lastActivity: datetime | None = None
-    location: DeviceLocation | None = None
-    status: str
-
-
-class AdminDeviceActivityResponse(BaseModel):
-    success: bool = True
-    deviceId: str
-    permissionGranted: bool = False
-    permissionsStatus: dict[str, bool] = Field(default_factory=dict)
-    currentForegroundApp: str | None = None
-    lastActivityAt: datetime | None = None
-    activities: list[DeviceActivityRead]
-    usageSummary: list[dict[str, str | int]]
-
-
-class AdminUserDevicesData(BaseModel):
-    mobile: list[AdminDeviceSnapshotRead]
-    laptop: list[AdminDeviceSnapshotRead]
-    desktop: list[AdminDeviceSnapshotRead] = Field(default_factory=list)
-
-
-class AdminUserDevicesResponse(BaseModel):
-    success: bool = True
-    data: AdminUserDevicesData
-
-
-class AdminDeviceUserRead(BaseModel):
-    userId: str
-    name: str
-    email: str
-    deviceModel: str | None = None
-    osVersion: str | None = None
-    lastActive: datetime | None = None
-    online: bool = False

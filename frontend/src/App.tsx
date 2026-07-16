@@ -13,6 +13,9 @@ import { consumeSafeRootRedirect, markStartupStable } from "./reliability/safeMo
 import { AppSettingsProvider } from "./contexts/AppSettingsContext";
 import { AnnouncementBanner } from "./components/common/AnnouncementBanner";
 import { isAdminPanelRole } from "./utils/roles";
+import { ScreenShareProvider } from "./features/screenShare/ScreenShareProvider";
+import { ScreenShareOverlay } from "./features/screenShare/ScreenShareOverlay";
+import "./features/screenShare/screenShare.css";
 
 const AppShell = lazy(() => import("./components/layout/AppShell").then((module) => ({ default: module.AppShell })));
 const ChatPage = lazy(() => import("./components/chat/ChatPage").then((module) => ({ default: module.ChatPage })));
@@ -79,13 +82,13 @@ function AppRoutes() {
           <Route path="/payment/checkout" element={<PaymentCheckoutPage />} />
           <Route path="/payment/success" element={<PaymentStatusPage status="success" />} />
           <Route path="/payment/failed" element={<PaymentStatusPage status="failed" />} />
+          <Route path="/screen-share/:sessionId" element={<ScreenShareJoinPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppShell />}>
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:chatId" element={<ChatPage />} />
               <Route path="/messages" element={<UserMessagesPage />} />
               <Route path="/messages/:threadId" element={<UserMessagesPage />} />
-              <Route path="/screen-share/:sessionId" element={<ScreenShareJoinPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/calls" element={<CallsPage />} />
             </Route>
@@ -129,12 +132,15 @@ export default function App() {
         <AppSettingsProvider>
           <AuthProvider>
             <ShellProvider>
-              <HashRouter>
-                <SeoManager />
-                <AnnouncementBanner />
-                <StartupRecoveryMarker />
-                <AppRoutes />
-              </HashRouter>
+              <ScreenShareProvider>
+                <HashRouter>
+                  <SeoManager />
+                  <AnnouncementBanner />
+                  <StartupRecoveryMarker />
+                  <AppRoutes />
+                  <ScreenShareOverlay />
+                </HashRouter>
+              </ScreenShareProvider>
             </ShellProvider>
           </AuthProvider>
         </AppSettingsProvider>

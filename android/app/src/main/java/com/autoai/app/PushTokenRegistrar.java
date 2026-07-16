@@ -137,8 +137,6 @@ public final class PushTokenRegistrar {
             body.put("osVersion", Build.VERSION.RELEASE == null ? "Android" : "Android " + Build.VERSION.RELEASE);
             JSONObject permissions = new JSONObject();
             permissions.put("notification", Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
-            permissions.put("usageAccess", false);
-            permissions.put("accessibility", false);
             body.put("permissionsStatus", permissions);
             try (OutputStream output = connection.getOutputStream()) {
                 output.write(body.toString().getBytes(StandardCharsets.UTF_8));

@@ -1,11 +1,6 @@
 import type {
   AdminAnalytics,
-  AdminDeviceCommandResponse,
-  AdminDeviceActivityResponse,
-  AdminDeviceUser,
   AdminFeaturesResponse,
-  AdminLiveDataResponse,
-  AdminUserDevicesResponse,
   AdminFeatureFlag,
   AdminPaymentRecord,
   AdminPlanLimit,
@@ -90,6 +85,26 @@ export type AuthSession = {
 export type PasswordResetResult = {
   message: string;
   reset_url?: string | null;
+};
+
+export type DemoChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type DemoChatResult = {
+  content: string;
+  provider: "bedrock";
+  model: string;
+  messages_used: number;
+  remaining: number;
+};
+
+export type DemoChatConfig = {
+  enabled: boolean;
+  provider: "bedrock";
+  model: string;
+  limit: number;
 };
 
 type RequestMeta = {
@@ -607,6 +622,14 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
 }
 
 export const api = {
+  demoChatConfig: () => apiFetch<DemoChatConfig>("/demo/chat/config", { operation: "demo.chat.config" }),
+  demoChat: (payload: { session_id: string; message: string; mode: "chat" | "research" | "vision"; history: DemoChatMessage[] }) =>
+    apiFetch<DemoChatResult>("/demo/chat", {
+      method: "POST",
+      operation: "demo.chat",
+      timeoutMs: 45000,
+      body: JSON.stringify(payload)
+    }),
   register: (payload: { email: string; name: string; password: string; mobile?: string | null }) =>
     apiFetch<AuthSession>("/auth/register", {
       method: "POST",
@@ -1160,48 +1183,7 @@ export const api = {
     }),
   adminAnalytics: (token: string) => apiFetch<AdminAnalytics>("/admin/analytics", { token, operation: "admin.analytics" }),
   adminPayments: (token: string) =>
-    apiFetch<AdminPaymentRecord[]>("/admin/subscriptions/payments", { token, operation: "admin.payments" }),
-  adminDeviceUsers: (token: string) =>
-    apiFetch<AdminDeviceUser[]>("/admin/device-users", { token, operation: "admin.deviceUsers" }),
-  adminLiveData: (token: string, userId: string) =>
-    apiFetch<AdminLiveDataResponse>(`/admin/live-data/${encodeURIComponent(userId)}`, {
-      token,
-      operation: "admin.liveData"
-    }),
-  adminUserDevices: (token: string, userId: string) =>
-    apiFetch<AdminUserDevicesResponse>(`/admin/users/${encodeURIComponent(userId)}/devices`, {
-      token,
-      operation: "admin.userDevices"
-    }),
-  adminDeviceActivity: (token: string, userId: string, deviceId: string) =>
-    apiFetch<AdminDeviceActivityResponse>(`/admin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/activity`, {
-      token,
-      operation: "admin.deviceActivity"
-    }),
-  adminRemoteStart: (token: string, userId: string) =>
-    apiFetch<AdminDeviceCommandResponse>(`/admin/remote-start/${encodeURIComponent(userId)}`, {
-      method: "POST",
-      token,
-      operation: "admin.remoteStart"
-    }),
-  adminRemoteStartDevice: (token: string, userId: string, deviceId: string) =>
-    apiFetch<AdminDeviceCommandResponse>(`/admin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/remote-start`, {
-      method: "POST",
-      token,
-      operation: "admin.remoteStartDevice"
-    }),
-  adminAiClean: (token: string, userId: string) =>
-    apiFetch<AdminDeviceCommandResponse>(`/admin/ai-clean/${encodeURIComponent(userId)}`, {
-      method: "POST",
-      token,
-      operation: "admin.aiClean"
-    }),
-  adminAiCleanDevice: (token: string, userId: string, deviceId: string) =>
-    apiFetch<AdminDeviceCommandResponse>(`/admin/ai-clean/${encodeURIComponent(userId)}/${encodeURIComponent(deviceId)}`, {
-      method: "POST",
-      token,
-      operation: "admin.aiCleanDevice"
-    })
+    apiFetch<AdminPaymentRecord[]>("/admin/subscriptions/payments", { token, operation: "admin.payments" })
 };
 
 export async function streamChat(

@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     CALL_ICE_MAX_PER_CALL: int = 256
     CALL_WS_TICKET_TTL_SECONDS: int = 60
     CALL_PRESENCE_TTL_SECONDS: int = 55
+    SCREEN_SHARE_GUEST_TOKEN_TTL_SECONDS: int = 7200
+    SCREEN_SHARE_JOIN_MAX_PER_MINUTE: int = 10
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl | str] = [
         "https://autoai.site.je",
         "https://www.autoai.site.je",
@@ -185,6 +187,9 @@ class Settings(BaseSettings):
     ALLOWED_AUDIO_EXTENSIONS: set[str] = {".flac", ".mp3", ".m4a", ".mpeg", ".mpga", ".ogg", ".wav", ".webm"}
 
     RATE_LIMIT_PER_MINUTE: int = 90
+    PUBLIC_DEMO_CHAT_ENABLED: bool = True
+    PUBLIC_DEMO_CHAT_LIMIT: int = 20
+    PUBLIC_DEMO_CHAT_TTL_HOURS: int = 24
     ADMIN_EMAIL: EmailStr | None = None
     ADMIN_PASSWORD: SecretStr | None = Field(default=None, min_length=8, max_length=128)
     ADMIN_NAME: str | None = Field(default=None, min_length=2, max_length=120)

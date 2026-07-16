@@ -52,6 +52,7 @@ class UserDevice(Base):
     os_version: Mapped[str] = mapped_column(String(80), nullable=True)
     manufacturer: Mapped[str] = mapped_column(String(80), nullable=True)
     model: Mapped[str] = mapped_column(String(80), nullable=True)
+    # Deprecated telemetry columns: retained for schema compatibility; no active code writes them.
     battery_level: Mapped[int] = mapped_column(Integer, nullable=True)
     charging: Mapped[bool] = mapped_column(Boolean, nullable=True)
     network_type: Mapped[str] = mapped_column(String(80), nullable=True)

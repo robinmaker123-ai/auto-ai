@@ -8,6 +8,7 @@ import { isNativeScreenCapturePlatform, startNativeScreenCaptureStream } from ".
 import type { ScreenShareInvite, ScreenShareQualityMode, ScreenShareRole, ScreenShareSession, ScreenShareSignal, ScreenShareSource, ScreenShareUiState } from "./types";
 
 const RECONNECT_LIMIT = 3;
+const GUEST_ACCESS_STORAGE_KEY = "auto-ai-screen-share-guest";
 const SCREEN_UNSUPPORTED_MESSAGE = "Screen sharing is not supported in this browser. Use Chrome desktop or the AutoAI Android app to generate a code. You can still join with a code from this device.";
 const MIC_UNSUPPORTED_MESSAGE = "Microphone is not available in this browser.";
 type NetworkQuality = "good" | "poor" | "reconnecting" | "unknown";
@@ -98,6 +99,25 @@ function microphoneErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Microphone could not start.";
 }
 
+function readGuestAccessToken() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(GUEST_ACCESS_STORAGE_KEY) || "null") as { token?: string; expiresAt?: number } | null;
+    if (stored?.token && stored.expiresAt && stored.expiresAt > Date.now() + 30_000) return stored.token;
+    sessionStorage.removeItem(GUEST_ACCESS_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function storeGuestAccessToken(token: string, expiresIn: number) {
+  try {
+    sessionStorage.setItem(GUEST_ACCESS_STORAGE_KEY, JSON.stringify({ token, expiresAt: Date.now() + expiresIn * 1000 }));
+  } catch {
+    // The in-memory token still supports this tab when storage is unavailable.
+  }
+}
+
 export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const { token, user } = useAuth();
   const [uiState, setUiState] = useState<ScreenShareUiState>("idle");
@@ -117,7 +137,9 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const [qualityMode, setQualityModeState] = useState<ScreenShareQualityMode>("auto");
   const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("unknown");
   const [sentResolution, setSentResolution] = useState("");
-  const tokenRef = useRef(token);
+  const authTokenRef = useRef(token);
+  const accessTokenRef = useRef<string | null>(token);
+  const guestTokenRequestRef = useRef<Promise<string> | null>(null);
   const roleRef = useRef<ScreenShareRole | null>(null);
   const sessionRef = useRef<ScreenShareSession | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -132,7 +154,8 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const statsRef = useRef<{ timestamp: number; bytes: number; packetsLost: number; packetsReceived: number } | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
 
-  tokenRef.current = token;
+  authTokenRef.current = token;
+  if (token) accessTokenRef.current = token;
   roleRef.current = role;
   sessionRef.current = session;
   localStreamRef.current = localStream;
@@ -187,17 +210,38 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
     setUiState(nextState);
   }, [closePeer, stopLocalTracks]);
 
+  const ensureAccessToken = useCallback(async () => {
+    if (authTokenRef.current) {
+      accessTokenRef.current = authTokenRef.current;
+      return authTokenRef.current;
+    }
+    if (accessTokenRef.current) return accessTokenRef.current;
+    const stored = readGuestAccessToken();
+    if (stored) {
+      accessTokenRef.current = stored;
+      return stored;
+    }
+    if (!guestTokenRequestRef.current) {
+      guestTokenRequestRef.current = screenShareApi.guestToken().then((credential) => {
+        storeGuestAccessToken(credential.access_token, credential.expires_in);
+        accessTokenRef.current = credential.access_token;
+        return credential.access_token;
+      }).finally(() => {
+        guestTokenRequestRef.current = null;
+      });
+    }
+    return guestTokenRequestRef.current;
+  }, []);
+
   const ensureSignaling = useCallback(async () => {
-    const currentToken = tokenRef.current;
-    if (!currentToken) throw new Error("Not authenticated");
+    const currentToken = accessTokenRef.current ?? await ensureAccessToken();
     await signaling.connect(currentToken);
     if (!await signaling.waitUntilConnected()) throw new Error("Screen share signaling is not connected.");
-  }, [signaling]);
+  }, [ensureAccessToken, signaling]);
 
   const ensurePeer = useCallback(async () => {
     if (peerRef.current) return peerRef.current;
-    const currentToken = tokenRef.current;
-    if (!currentToken) throw new Error("Not authenticated");
+    const currentToken = accessTokenRef.current ?? await ensureAccessToken();
     const credentials = await screenShareApi.turnCredentials(currentToken);
     const iceServers = normalizeIceServers(credentials.iceServers ?? credentials.ice_servers);
     if (!iceServers.length) throw new Error("Screen sharing network relay is temporarily unavailable.");
@@ -240,7 +284,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       }
     };
     return peer;
-  }, [signaling]);
+  }, [ensureAccessToken, signaling]);
 
   const createOffer = useCallback(async (iceRestart = false) => {
     const id = sessionIdOf(sessionRef.current);
@@ -311,7 +355,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stopShare = useCallback(async () => {
-    const currentToken = tokenRef.current;
+    const currentToken = accessTokenRef.current;
     const id = sessionIdOf(sessionRef.current);
     if (id) signaling.send("screen-share-ended", id);
     closePeer();
@@ -365,14 +409,17 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   eventHandlerRef.current = handleSignalEvent;
 
   useEffect(() => {
-    if (!token || !user) {
-      signaling.close();
-      reset("idle");
-      return;
-    }
+    if (!token || !user) return;
+    accessTokenRef.current = token;
     void signaling.connect(token);
-    return () => signaling.close();
+    return () => {
+      signaling.close();
+      if (accessTokenRef.current === token) accessTokenRef.current = null;
+      reset("idle");
+    };
   }, [reset, signaling, token, user]);
+
+  useEffect(() => () => signaling.close(), [signaling]);
 
   useEffect(() => {
     const unload = () => {
@@ -434,9 +481,8 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startShare = useCallback(async (source: ScreenShareSource) => {
-    const currentToken = tokenRef.current;
     const peer = requestPeer;
-    if (!currentToken || (!peer && !inviteOnlyRequest)) return;
+    if (!peer && !inviteOnlyRequest) return;
     if (!canShareScreen) {
       setError(SCREEN_UNSUPPORTED_MESSAGE);
       return;
@@ -450,6 +496,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setLocalStream(stream);
       setMuted(true);
       await applyQuality(null);
+      const currentToken = await ensureAccessToken();
       const created = await screenShareApi.createSession(currentToken, {
         viewer_user_id: peer?.id ?? null,
         invite_link: true,
@@ -471,11 +518,10 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("idle");
       setError(screenCaptureErrorMessage(shareError));
     }
-  }, [applyQuality, canShareScreen, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
+  }, [applyQuality, canShareScreen, ensureAccessToken, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
 
   const generateShareCode = useCallback(async () => {
-    const currentToken = tokenRef.current;
-    if (!currentToken || (!inviteOnlyRequest && !requestPeer)) return;
+    if (!inviteOnlyRequest && !requestPeer) return;
     if (!canShareScreen) {
       setError(SCREEN_UNSUPPORTED_MESSAGE);
       return;
@@ -489,6 +535,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setLocalStream(stream);
       setMuted(true);
       await applyQuality(null);
+      const currentToken = await ensureAccessToken();
       const created = await screenShareApi.createSession(currentToken, {
         viewer_user_id: null,
         invite_link: false,
@@ -511,7 +558,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("idle");
       setError(screenCaptureErrorMessage(shareError));
     }
-  }, [applyQuality, canShareScreen, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
+  }, [applyQuality, canShareScreen, ensureAccessToken, ensureSignaling, inviteOnlyRequest, requestPeer, signaling, startDisplayStream, stopLocalTracks, stopShare]);
 
   useEffect(() => {
     if (!session || !peerRef.current) {
@@ -590,11 +637,11 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   }, [applyQuality, session, sentResolution]);
 
   const joinBySession = useCallback(async (sessionId: string, inviteToken?: string | null) => {
-    const currentToken = tokenRef.current;
-    if (!currentToken || !sessionId) return;
+    if (!sessionId) return;
     setUiState("connecting");
     setError("");
     try {
+      const currentToken = await ensureAccessToken();
       const nextSession = await screenShareApi.getSession(currentToken, sessionId, inviteToken);
       setSession(nextSession);
       setRole("viewer");
@@ -609,18 +656,18 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("failed");
       setError(joinError instanceof Error ? joinError.message : "Unable to join screen share.");
     }
-  }, [ensurePeer, ensureSignaling, signaling]);
+  }, [ensureAccessToken, ensurePeer, ensureSignaling, signaling]);
 
   const joinWithCode = useCallback(async (code: string) => {
-    const currentToken = tokenRef.current;
     const normalizedCode = code.replace(/\D/g, "").slice(0, 8);
-    if (!currentToken || normalizedCode.length !== 8) {
+    if (normalizedCode.length !== 8) {
       setError("Enter an 8 digit screen share code.");
       return;
     }
     setUiState("connecting");
     setError("");
     try {
+      const currentToken = await ensureAccessToken();
       const nextSession = await screenShareApi.joinCode(currentToken, normalizedCode);
       const id = sessionIdOf(nextSession);
       setSession(nextSession);
@@ -636,7 +683,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       setUiState("failed");
       setError(joinError instanceof Error ? joinError.message : "Unable to join screen share.");
     }
-  }, [ensurePeer, ensureSignaling, signaling]);
+  }, [ensureAccessToken, ensurePeer, ensureSignaling, signaling]);
 
   const joinInvite = useCallback(async (invite?: ScreenShareInvite | null) => {
     const selected = invite ?? pendingInvite;

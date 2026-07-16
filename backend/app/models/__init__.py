@@ -9,6 +9,7 @@ from app.models.chat_session import ChatSession
 from app.models.call import BlockedUser, Call, CallReport, DeviceCommand, UserCallSettings, UserDevice
 from app.models.cms import Announcement, ContentAuditLog, ContentBlock, ContentPage, ContentRevision, FaqEntry, GlobalContent, MediaAsset, UiTextEntry
 from app.models.device_monitoring import UserDeviceActivity
+from app.models.demo_chat import DemoChatSession
 from app.models.document import Document
 from app.models.human import ConversationTurnAnalysis, UserInteractionProfile, UserMemory
 from app.models.live import FaceMemory, LiveMessage, LiveSession, VisionFrame
@@ -42,6 +43,7 @@ __all__ = [
     "ConversationTurnAnalysis",
     "Document",
     "DeviceCommand",
+    "DemoChatSession",
     "FeatureFlag",
     "FaqEntry",
     "FaceMemory",

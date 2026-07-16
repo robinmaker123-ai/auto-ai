@@ -45,6 +45,12 @@ class ScreenShareTicket(BaseModel):
     expires_in: int
 
 
+class ScreenShareGuestToken(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+
+
 class ScreenShareSignalEvent(BaseModel):
     schema_version: Literal[1] = 1
     event_id: str = Field(min_length=8, max_length=64)

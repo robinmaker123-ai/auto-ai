@@ -1,35 +1,18 @@
-import asyncio
+import logging
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.core.security import decode_access_token
-from app.db.session import SessionLocal, get_db
+from app.db.session import get_db
 from app.models.user import User
 from app.schemas.device_monitoring import DeviceActivityCreate, DeviceActivityIngestResponse, DeviceCommandAckRequest, DeviceHeartbeatRequest, DeviceRegisterRequest, DeviceRegisterResponse
-from app.services.device_monitoring import acknowledge_device_command, create_activity, device_activity_stream, ensure_device_snapshots, heartbeat_device_activity, upsert_registered_device
+from app.services.device_monitoring import upsert_registered_device
 
 
 router = APIRouter(tags=["device-monitoring"])
-
-
-def resolve_user(db: Session, identifier: str) -> User | None:
-    value = identifier.strip()
-    user = db.get(User, value)
-    if user:
-        return user
-    lowered = value.lower()
-    return db.scalar(
-        select(User).where(
-            or_(
-                func.lower(User.email) == lowered,
-                User.mobile == value,
-                User.username == value,
-            )
-        )
-    )
+logger = logging.getLogger("auto_ai.device_monitoring")
 
 
 def require_self_user(current_user: User, user_id: str | None) -> None:
@@ -45,7 +28,7 @@ def register_device(
 ) -> DeviceRegisterResponse:
     require_self_user(current_user, payload.userId)
     device = upsert_registered_device(db, current_user, payload)
-    return DeviceRegisterResponse(deviceId=device.device_id)
+    return DeviceRegisterResponse(deviceId=device.device_id, activation_required=False, approved=True)
 
 
 @router.post("/devices/heartbeat", response_model=DeviceActivityIngestResponse)
@@ -54,10 +37,10 @@ async def heartbeat_device(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DeviceActivityIngestResponse:
+    del db
     require_self_user(current_user, payload.userId)
-    activity = heartbeat_device_activity(db, current_user, payload)
-    asyncio.create_task(device_activity_stream.publish(activity))
-    return DeviceActivityIngestResponse(id=activity.id)
+    logger.info("deprecated_device_heartbeat_noop user_id=%s device_id=%s", current_user.id, payload.deviceId)
+    return DeviceActivityIngestResponse(id=f"deprecated-{uuid.uuid4()}", activation_required=False, approved=True)
 
 
 @router.post("/devices/commands/{command_id}/ack")
@@ -67,11 +50,8 @@ def acknowledge_command(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str | bool]:
-    command = acknowledge_device_command(db, current_user, command_id, payload.deviceId, payload.status)
-    if not command:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device command not found.")
-    asyncio.create_task(device_activity_stream.publish_command(current_user.id, command.device_id, command.id, command.status))
-    return {"success": True, "commandId": command.id, "status": command.status}
+    del command_id, payload, current_user, db
+    return {"success": True, "deprecated": True, "status": "disabled"}
 
 
 @router.post("/device/activity", response_model=DeviceActivityIngestResponse)
@@ -81,51 +61,34 @@ async def ingest_device_activity(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DeviceActivityIngestResponse:
-    activity = create_activity(db, current_user, payload)
-    asyncio.create_task(device_activity_stream.publish(activity))
-    return DeviceActivityIngestResponse(id=activity.id)
+    del db
+    logger.info("deprecated_device_activity_noop user_id=%s device_id=%s", current_user.id, payload.deviceId)
+    return DeviceActivityIngestResponse(id=f"deprecated-{uuid.uuid4()}", activation_required=False, approved=True)
 
 
-@router.websocket("/admin/device-stream")
-async def admin_device_stream(websocket: WebSocket, token: str = Query(default=""), user_id: str = Query(default="")) -> None:
-    if not token or not user_id:
-        await websocket.close(code=4401, reason="Missing token or user_id")
-        return
-    subject = decode_access_token(token)
-    if not subject:
-        await websocket.close(code=4401, reason="Invalid token")
-        return
-    with SessionLocal() as db:
-        user = db.get(User, subject)
-        if not user or not user.is_active or not user.is_admin or user.role not in {"admin", "super_admin"}:
-            await websocket.close(code=4403, reason="Admin access required")
-            return
-        target = resolve_user(db, user_id)
-        if not target:
-            await websocket.close(code=4404, reason="User not found")
-            return
-        target_user_id = target.id
-    await websocket.accept()
-    await device_activity_stream.subscribe(target_user_id, websocket)
-    try:
-        with SessionLocal() as db:
-            snapshots = ensure_device_snapshots(db, target_user_id)
-        await websocket.send_json({"type": "ready", "userId": target_user_id, "requestedUserId": user_id})
-        await websocket.send_json(
-            {
-                "type": "initial-data",
-                "event": "device-telemetry",
-                "userId": target_user_id,
-                "data": {
-                    "mobile": [item.model_dump(mode="json") for item in snapshots["mobile"]],
-                    "laptop": [item.model_dump(mode="json") for item in snapshots["laptop"]],
-                    "desktop": [item.model_dump(mode="json") for item in snapshots["laptop"]],
-                },
-            }
-        )
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await device_activity_stream.unsubscribe(target_user_id, websocket)
+@router.get("/devices/activation-status")
+@router.get("/devices/activation-status/{device_id}")
+@router.get("/device/activation-status")
+@router.get("/device/activation-status/{device_id}")
+def deprecated_activation_status(device_id: str | None = None, _: User = Depends(get_current_user)) -> dict[str, bool | str | None]:
+    logger.info("deprecated_activation_status_noop device_id=%s", device_id)
+    return {
+        "success": True,
+        "deprecated": True,
+        "deviceId": device_id,
+        "activation_required": False,
+        "approved": True,
+        "is_device_active": True,
+    }
+
+
+@router.post("/devices/activation-request")
+@router.post("/device/activation-request")
+def deprecated_activation_request(_: DeviceRegisterRequest, current_user: User = Depends(get_current_user)) -> dict[str, bool | str]:
+    logger.info("deprecated_activation_request_noop user_id=%s", current_user.id)
+    return {
+        "success": True,
+        "deprecated": True,
+        "activation_required": False,
+        "approved": True,
+    }
