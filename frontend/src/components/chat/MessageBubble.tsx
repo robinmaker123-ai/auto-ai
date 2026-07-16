@@ -96,9 +96,12 @@ function thinkingCopy(phase?: string) {
 }
 
 function responseErrorText(value?: string) {
-  const detail = value || "";
+  const detail = (value || "").trim();
   if (/network|interrupted|offline|timeout|failed to fetch|connection/i.test(detail)) {
     return "Network interrupted. Your message was saved. Retry response.";
+  }
+  if (detail) {
+    return `Response failed: ${detail}`;
   }
   return "Response interrupted. Your message was saved. Retry response.";
 }

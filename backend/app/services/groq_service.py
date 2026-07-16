@@ -72,6 +72,17 @@ class GroqService:
     def _groq_model_for_fallback(self, *, web_search: bool) -> str:
         return settings.GROQ_SEARCH_MODEL if web_search else settings.GROQ_MODEL
 
+    def _groq_model_candidates(self, model: str, *, web_search: bool) -> list[str]:
+        if web_search:
+            return [settings.GROQ_SEARCH_MODEL]
+        candidates = [
+            model,
+            settings.GROQ_MODEL,
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+        ]
+        return list(dict.fromkeys(item for item in candidates if item))
+
     @classmethod
     def _content_to_text(cls, value: Any) -> str:
         if value is None:
@@ -857,13 +868,23 @@ class GroqService:
                 allow_fallback=allow_bedrock_fallback,
             )
 
-        return self._complete_groq(
-            messages,
-            model=selected_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            request_timeout=request_timeout,
-        )
+        last_error: HTTPException | None = None
+        for candidate_model in self._groq_model_candidates(selected_model, web_search=web_search):
+            try:
+                return self._complete_groq(
+                    messages,
+                    model=candidate_model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    request_timeout=request_timeout,
+                )
+            except HTTPException as exc:
+                last_error = exc
+                if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+                    raise
+        if last_error:
+            raise last_error
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="No Groq chat model is available.")
 
     def stream(
         self,
@@ -894,7 +915,21 @@ class GroqService:
                 allow_fallback=allow_bedrock_fallback,
             )
 
-        return self._stream_groq(messages, model=selected_model, temperature=temperature)
+        def groq_iterator() -> Iterable[Any]:
+            last_error: HTTPException | None = None
+            for candidate_model in self._groq_model_candidates(selected_model, web_search=web_search):
+                try:
+                    yield from self._stream_groq(messages, model=candidate_model, temperature=temperature)
+                    return
+                except HTTPException as exc:
+                    last_error = exc
+                    if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+                        raise
+            if last_error:
+                raise last_error
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="No Groq chat model is available.")
+
+        return groq_iterator()
 
     def analyze_image(self, image_bytes: bytes, filename: str, prompt: str) -> str:
         suffix = Path(filename).suffix.lower().replace(".", "") or "png"
