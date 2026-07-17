@@ -7278,6 +7278,29 @@ html[data-auto-ai-safe-mode="true"] .final-cta-section {
 .cms-render-error { color: #b91c1c; }
 .cms-render-block .text-center { text-align: center; margin-inline: auto; }
 .cms-render-block .text-right { text-align: right; margin-left: auto; }
+.cms-render-block.cms-style-text-color-muted { color: #64748b; }
+.cms-render-block.cms-style-text-color-primary { color: #0369a1; }
+.cms-render-block.cms-style-text-color-accent { color: #7c3aed; }
+.cms-render-block.cms-style-background-muted { background: #f1f5f9; }
+.cms-render-block.cms-style-background-accent { background: #ecfeff; }
+.cms-render-block.cms-style-radius-small { border-radius: 6px; overflow: hidden; }
+.cms-render-block.cms-style-radius-medium { border-radius: 12px; overflow: hidden; }
+.cms-render-block.cms-style-radius-large { border-radius: 20px; overflow: hidden; }
+.cms-render-block.cms-style-shadow-soft { box-shadow: 0 10px 28px rgba(15, 23, 42, .1); }
+.cms-render-block.cms-style-shadow-elevated { box-shadow: 0 20px 48px rgba(15, 23, 42, .18); }
+.cms-render-block.cms-style-padding-compact { padding: 8px; }
+.cms-render-block.cms-style-padding-normal { padding: 18px; }
+.cms-render-block.cms-style-padding-large { padding: 32px; }
+.cms-render-block.cms-style-margin-small { margin-block: 8px; }
+.cms-render-block.cms-style-margin-normal { margin-block: 18px; }
+.cms-render-block.cms-style-margin-large { margin-block: 32px; }
+.cms-render-block.cms-style-gap-small > * { gap: 8px; }
+.cms-render-block.cms-style-gap-normal > * { gap: 16px; }
+.cms-render-block.cms-style-gap-large > * { gap: 28px; }
+.cms-render-block.cms-variant-text .btn-primary,
+.cms-render-block.cms-variant-text .btn-secondary { border-color: transparent; background: transparent; color: #0369a1; box-shadow: none; }
+.cms-render-block.cms-variant-elevated .cms-render-card { box-shadow: 0 18px 42px rgba(15, 23, 42, .16); }
+.cms-render-block.cms-variant-compact .cms-render-section { padding-block: 24px; }
 .cms-render-tablet .cms-render-columns-3,
 .cms-render-mobile .cms-render-columns-2,
 .cms-render-mobile .cms-render-columns-3 { grid-template-columns: 1fr; }

@@ -15,15 +15,17 @@ from app.db.session import get_db
 from app.models.cms import Announcement, ContentAuditLog, ContentBlock, ContentPage, ContentRevision, FaqEntry, GlobalContent, MediaAsset, UiTextEntry
 from app.models.user import User
 from app.schemas.cms import (
-    AnnouncementCreate, AnnouncementUpdate, BlockOrderUpdate, ContentBlockInput, ContentBlockUpdate,
+    AnnouncementCreate, AnnouncementUpdate, BlockOrderUpdate, CmsAiAssistRequest, ContentBlockInput, ContentBlockUpdate,
     ContentPageCreate, ContentPageUpdate, FaqCreate, FaqUpdate, MediaMetadataUpdate, PublishRequest,
-    RestoreRevisionRequest, TextEntryUpdate, TextPublishRequest,
+    RestoreRevisionRequest, TextEntryUpdate, TextPublishRequest, reject_unsafe_markup,
 )
 from app.services.cms_service import (
     UI_TEXT_DEFAULTS, announcement_snapshot, audit, create_revision, ensure_cms_defaults, faq_snapshot,
     media_usage_count, page_snapshot, publish_due, publish_page, published_cache, require_version,
     revision_diff, serialize_announcement, serialize_faq, serialize_media, serialize_page, serialize_text_entry,
 )
+from app.services.admin_control import billable_usage, enforce_user_quota, record_usage_log, track_quota_usage
+from app.services.groq_service import groq_service
 
 
 router = APIRouter(tags=["content-manager"])
@@ -33,6 +35,18 @@ public_router = APIRouter(prefix="/content/public")
 ALLOWED_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_MEDIA_BYTES = 8 * 1024 * 1024
+
+CMS_AI_INSTRUCTIONS = {
+    "rewrite": "Rewrite the copy clearly while preserving its meaning and approximate length.",
+    "shorten": "Shorten the copy substantially while preserving the essential meaning.",
+    "expand": "Expand the copy with useful detail without adding unverifiable claims.",
+    "grammar": "Correct grammar, spelling, and punctuation without changing the voice.",
+    "professional": "Make the copy concise, confident, and professional without hype.",
+    "translate_hindi": "Translate the copy to natural Hindi.",
+    "translate_english": "Translate the copy to natural English.",
+    "cta": "Turn the copy into a short, action-oriented call to action.",
+    "seo_heading": "Rewrite the copy as a concise, descriptive SEO-friendly heading without keyword stuffing.",
+}
 
 
 def paginated(items: list, total: int, page: int, page_size: int) -> dict:
@@ -83,6 +97,32 @@ def cms_summary(_: User = Depends(get_current_cms_viewer), db: Session = Depends
         "media": db.scalar(select(func.count()).select_from(MediaAsset)) or 0,
         "faqs": db.scalar(select(func.count()).select_from(FaqEntry)) or 0,
     }
+
+
+@admin_router.post("/ai-assist")
+def cms_ai_assist(payload: CmsAiAssistRequest, actor: User = Depends(get_current_cms_editor), db: Session = Depends(get_db)) -> dict:
+    instruction = CMS_AI_INSTRUCTIONS[payload.action]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You edit website copy for Auto-AI. Return only the proposed replacement text. "
+                "Do not use Markdown, quotation marks, HTML, scripts, URLs, commentary, or explanations."
+            ),
+        },
+        {"role": "user", "content": f"{instruction}\n\nOriginal copy:\n{payload.text}"},
+    ]
+    enforce_user_quota(db, actor, estimated_input_tokens=max(1, len(payload.text) // 4))
+    suggestion, _, model = groq_service.complete(messages, temperature=0.25, max_tokens=800)
+    suggestion = suggestion.strip().strip('"').strip("'")
+    if not suggestion or len(suggestion) > 5000:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI returned an invalid suggestion")
+    suggestion = reject_unsafe_markup(suggestion)
+    charged = billable_usage()
+    record_usage_log(db, actor.id, "cms_ai_assist", model, charged)
+    track_quota_usage(db, actor.id, charged["total_tokens"])
+    db.commit()
+    return {"suggestion": suggestion, "model": model}
 
 
 @admin_router.get("/pages")
@@ -334,7 +374,7 @@ def restore_revision(revision_id: str, payload: RestoreRevisionRequest, actor: U
     page = get_page(db, revision.content_id)
     require_version(page.version, payload.expected_version)
     snapshot = revision.snapshot
-    for field in ("title", "slug", "hero_heading", "hero_description", "buttons", "seo"):
+    for field in ("title", "slug", "hero_heading", "hero_description", "buttons", "element_overrides", "seo"):
         if field in snapshot:
             setattr(page, field, snapshot[field])
     for block in list(page.blocks):

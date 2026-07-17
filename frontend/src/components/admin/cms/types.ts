@@ -1,5 +1,7 @@
 export type CmsStatus = "draft" | "published" | "scheduled" | "archived";
 export type CmsRole = "admin" | "super_admin" | "content_admin" | "content_editor" | "content_viewer";
+export type CmsAiAction = "rewrite" | "shorten" | "expand" | "grammar" | "professional" | "translate_hindi" | "translate_english" | "cta" | "seo_heading";
+export type CmsAiSuggestion = { suggestion: string; model: string };
 export type CmsBlockType =
   | "page_section" | "container" | "one_column" | "two_columns" | "three_columns" | "grid" | "stack" | "tabs" | "accordion"
   | "heading" | "paragraph" | "rich_text" | "button" | "link" | "image" | "video_link" | "icon" | "divider" | "spacer"
@@ -21,6 +23,7 @@ export type CmsSeo = {
 };
 
 export type CmsButton = { label: string; url: string; style: "primary" | "secondary" };
+export type CmsElementOverride = { text?: string; href?: string; hidden?: boolean };
 export type CmsBlock = {
   id: string;
   block_type: CmsBlockType;
@@ -40,6 +43,7 @@ export type CmsPage = {
   hero_heading: string;
   hero_description: string;
   buttons: CmsButton[];
+  element_overrides: Record<string, CmsElementOverride>;
   seo: CmsSeo;
   blocks: CmsBlock[];
   globalReferences?: Record<string, string>;

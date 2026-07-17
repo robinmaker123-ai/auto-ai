@@ -82,6 +82,8 @@ def ensure_runtime_schema() -> None:
         cms_page_columns = {column["name"] for column in inspector.get_columns("content_pages")}
         if "published_slug" not in cms_page_columns:
             add_column("content_pages", "published_slug", "VARCHAR(160)")
+        if "element_overrides" not in cms_page_columns:
+            add_column("content_pages", "element_overrides", "json")
 
     if "announcements" in table_names:
         announcement_columns = {column["name"] for column in inspector.get_columns("announcements")}

@@ -50,6 +50,7 @@ import {
 import { usePublishedFaqs, usePublishedGlobals, usePublishedPage } from "../../hooks/useCmsContent";
 import { PublishedContentBlocks } from "../common/PublishedContentBlocks";
 import { useScreenShare } from "../../features/screenShare/useScreenShare";
+import type { CmsPage } from "../admin/cms/types";
 
 const LazyQRCode = lazy(async () => {
   const module = await import("qrcode.react");
@@ -60,6 +61,15 @@ type PreviewMode = "chat" | "research" | "vision";
 type CommandItem = { label: string; detail: string; to?: string; section?: string };
 type DemoMessage = { id: string; role: "user" | "assistant"; text: string };
 type DemoThreads = Record<PreviewMode, DemoMessage[]>;
+export type LandingPageEditorSession = {
+  page: CmsPage;
+  editMode: boolean;
+  previewMode?: boolean;
+  selectedBlockId?: string | null;
+  onSelect?: (blockId: string | null) => void;
+  onPageFieldChange?: (key: "hero_heading" | "hero_description", value: string) => void;
+  onBlockFieldChange?: (blockId: string, key: string, value: string) => void;
+};
 
 const DEMO_CHAT_LIMIT = 20;
 const DEMO_SESSION_STORAGE_KEY = "auto-ai-prism-demo-session";
@@ -231,11 +241,12 @@ function useOnlineStatus() {
   return online;
 }
 
-export function LandingPage() {
+export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
   const { user } = useAuth();
   const screenShare = useScreenShare();
   const online = useOnlineStatus();
-  const cmsPage = usePublishedPage("home");
+  const publishedCmsPage = usePublishedPage("home", !editor);
+  const cmsPage = editor?.page ?? publishedCmsPage;
   const globalContent = usePublishedGlobals();
   const publishedFaqs = usePublishedFaqs();
   const [latestApk, setLatestApk] = useState<ApkRelease | null>(null);
@@ -259,12 +270,28 @@ export function LandingPage() {
   const demoMessagesRef = useRef<HTMLDivElement>(null);
   const qrUrl = resolveApkDownloadUrl();
   const cmsBlocks = cmsPage?.blocks ?? [];
-  const featureHeading = String(cmsBlocks.find((block) => block.block_type === "heading")?.content.text ?? "One intelligence layer. Every way you work.");
+  const featureHeadingBlock = cmsBlocks.find((block) => block.block_type === "heading");
+  const featureHeading = String(featureHeadingBlock?.content.text ?? "One intelligence layer. Every way you work.");
   const finalCta = cmsBlocks.find((block) => block.block_type === "call_to_action");
   const extraBlocks = cmsBlocks.filter((block) => !["heading", "feature_grid", "call_to_action"].includes(block.block_type));
   const visibleFaqs = publishedFaqs?.length ? publishedFaqs.map((item) => [item.question, item.answer]) : fallbackFaqs;
   const currentDemoMessages = demoThreads[previewMode];
   const demoRemaining = Math.max(0, demoLimit - demoTurns);
+  const primaryHeroButton = cmsPage ? cmsPage.buttons[0] : { label: "Start Chatting", url: "/register", style: "primary" as const };
+  const secondaryHeroButton = cmsPage ? cmsPage.buttons[1] : { label: "Explore Features", url: "#features", style: "secondary" as const };
+  const elementOverrides = cmsPage?.element_overrides ?? {};
+  const elementText = (key: string, fallback: string) => elementOverrides[key]?.text ?? fallback;
+  const elementVisible = (key: string) => elementOverrides[key]?.hidden !== true;
+  const elementStyle = (key: string) => elementVisible(key) ? undefined : { display: "none" };
+  const elementHref = (key: string, fallback: string) => {
+    const candidate = elementOverrides[key]?.href ?? fallback;
+    if ((candidate.startsWith("/") && !candidate.startsWith("//")) || candidate.startsWith("#")) return candidate;
+    try {
+      return ["https:", "http:", "mailto:", "tel:"].includes(new URL(candidate).protocol) ? candidate : fallback;
+    } catch {
+      return fallback;
+    }
+  };
 
   const navLinks = useMemo(() => [
     { id: "features", label: globalContent?.["header.features"] || "Features" },
@@ -285,6 +312,58 @@ export function LandingPage() {
     setCommandOpen(false);
     setCommandQuery("");
   }, []);
+
+  const editorProps = useCallback((
+    blockId: string,
+    blockType: string,
+    field = "",
+    options: { editable?: "text" | "container" | "none"; global?: boolean; locked?: boolean; protected?: boolean; label?: string; currentValue?: string; currentHref?: string } = {}
+  ) => {
+    if (!editor?.editMode || editor.previewMode) return {};
+    return {
+      "data-cms-block-id": blockId,
+      "data-cms-block-type": blockType,
+      "data-cms-field": field,
+      "data-cms-editable": options.editable ?? (field ? "text" : "container"),
+      "data-cms-global": String(Boolean(options.global)),
+      "data-cms-locked": String(Boolean(options.locked)),
+      "data-cms-protected": String(Boolean(options.protected)),
+      "data-cms-value": options.currentValue,
+      "data-cms-href": options.currentHref,
+      "data-cms-label": options.label ?? blockType.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+    };
+  }, [editor?.editMode, editor?.previewMode]);
+
+  const editableElementProps = (
+    key: string,
+    blockType: string,
+    label: string,
+    currentValue?: string,
+    currentHref?: string
+  ) => editorProps(
+    `element:${key}`,
+    blockType,
+    currentValue === undefined ? "" : "text",
+    { editable: currentValue === undefined ? "container" : "text", label, currentValue, currentHref }
+  );
+
+  const editablePageProps = useCallback((field: "hero_heading" | "hero_description") => editorProps(
+    field,
+    field === "hero_heading" ? "heading" : "paragraph",
+    field,
+    { editable: "text", label: field === "hero_heading" ? "Heading" : "Paragraph" }
+  ), [editorProps]);
+
+  useEffect(() => {
+    if (editor?.editMode) {
+      document.body.classList.remove("prism-public-page");
+      return;
+    }
+    document.body.classList.add("prism-public-page");
+    return () => {
+      document.body.classList.remove("prism-public-page");
+    };
+  }, [editor?.editMode]);
 
   const scrollToSection = useCallback((sectionId: string) => {
     setMobileMenuOpen(false);
@@ -440,18 +519,20 @@ export function LandingPage() {
   }
 
   return (
-    <div className="prism-landing route-transition-stage">
-      <header className="prism-landing-nav">
+    <div
+      className={editor?.editMode ? "prism-landing route-transition-stage cms-live-public-canvas" : "prism-landing route-transition-stage"}
+    >
+      <header className="prism-landing-nav" style={elementStyle("header")} {...editableElementProps("header", "header", "Header")}>
         <Link className="prism-brand" to="/" aria-label="Auto-AI home">
           <span className="prism-brand-icon"><LogoIcon /></span>
-          <span>Auto-AI</span>
-          <small>Prism Intelligence</small>
+          <span style={elementStyle("header.brand")} {...editableElementProps("header.brand", "text", "Brand", elementText("header.brand", "Auto-AI"))}>{elementText("header.brand", "Auto-AI")}</span>
+          <small style={elementStyle("header.tagline")} {...editableElementProps("header.tagline", "text", "Brand Tagline", elementText("header.tagline", "Prism Intelligence"))}>{elementText("header.tagline", "Prism Intelligence")}</small>
         </Link>
 
         <PrismNavigation aria-label="Primary navigation">
           {navLinks.map((item) => (
-            <button key={item.id} type="button" onClick={() => scrollToSection(item.id)} aria-current={activeSection === item.id ? "location" : undefined}>
-              {item.label}
+            <button key={item.id} style={elementStyle(`header.nav.${item.id}`)} type="button" onClick={() => scrollToSection(item.id)} aria-current={activeSection === item.id ? "location" : undefined} {...editableElementProps(`header.nav.${item.id}`, "button", "Navigation Item", elementText(`header.nav.${item.id}`, item.label))}>
+              {elementText(`header.nav.${item.id}`, item.label)}
             </button>
           ))}
         </PrismNavigation>
@@ -462,10 +543,10 @@ export function LandingPage() {
             tone={online ? "success" : "offline"}
             icon={online ? <Wifi size={13} /> : <WifiOff size={13} />}
           >
-            {online ? "Online" : "Offline"}
+            <span style={elementStyle("header.status")} {...editableElementProps("header.status", "text", "Connection Status", elementText("header.status", online ? "Online" : "Offline"))}>{elementText("header.status", online ? "Online" : "Offline")}</span>
           </PrismStatusChip>
           <PrismTooltip label="Quick navigation">
-            <PrismIconButton type="button" onClick={() => setCommandOpen(true)} aria-label="Open quick navigation">
+            <PrismIconButton type="button" style={elementStyle("header.quick-navigation")} onClick={() => setCommandOpen(true)} aria-label="Open quick navigation" {...editableElementProps("header.quick-navigation", "button", "Quick Navigation")}>
               <Search size={17} />
               <span className="prism-command-key">Ctrl K</span>
             </PrismIconButton>
@@ -474,20 +555,24 @@ export function LandingPage() {
             className="prism-button prism-screen-share-nav"
             type="button"
             onClick={screenShare.requestInviteShare}
+            style={elementStyle("header.screen-share")}
+            {...editableElementProps("header.screen-share", "button", "Screen Share", elementText("header.screen-share", "Screen Share"))}
           >
             <ScreenShare size={16} />
-            <span>Screen Share</span>
+            <span>{elementText("header.screen-share", "Screen Share")}</span>
           </button>
-          <Link className="prism-button prism-nav-cta" to={user ? "/chat" : "/login"}>
-            {user ? "Open app" : globalContent?.["header.sign_in"] || "Sign in"}
+          <Link className="prism-button prism-nav-cta" style={elementStyle("header.sign-in")} to={elementHref("header.sign-in", user ? "/chat" : "/login")} {...editableElementProps("header.sign-in", "button", "Sign In", elementText("header.sign-in", user ? "Open app" : globalContent?.["header.sign_in"] || "Sign in"), elementHref("header.sign-in", user ? "/chat" : "/login"))}>
+            {elementText("header.sign-in", user ? "Open app" : globalContent?.["header.sign_in"] || "Sign in")}
           </Link>
-          <ThemeToggleButton />
+          <span className="cms-editable-control" style={elementStyle("header.theme")} {...editableElementProps("header.theme", "button", "Theme Toggle")}><ThemeToggleButton /></span>
           <PrismIconButton
             className="prism-mobile-menu-button"
+            style={elementStyle("header.mobile-menu")}
             type="button"
             aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen((current) => !current)}
+            {...editableElementProps("header.mobile-menu", "button", "Mobile Menu")}
           >
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </PrismIconButton>
@@ -515,39 +600,39 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section id="overview" className="prism-hero" aria-labelledby="prism-hero-title">
+        <section id="overview" className="prism-hero" style={elementStyle("hero")} aria-labelledby="prism-hero-title" {...editableElementProps("hero", "hero_section", "Hero Section")}>
           <div className="prism-constellation" aria-hidden="true" />
           <div className="prism-hero-copy">
-            <PrismBadge><Sparkles size={14} /> AutoAI Prism Intelligence</PrismBadge>
+            <PrismBadge><Sparkles size={14} /> <span style={elementStyle("hero.badge")} {...editableElementProps("hero.badge", "badge", "Hero Badge", elementText("hero.badge", "AutoAI Prism Intelligence"))}>{elementText("hero.badge", "AutoAI Prism Intelligence")}</span></PrismBadge>
             <h1 id="prism-hero-title">
-              <span>{cmsPage?.hero_heading || "Auto-AI"}</span>
-              Intelligence that stays in your flow.
+              <span {...editablePageProps("hero_heading")}>{cmsPage?.hero_heading ?? "Auto-AI"}</span>
+              <span style={elementStyle("hero.heading-suffix")} {...editableElementProps("hero.heading-suffix", "heading", "Heading", elementText("hero.heading-suffix", "Intelligence that stays in your flow."))}>{elementText("hero.heading-suffix", "Intelligence that stays in your flow.")}</span>
             </h1>
-            <p>
-              {cmsPage?.hero_description || "Chat, speak, research, share, and build with one adaptive AI workspace designed to keep context clear."}
+            <p {...editablePageProps("hero_description")}>
+              {cmsPage?.hero_description ?? "Chat, speak, research, share, and build with one adaptive AI workspace designed to keep context clear."}
             </p>
             <div className="prism-hero-actions">
-              <Link className="prism-button prism-button-primary" to={user ? "/chat" : cmsPage?.buttons?.[0]?.url || "/register"}>
-                Start Chatting <ArrowRight size={17} />
-              </Link>
-              <button className="prism-button prism-button-secondary" type="button" onClick={() => scrollToSection("features")}>
-                Explore Features
-              </button>
+              {primaryHeroButton && <Link className="prism-button prism-button-primary" to={user ? "/chat" : primaryHeroButton.url} {...editorProps("page-button-0", "button", "buttons.0.label", { editable: "text", label: "Button", currentValue: primaryHeroButton.label, currentHref: primaryHeroButton.url })}>
+                {primaryHeroButton.label} <ArrowRight size={17} />
+              </Link>}
+              {secondaryHeroButton && <button className="prism-button prism-button-secondary" type="button" onClick={() => scrollToSection("features")} {...editorProps("page-button-1", "button", "buttons.1.label", { editable: "text", label: "Button", currentValue: secondaryHeroButton.label, currentHref: secondaryHeroButton.url })}>
+                {secondaryHeroButton.label}
+              </button>}
             </div>
-            <div className="prism-trust-row" aria-label="Product assurances">
-              <span><ShieldCheck size={14} /> Private by design</span>
-              <span><Zap size={14} /> Responsive streaming</span>
-              <span><LockKeyhole size={14} /> User-controlled sharing</span>
+            <div className="prism-trust-row" aria-label="Product assurances" style={elementStyle("hero.assurances")} {...editableElementProps("hero.assurances", "container", "Product Assurances")}>
+              <span style={elementStyle("hero.assurance.private")} {...editableElementProps("hero.assurance.private", "text", "Assurance", elementText("hero.assurance.private", "Private by design"))}><ShieldCheck size={14} /> {elementText("hero.assurance.private", "Private by design")}</span>
+              <span style={elementStyle("hero.assurance.streaming")} {...editableElementProps("hero.assurance.streaming", "text", "Assurance", elementText("hero.assurance.streaming", "Responsive streaming"))}><Zap size={14} /> {elementText("hero.assurance.streaming", "Responsive streaming")}</span>
+              <span style={elementStyle("hero.assurance.sharing")} {...editableElementProps("hero.assurance.sharing", "text", "Assurance", elementText("hero.assurance.sharing", "User-controlled sharing"))}><LockKeyhole size={14} /> {elementText("hero.assurance.sharing", "User-controlled sharing")}</span>
             </div>
           </div>
 
-          <PrismSurface className="prism-product-preview" aria-label="Auto-AI workspace preview">
+          <PrismSurface className="prism-product-preview" style={elementStyle("hero.product-preview")} aria-label="Auto-AI workspace preview" {...editableElementProps("hero.product-preview", "product_preview", "Product Preview")}>
             <div className="prism-preview-topbar">
-              <span className="prism-preview-brand"><LogoIcon /> Auto-AI</span>
+              <span className="prism-preview-brand" style={elementStyle("preview.brand")} {...editableElementProps("preview.brand", "text", "Preview Brand", elementText("preview.brand", "Auto-AI"))}><LogoIcon /> {elementText("preview.brand", "Auto-AI")}</span>
               <div className="prism-preview-statuses">
-                <PrismStatusChip tone="active">{demoRemaining} demo chats left</PrismStatusChip>
+                <PrismStatusChip tone="active"><span style={elementStyle("preview.remaining")} {...editableElementProps("preview.remaining", "text", "Demo Limit", elementText("preview.remaining", `${demoRemaining} demo chats left`))}>{elementText("preview.remaining", `${demoRemaining} demo chats left`)}</span></PrismStatusChip>
                 <PrismStatusChip className="prism-bedrock-chip" tone="success" icon={<span className="prism-live-dot" />}>
-                  Bedrock <span>{demoModel}</span>
+                  <span style={elementStyle("preview.provider")} {...editableElementProps("preview.provider", "text", "Demo Provider", elementText("preview.provider", "Bedrock"))}>{elementText("preview.provider", "Bedrock")}</span> <span style={elementStyle("preview.model")} {...editableElementProps("preview.model", "text", "Demo Model", elementText("preview.model", demoModel))}>{elementText("preview.model", demoModel)}</span>
                 </PrismStatusChip>
               </div>
             </div>
@@ -559,14 +644,14 @@ export function LandingPage() {
               <div className="prism-preview-thread">
                 <div className="prism-preview-context">
                   <BrainCircuit size={16} />
-                  <span>Bedrock context</span>
-                  <small>No chat stored</small>
+                  <span style={elementStyle("preview.context")} {...editableElementProps("preview.context", "text", "Preview Context", elementText("preview.context", "Bedrock context"))}>{elementText("preview.context", "Bedrock context")}</span>
+                  <small style={elementStyle("preview.storage")} {...editableElementProps("preview.storage", "text", "Storage Status", elementText("preview.storage", "No chat stored"))}>{elementText("preview.storage", "No chat stored")}</small>
                 </div>
                 <div className="prism-preview-messages" ref={demoMessagesRef} aria-live="polite">
-                  {currentDemoMessages.map((message) => (
-                    <p key={message.id} className={`prism-preview-message is-${message.role === "assistant" ? "ai" : "user"}`}>
+                  {currentDemoMessages.map((message, index) => (
+                    <p key={message.id} className={`prism-preview-message is-${message.role === "assistant" ? "ai" : "user"}`} style={elementStyle(`preview.${previewMode}.message.${index}`)} {...editableElementProps(`preview.${previewMode}.message.${index}`, "paragraph", "Preview Message", elementText(`preview.${previewMode}.message.${index}`, message.text))}>
                       {message.role === "assistant" && <span className="prism-answer-mark"><Sparkles size={14} /></span>}
-                      {message.text}
+                      {elementText(`preview.${previewMode}.message.${index}`, message.text)}
                     </p>
                   ))}
                   {pendingDemoMode === previewMode && (
@@ -594,46 +679,52 @@ export function LandingPage() {
                   <span className="facet-one" />
                   <span className="facet-two" />
                 </div>
-                <span>Bedrock model</span>
-                <small>{demoModel}</small>
+                <span style={elementStyle("preview.model-label")} {...editableElementProps("preview.model-label", "text", "Model Label", elementText("preview.model-label", "Bedrock model"))}>{elementText("preview.model-label", "Bedrock model")}</span>
+                <small style={elementStyle("preview.model-name")} {...editableElementProps("preview.model-name", "text", "Model Name", elementText("preview.model-name", demoModel))}>{elementText("preview.model-name", demoModel)}</small>
               </div>
             </div>
           </PrismSurface>
         </section>
 
-        <div className="prism-proof-band" aria-label="Auto-AI status">
-          <span><strong>8</strong> connected capabilities</span>
-          <span><strong>1</strong> continuous workspace</span>
-          <span><strong>0</strong> silent screen capture</span>
-          <PrismStatusChip tone={online ? "active" : "offline"}>{online ? "Systems ready" : "Connection unavailable"}</PrismStatusChip>
+        <div className="prism-proof-band" style={elementStyle("proof")} aria-label="Auto-AI status" {...editableElementProps("proof", "container", "Proof Band")}>
+          {["8 connected capabilities", "1 continuous workspace", "0 silent screen capture"].map((fallback, index) => <span key={fallback} style={elementStyle(`proof.item.${index}`)} {...editableElementProps(`proof.item.${index}`, "text", "Proof Item", elementText(`proof.item.${index}`, fallback))}>{elementText(`proof.item.${index}`, fallback)}</span>)}
+          <PrismStatusChip tone={online ? "active" : "offline"}><span style={elementStyle("proof.status")} {...editableElementProps("proof.status", "text", "System Status", elementText("proof.status", online ? "Systems ready" : "Connection unavailable"))}>{elementText("proof.status", online ? "Systems ready" : "Connection unavailable")}</span></PrismStatusChip>
         </div>
 
         {extraBlocks.length > 0 && (
           <PrismReveal className="prism-public-section prism-cms-section">
-            <PublishedContentBlocks blocks={extraBlocks} />
+            <PublishedContentBlocks
+              blocks={extraBlocks}
+              editMode={editor?.editMode && !editor.previewMode}
+              selectedBlockId={editor?.selectedBlockId}
+              onSelect={editor?.onSelect}
+              onInlineChange={editor?.onBlockFieldChange}
+            />
           </PrismReveal>
         )}
 
-        <section id="features" className="prism-public-section prism-feature-section" aria-labelledby="features-heading">
+        <section id="features" className="prism-public-section prism-feature-section" style={elementStyle("features")} aria-labelledby="features-heading" {...editableElementProps("features", "page_section", "Features Section")}>
           <PrismReveal>
             <div className="prism-section-heading">
-              <PrismBadge><BrainCircuit size={14} /> Connected intelligence</PrismBadge>
-              <h2 id="features-heading">{featureHeading}</h2>
-              <p>Each capability is useful on its own. Together, they keep context moving without forcing you to rebuild it.</p>
+              <PrismBadge><BrainCircuit size={14} /> <span style={elementStyle("features.badge")} {...editableElementProps("features.badge", "badge", "Features Badge", elementText("features.badge", "Connected intelligence"))}>{elementText("features.badge", "Connected intelligence")}</span></PrismBadge>
+              <h2 id="features-heading" {...(featureHeadingBlock ? editorProps(featureHeadingBlock.id, "heading", "text", { editable: "text", label: "Heading", currentValue: featureHeading }) : editableElementProps("features.heading", "heading", "Heading", elementText("features.heading", featureHeading)))}>{featureHeadingBlock ? featureHeading : elementText("features.heading", featureHeading)}</h2>
+              <p style={elementStyle("features.description")} {...editableElementProps("features.description", "paragraph", "Description", elementText("features.description", "Each capability is useful on its own. Together, they keep context moving without forcing you to rebuild it."))}>{elementText("features.description", "Each capability is useful on its own. Together, they keep context moving without forcing you to rebuild it.")}</p>
             </div>
             <div className="prism-bento-grid">
-              {bentoFeatures.map((feature) => (
+              {bentoFeatures.map((feature, index) => (
                 <PrismCard
                   key={feature.title}
                   className={`prism-feature-card is-${feature.size} accent-${feature.accent}`}
+                  style={elementStyle(`features.card.${index}`)}
+                  {...editableElementProps(`features.card.${index}`, "feature_card", "Feature Card")}
                 >
                   <div className="prism-feature-card-head">
                     <span className="prism-feature-icon">{feature.icon}</span>
-                    <PrismStatusChip tone="idle">{feature.signal}</PrismStatusChip>
+                    <PrismStatusChip tone="idle"><span style={elementStyle(`features.card.${index}.signal`)} {...editableElementProps(`features.card.${index}.signal`, "text", "Feature Signal", elementText(`features.card.${index}.signal`, feature.signal))}>{elementText(`features.card.${index}.signal`, feature.signal)}</span></PrismStatusChip>
                   </div>
                   <div>
-                    <h3>{feature.title}</h3>
-                    <p>{feature.body}</p>
+                    <h3 style={elementStyle(`features.card.${index}.title`)} {...editableElementProps(`features.card.${index}.title`, "heading", "Feature Title", elementText(`features.card.${index}.title`, feature.title))}>{elementText(`features.card.${index}.title`, feature.title)}</h3>
+                    <p style={elementStyle(`features.card.${index}.body`)} {...editableElementProps(`features.card.${index}.body`, "paragraph", "Feature Description", elementText(`features.card.${index}.body`, feature.body))}>{elementText(`features.card.${index}.body`, feature.body)}</p>
                   </div>
                   <span className="prism-card-edge" aria-hidden="true" />
                 </PrismCard>
@@ -642,98 +733,102 @@ export function LandingPage() {
           </PrismReveal>
         </section>
 
-        <section className="prism-public-section prism-loop-section" aria-labelledby="loop-heading">
+        <section className="prism-public-section prism-loop-section" style={elementStyle("workflow")} aria-labelledby="loop-heading" {...editableElementProps("workflow", "page_section", "Workflow Section")}>
           <PrismReveal>
             <PrismSurface className="prism-loop-band">
               <div>
-                <PrismBadge><Network size={14} /> One workspace</PrismBadge>
-                <h2 id="loop-heading">From first thought to finished answer.</h2>
-                <p>Keep the conversation, supporting files, voice, visual context, and next action in one readable place.</p>
+                <PrismBadge><Network size={14} /> <span style={elementStyle("workflow.badge")} {...editableElementProps("workflow.badge", "badge", "Workflow Badge", elementText("workflow.badge", "One workspace"))}>{elementText("workflow.badge", "One workspace")}</span></PrismBadge>
+                <h2 id="loop-heading" style={elementStyle("workflow.heading")} {...editableElementProps("workflow.heading", "heading", "Workflow Heading", elementText("workflow.heading", "From first thought to finished answer."))}>{elementText("workflow.heading", "From first thought to finished answer.")}</h2>
+                <p style={elementStyle("workflow.description")} {...editableElementProps("workflow.description", "paragraph", "Workflow Description", elementText("workflow.description", "Keep the conversation, supporting files, voice, visual context, and next action in one readable place."))}>{elementText("workflow.description", "Keep the conversation, supporting files, voice, visual context, and next action in one readable place.")}</p>
               </div>
               <div className="prism-capability-list">
-                {capabilities.map((capability) => <span key={capability}><Check size={14} /> {capability}</span>)}
+                {capabilities.map((capability, index) => <span key={capability} style={elementStyle(`workflow.capability.${index}`)} {...editableElementProps(`workflow.capability.${index}`, "text", "Capability", elementText(`workflow.capability.${index}`, capability))}><Check size={14} /> {elementText(`workflow.capability.${index}`, capability)}</span>)}
               </div>
             </PrismSurface>
           </PrismReveal>
         </section>
 
-        <section id="android" className="prism-public-section" aria-labelledby="android-heading">
+        <section id="android" className="prism-public-section" style={elementStyle("android")} aria-labelledby="android-heading" {...editableElementProps("android", "page_section", "Android Section")}>
           <PrismReveal>
             <div className="prism-android-layout">
               <div className="prism-android-copy">
-                <PrismBadge><Smartphone size={14} /> Android application</PrismBadge>
-                <h2 id="android-heading">Your Auto-AI workspace, ready to move.</h2>
-                <p>Use the same account, chat history, calls, screen sharing, uploads, settings, and AI context from your phone.</p>
+                <PrismBadge><Smartphone size={14} /> <span style={elementStyle("android.badge")} {...editableElementProps("android.badge", "badge", "Android Badge", elementText("android.badge", "Android application"))}>{elementText("android.badge", "Android application")}</span></PrismBadge>
+                <h2 id="android-heading" style={elementStyle("android.heading")} {...editableElementProps("android.heading", "heading", "Android Heading", elementText("android.heading", "Your Auto-AI workspace, ready to move."))}>{elementText("android.heading", "Your Auto-AI workspace, ready to move.")}</h2>
+                <p style={elementStyle("android.description")} {...editableElementProps("android.description", "paragraph", "Android Description", elementText("android.description", "Use the same account, chat history, calls, screen sharing, uploads, settings, and AI context from your phone."))}>{elementText("android.description", "Use the same account, chat history, calls, screen sharing, uploads, settings, and AI context from your phone.")}</p>
                 <div className="prism-release-grid">
-                  <span><small>Latest</small>{latestApk?.version_name ?? "Checking"}</span>
-                  <span><small>Released</small>{formatDate(latestApk?.released_at ?? latestApk?.release_date)}</span>
-                  <span><small>Downloads</small>{(apkStats?.total_downloads ?? latestApk?.download_count ?? 0).toLocaleString()}</span>
+                  <span style={elementStyle("android.release.latest")} {...editableElementProps("android.release.latest", "text", "Latest Version", elementText("android.release.latest", `Latest ${latestApk?.version_name ?? "Checking"}`))}>{elementText("android.release.latest", `Latest ${latestApk?.version_name ?? "Checking"}`)}</span>
+                  <span style={elementStyle("android.release.date")} {...editableElementProps("android.release.date", "text", "Release Date", elementText("android.release.date", `Released ${formatDate(latestApk?.released_at ?? latestApk?.release_date)}`))}>{elementText("android.release.date", `Released ${formatDate(latestApk?.released_at ?? latestApk?.release_date)}`)}</span>
+                  <span style={elementStyle("android.release.downloads")} {...editableElementProps("android.release.downloads", "text", "Downloads", elementText("android.release.downloads", `Downloads ${(apkStats?.total_downloads ?? latestApk?.download_count ?? 0).toLocaleString()}`))}>{elementText("android.release.downloads", `Downloads ${(apkStats?.total_downloads ?? latestApk?.download_count ?? 0).toLocaleString()}`)}</span>
                 </div>
-                {latestApk?.changelog && <p className="prism-changelog">{latestApk.changelog}</p>}
+                {latestApk?.changelog && <p className="prism-changelog" style={elementStyle("android.changelog")} {...editableElementProps("android.changelog", "paragraph", "Android Changelog", elementText("android.changelog", latestApk.changelog))}>{elementText("android.changelog", latestApk.changelog)}</p>}
                 <div className="prism-android-actions">
-                  <PrismButton className="prism-button-primary" type="button" onClick={downloadLatestApk}>
-                    <Download size={17} /> Download APK
+                  <PrismButton className="prism-button-primary" style={elementStyle("android.download")} type="button" onClick={() => {
+                    const customHref = elementOverrides["android.download"]?.href;
+                    if (customHref) window.location.href = elementHref("android.download", qrUrl);
+                    else void downloadLatestApk();
+                  }} {...editableElementProps("android.download", "button", "Download Button", elementText("android.download", "Download APK"), elementHref("android.download", qrUrl))}>
+                    <Download size={17} /> {elementText("android.download", "Download APK")}
                   </PrismButton>
-                  <Link className="prism-button prism-button-secondary" to="/download">App details</Link>
+                  <Link className="prism-button prism-button-secondary" style={elementStyle("android.details")} to={elementHref("android.details", "/download")} {...editableElementProps("android.details", "button", "App Details", elementText("android.details", "App details"), elementHref("android.details", "/download"))}>{elementText("android.details", "App details")}</Link>
                 </div>
               </div>
               <div className="prism-device-stage">
                 <div className="prism-phone" aria-label="Auto-AI Android preview">
                   <div className="prism-phone-screen">
-                    <span className="prism-phone-status">9:41 <Wifi size={12} /></span>
-                    <span className="prism-phone-brand"><LogoIcon /> Auto-AI</span>
-                    <span className="prism-phone-copy is-user">Share the latest screen.</span>
-                    <span className="prism-phone-copy is-ai">Your secure code is ready.</span>
-                    <span className="prism-phone-share"><Layers3 size={18} /> 8-digit screen share</span>
+                    <span className="prism-phone-status" style={elementStyle("android.phone.status")} {...editableElementProps("android.phone.status", "text", "Phone Status", elementText("android.phone.status", "9:41"))}>{elementText("android.phone.status", "9:41")} <Wifi size={12} /></span>
+                    <span className="prism-phone-brand" style={elementStyle("android.phone.brand")} {...editableElementProps("android.phone.brand", "text", "Phone Brand", elementText("android.phone.brand", "Auto-AI"))}><LogoIcon /> {elementText("android.phone.brand", "Auto-AI")}</span>
+                    <span className="prism-phone-copy is-user" style={elementStyle("android.phone.user")} {...editableElementProps("android.phone.user", "text", "Phone Message", elementText("android.phone.user", "Share the latest screen."))}>{elementText("android.phone.user", "Share the latest screen.")}</span>
+                    <span className="prism-phone-copy is-ai" style={elementStyle("android.phone.ai")} {...editableElementProps("android.phone.ai", "text", "Phone Answer", elementText("android.phone.ai", "Your secure code is ready."))}>{elementText("android.phone.ai", "Your secure code is ready.")}</span>
+                    <span className="prism-phone-share" style={elementStyle("android.phone.share")} {...editableElementProps("android.phone.share", "text", "Screen Share", elementText("android.phone.share", "8-digit screen share"))}><Layers3 size={18} /> {elementText("android.phone.share", "8-digit screen share")}</span>
                   </div>
                 </div>
                 <div className="prism-qr-panel">
                   <Suspense fallback={<QrCode size={88} aria-label="QR code loading" />}>
                     <LazyQRCode value={qrUrl} size={104} bgColor="transparent" fgColor="#f7fbff" />
                   </Suspense>
-                  <span>Scan for Android</span>
+                  <span style={elementStyle("android.qr-label")} {...editableElementProps("android.qr-label", "text", "QR Label", elementText("android.qr-label", "Scan for Android"))}>{elementText("android.qr-label", "Scan for Android")}</span>
                 </div>
               </div>
             </div>
           </PrismReveal>
         </section>
 
-        <section className="prism-public-section" aria-labelledby="trust-heading">
+        <section className="prism-public-section" style={elementStyle("testimonials")} aria-labelledby="trust-heading" {...editableElementProps("testimonials", "page_section", "Testimonials Section")}>
           <PrismReveal>
             <div className="prism-section-heading prism-section-heading-left">
-              <PrismBadge><Sparkles size={14} /> Built for real work</PrismBadge>
-              <h2 id="trust-heading">Clear enough for every day. Capable enough for the hard days.</h2>
+              <PrismBadge><Sparkles size={14} /> <span style={elementStyle("testimonials.badge")} {...editableElementProps("testimonials.badge", "badge", "Testimonials Badge", elementText("testimonials.badge", "Built for real work"))}>{elementText("testimonials.badge", "Built for real work")}</span></PrismBadge>
+              <h2 id="trust-heading" style={elementStyle("testimonials.heading")} {...editableElementProps("testimonials.heading", "heading", "Testimonials Heading", elementText("testimonials.heading", "Clear enough for every day. Capable enough for the hard days."))}>{elementText("testimonials.heading", "Clear enough for every day. Capable enough for the hard days.")}</h2>
             </div>
             <div className="prism-testimonial-grid">
-              {testimonials.map((quote) => (
-                <PrismCard key={quote} className="prism-quote-card">
-                  <blockquote>{quote}</blockquote>
-                  <footer><span>Verified user</span><PrismStatusChip tone="success">Active workspace</PrismStatusChip></footer>
+              {testimonials.map((quote, index) => (
+                <PrismCard key={quote} className="prism-quote-card" style={elementStyle(`testimonials.card.${index}`)} {...editableElementProps(`testimonials.card.${index}`, "testimonial", "Testimonial")}>
+                  <blockquote style={elementStyle(`testimonials.card.${index}.quote`)} {...editableElementProps(`testimonials.card.${index}.quote`, "quote", "Quote", elementText(`testimonials.card.${index}.quote`, quote))}>{elementText(`testimonials.card.${index}.quote`, quote)}</blockquote>
+                  <footer><span style={elementStyle(`testimonials.card.${index}.author`)} {...editableElementProps(`testimonials.card.${index}.author`, "text", "Author", elementText(`testimonials.card.${index}.author`, "Verified user"))}>{elementText(`testimonials.card.${index}.author`, "Verified user")}</span><PrismStatusChip tone="success"><span style={elementStyle(`testimonials.card.${index}.status`)} {...editableElementProps(`testimonials.card.${index}.status`, "text", "Status", elementText(`testimonials.card.${index}.status`, "Active workspace"))}>{elementText(`testimonials.card.${index}.status`, "Active workspace")}</span></PrismStatusChip></footer>
                 </PrismCard>
               ))}
             </div>
           </PrismReveal>
         </section>
 
-        <section id="pricing" className="prism-public-section" aria-labelledby="pricing-heading">
+        <section id="pricing" className="prism-public-section" style={elementStyle("pricing")} aria-labelledby="pricing-heading" {...editableElementProps("pricing", "page_section", "Pricing Section")}>
           <PrismReveal>
             <div className="prism-section-heading">
-              <PrismBadge><Zap size={14} /> Flexible plans</PrismBadge>
-              <h2 id="pricing-heading">Start focused. Scale when the work grows.</h2>
-              <p>Choose the workspace capacity that fits today and move up when you need more.</p>
+              <PrismBadge><Zap size={14} /> <span style={elementStyle("pricing.badge")} {...editableElementProps("pricing.badge", "badge", "Pricing Badge", elementText("pricing.badge", "Flexible plans"))}>{elementText("pricing.badge", "Flexible plans")}</span></PrismBadge>
+              <h2 id="pricing-heading" style={elementStyle("pricing.heading")} {...editableElementProps("pricing.heading", "heading", "Pricing Heading", elementText("pricing.heading", "Start focused. Scale when the work grows."))}>{elementText("pricing.heading", "Start focused. Scale when the work grows.")}</h2>
+              <p style={elementStyle("pricing.description")} {...editableElementProps("pricing.description", "paragraph", "Pricing Description", elementText("pricing.description", "Choose the workspace capacity that fits today and move up when you need more."))}>{elementText("pricing.description", "Choose the workspace capacity that fits today and move up when you need more.")}</p>
             </div>
             {plans.length ? (
               <div className="prism-pricing-grid">
                 {plans.map((plan) => (
-                  <PrismCard key={plan.id} className={plan.id === "premium" ? "prism-plan-card is-featured" : "prism-plan-card"}>
+                  <PrismCard key={plan.id} className={plan.id === "premium" ? "prism-plan-card is-featured" : "prism-plan-card"} style={elementStyle(`pricing.plan.${plan.id}`)} {...editableElementProps(`pricing.plan.${plan.id}`, "pricing_card", "Pricing Card")}>
                     <div className="prism-plan-heading">
-                      <h3>{plan.label}</h3>
-                      {plan.id === "premium" && <PrismBadge>Recommended</PrismBadge>}
+                      <h3 style={elementStyle(`pricing.plan.${plan.id}.name`)} {...editableElementProps(`pricing.plan.${plan.id}.name`, "heading", "Plan Name", elementText(`pricing.plan.${plan.id}.name`, plan.label))}>{elementText(`pricing.plan.${plan.id}.name`, plan.label)}</h3>
+                      {plan.id === "premium" && <PrismBadge><span style={elementStyle("pricing.plan.premium.badge")} {...editableElementProps("pricing.plan.premium.badge", "badge", "Plan Badge", elementText("pricing.plan.premium.badge", "Recommended"))}>{elementText("pricing.plan.premium.badge", "Recommended")}</span></PrismBadge>}
                     </div>
-                    <strong>{money(plan.price_paise, plan.currency)}</strong>
-                    <span>{plan.token_quota.toLocaleString()} tokens / month</span>
-                    <Link className={plan.id === "premium" ? "prism-button prism-button-primary" : "prism-button prism-button-secondary"} to="/pricing">
-                      Choose {plan.label}
+                    <strong style={elementStyle(`pricing.plan.${plan.id}.price`)} {...editableElementProps(`pricing.plan.${plan.id}.price`, "text", "Plan Price", elementText(`pricing.plan.${plan.id}.price`, money(plan.price_paise, plan.currency)))}>{elementText(`pricing.plan.${plan.id}.price`, money(plan.price_paise, plan.currency))}</strong>
+                    <span style={elementStyle(`pricing.plan.${plan.id}.quota`)} {...editableElementProps(`pricing.plan.${plan.id}.quota`, "text", "Plan Quota", elementText(`pricing.plan.${plan.id}.quota`, `${plan.token_quota.toLocaleString()} tokens / month`))}>{elementText(`pricing.plan.${plan.id}.quota`, `${plan.token_quota.toLocaleString()} tokens / month`)}</span>
+                    <Link className={plan.id === "premium" ? "prism-button prism-button-primary" : "prism-button prism-button-secondary"} style={elementStyle(`pricing.plan.${plan.id}.button`)} to={elementHref(`pricing.plan.${plan.id}.button`, "/pricing")} {...editableElementProps(`pricing.plan.${plan.id}.button`, "button", "Choose Plan", elementText(`pricing.plan.${plan.id}.button`, `Choose ${plan.label}`), elementHref(`pricing.plan.${plan.id}.button`, "/pricing"))}>
+                      {elementText(`pricing.plan.${plan.id}.button`, `Choose ${plan.label}`)}
                     </Link>
                   </PrismCard>
                 ))}
@@ -744,38 +839,38 @@ export function LandingPage() {
           </PrismReveal>
         </section>
 
-        <section className="prism-public-section prism-cta-section" aria-labelledby="cta-heading">
+        <section className="prism-public-section prism-cta-section" style={finalCta ? undefined : elementStyle("cta")} aria-labelledby="cta-heading" {...(finalCta ? editorProps(finalCta.id, "call_to_action", "", { editable: "container", label: "Call To Action" }) : editableElementProps("cta", "call_to_action", "Call To Action"))}>
           <PrismReveal>
             <div className="prism-final-cta">
               <div>
-                <PrismBadge><LogoIcon /> Auto-AI</PrismBadge>
-                <h2 id="cta-heading">{String(finalCta?.content.heading ?? "Bring the whole workspace into one conversation.")}</h2>
+                <PrismBadge><LogoIcon /> <span style={elementStyle("cta.badge")} {...editableElementProps("cta.badge", "badge", "CTA Badge", elementText("cta.badge", "Auto-AI"))}>{elementText("cta.badge", "Auto-AI")}</span></PrismBadge>
+                <h2 id="cta-heading" {...(finalCta ? editorProps(finalCta.id, "call_to_action", "heading", { editable: "text", label: "Heading", currentValue: String(finalCta.content.heading ?? "") }) : editableElementProps("cta.heading", "heading", "CTA Heading", elementText("cta.heading", "Bring the whole workspace into one conversation.")))}>{finalCta ? String(finalCta.content.heading ?? "") : elementText("cta.heading", "Bring the whole workspace into one conversation.")}</h2>
               </div>
               <div className="prism-final-actions">
-                <Link className="prism-button prism-button-primary" to={user ? "/chat" : "/register"}>
-                  {user ? "Open app" : String(finalCta?.content.button_text ?? globalContent?.["cta.default"] ?? "Create account")}
+                <Link className="prism-button prism-button-primary" style={elementStyle("cta.primary")} to={elementHref("cta.primary", user ? "/chat" : "/register")} {...editableElementProps("cta.primary", "button", "CTA Button", elementText("cta.primary", user ? "Open app" : String(finalCta?.content.button_text ?? globalContent?.["cta.default"] ?? "Create account")), elementHref("cta.primary", user ? "/chat" : "/register"))}>
+                  {elementText("cta.primary", user ? "Open app" : String(finalCta?.content.button_text ?? globalContent?.["cta.default"] ?? "Create account"))}
                   <ArrowRight size={17} />
                 </Link>
-                <PrismButton className={copied ? "prism-button-success" : "prism-button-secondary"} type="button" onClick={copyWebsiteLink}>
+                <PrismButton className={copied ? "prism-button-success" : "prism-button-secondary"} style={elementStyle("cta.copy")} type="button" onClick={copyWebsiteLink} {...editableElementProps("cta.copy", "button", "Copy Link", elementText("cta.copy", copied ? "Link copied" : "Copy link"))}>
                   {copied ? <Check size={17} /> : <Copy size={17} />}
-                  {copied ? "Link copied" : "Copy link"}
+                  {elementText("cta.copy", copied ? "Link copied" : "Copy link")}
                 </PrismButton>
               </div>
             </div>
           </PrismReveal>
         </section>
 
-        <section id="faq" className="prism-public-section prism-faq-section" aria-labelledby="faq-heading">
+        <section id="faq" className="prism-public-section prism-faq-section" style={elementStyle("faq")} aria-labelledby="faq-heading" {...editableElementProps("faq", "page_section", "FAQ Section")}>
           <PrismReveal>
             <div className="prism-section-heading">
-              <PrismBadge><MessageSquare size={14} /> FAQ</PrismBadge>
-              <h2 id="faq-heading">A few useful answers before you begin.</h2>
+              <PrismBadge><MessageSquare size={14} /> <span style={elementStyle("faq.badge")} {...editableElementProps("faq.badge", "badge", "FAQ Badge", elementText("faq.badge", "FAQ"))}>{elementText("faq.badge", "FAQ")}</span></PrismBadge>
+              <h2 id="faq-heading" style={elementStyle("faq.heading")} {...editableElementProps("faq.heading", "heading", "FAQ Heading", elementText("faq.heading", "A few useful answers before you begin."))}>{elementText("faq.heading", "A few useful answers before you begin.")}</h2>
             </div>
             <div className="prism-faq-list">
-              {visibleFaqs.map(([question, answer]) => (
-                <details key={question}>
-                  <summary>{question}</summary>
-                  <p>{answer}</p>
+              {visibleFaqs.map(([question, answer], index) => (
+                <details key={`${question}-${index}`} style={elementStyle(`faq.item.${index}`)} {...editableElementProps(`faq.item.${index}`, "faq", "FAQ Item")}>
+                  <summary style={elementStyle(`faq.item.${index}.question`)} {...editableElementProps(`faq.item.${index}.question`, "heading", "FAQ Question", elementText(`faq.item.${index}.question`, question))}>{elementText(`faq.item.${index}.question`, question)}</summary>
+                  <p style={elementStyle(`faq.item.${index}.answer`)} {...editableElementProps(`faq.item.${index}.answer`, "paragraph", "FAQ Answer", elementText(`faq.item.${index}.answer`, answer))}>{elementText(`faq.item.${index}.answer`, answer)}</p>
                 </details>
               ))}
             </div>
@@ -783,11 +878,11 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="prism-footer">
-        <Link className="prism-brand" to="/"><span className="prism-brand-icon"><LogoIcon /></span><span>Auto-AI</span></Link>
-        <p>{globalContent?.["footer.description"] || "A connected AI workspace for thoughtful, secure, human-feeling work."}</p>
+      <footer className="prism-footer" style={elementStyle("footer")} {...editableElementProps("footer", "footer", "Footer")}>
+        <Link className="prism-brand" to={elementHref("footer.brand", "/")}><span className="prism-brand-icon"><LogoIcon /></span><span style={elementStyle("footer.brand")} {...editableElementProps("footer.brand", "link", "Footer Brand", elementText("footer.brand", "Auto-AI"), elementHref("footer.brand", "/"))}>{elementText("footer.brand", "Auto-AI")}</span></Link>
+        <p style={elementStyle("footer.description")} {...editableElementProps("footer.description", "paragraph", "Footer Description", elementText("footer.description", globalContent?.["footer.description"] || "A connected AI workspace for thoughtful, secure, human-feeling work."))}>{elementText("footer.description", globalContent?.["footer.description"] || "A connected AI workspace for thoughtful, secure, human-feeling work.")}</p>
         <PrismStatusChip tone={online ? "success" : "offline"} icon={online ? <Wifi size={13} /> : <WifiOff size={13} />}>
-          {online ? "Connected" : "Offline"}
+          <span style={elementStyle("footer.status")} {...editableElementProps("footer.status", "text", "Footer Status", elementText("footer.status", online ? "Connected" : "Offline"))}>{elementText("footer.status", online ? "Connected" : "Offline")}</span>
         </PrismStatusChip>
       </footer>
 

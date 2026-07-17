@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { FileClock, FileText, Globe2, History, Image, LayoutTemplate, Megaphone, Plus, Search, Settings2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -6,8 +6,12 @@ import type { CmsRole } from "./types";
 import { CmsCollectionManager } from "./CmsCollectionManager";
 import { CmsRevisionManager } from "./CmsRevisionManager";
 import { VisualWebsiteBuilder } from "./VisualWebsiteBuilder";
-import { LivePageEditor } from "./LivePageEditor";
 import { cmsSectionFromPath, type CmsSection } from "./cmsRouting";
+
+const LivePageEditor = lazy(async () => {
+  const module = await import("./LivePageEditor");
+  return { default: module.LivePageEditor };
+});
 
 const sections: Array<{ id: CmsSection; label: string; icon: ReactNode; path: string }> = [
   { id: "pages", label: "All Pages", icon: <LayoutTemplate size={16} />, path: "/admin/website-builder/pages" },
@@ -42,6 +46,10 @@ export function ContentManager() {
     return <p className="text-sm text-red-200">Content Manager permission is required.</p>;
   }
 
+  if (section === "live") {
+    return <Suspense fallback={<div className="visual-builder-empty">Loading visual editor…</div>}><LivePageEditor canEdit={permissions.canEdit} canPublish={permissions.canPublish} /></Suspense>;
+  }
+
   return (
     <div className="cms-shell grid min-h-[640px] gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="cms-nav border-r border-white/10 pr-3" aria-label="Content Manager">
@@ -63,13 +71,6 @@ export function ContentManager() {
               {item.icon}<span>{item.label}</span>
             </button>
           ))}
-          <button
-            className={section === "live" ? "cms-nav-item cms-nav-item-active" : "cms-nav-item"}
-            onClick={() => navigate("/admin/live-pages")}
-            type="button"
-          >
-            <LayoutTemplate size={16} /><span>Edit Live Pages</span>
-          </button>
         </nav>
       </aside>
 
@@ -86,7 +87,6 @@ export function ContentManager() {
           <CmsCollectionManager section={section === "theme" ? "global" : section} canEdit={permissions.canEdit} canPublish={permissions.canPublish} />
         )}
         {section === "revisions" && <CmsRevisionManager canPublish={permissions.canPublish} />}
-        {section === "live" && <LivePageEditor canEdit={permissions.canEdit} canPublish={permissions.canPublish} />}
       </div>
     </div>
   );

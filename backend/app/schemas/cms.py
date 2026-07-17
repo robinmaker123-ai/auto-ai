@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 ContentStatus = Literal["draft", "published", "scheduled", "archived"]
+CmsAiAction = Literal["rewrite", "shorten", "expand", "grammar", "professional", "translate_hindi", "translate_english", "cta", "seo_heading"]
 BlockType = Literal[
     "page_section", "container", "one_column", "two_columns", "three_columns", "grid", "stack", "tabs", "accordion",
     "heading", "paragraph", "rich_text", "button", "link", "image", "video_link", "icon", "divider", "spacer",
@@ -54,6 +55,13 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CmsAiAssistRequest(StrictModel):
+    action: CmsAiAction
+    text: str = Field(min_length=1, max_length=5000)
+
+    _safe_text = field_validator("text")(classmethod(lambda cls, value: reject_unsafe_markup(value)))
+
+
 class SeoFields(StrictModel):
     title: str = Field(default="", max_length=70)
     description: str = Field(default="", max_length=180)
@@ -78,6 +86,33 @@ class ContentButton(StrictModel):
     style: Literal["primary", "secondary"] = "primary"
 
     _safe_url = field_validator("url")(classmethod(lambda cls, value: validate_safe_url(value)))
+
+
+class ContentElementOverride(StrictModel):
+    text: str | None = Field(default=None, max_length=5000)
+    href: str | None = Field(default=None, max_length=2048)
+    hidden: bool = False
+
+    @field_validator("text")
+    @classmethod
+    def safe_text(cls, value: str | None) -> str | None:
+        return reject_unsafe_markup(value) if value is not None else None
+
+    @field_validator("href")
+    @classmethod
+    def safe_href(cls, value: str | None) -> str | None:
+        return validate_safe_url(value) if value is not None else None
+
+
+def validate_element_override_keys(
+    value: dict[str, ContentElementOverride] | None,
+) -> dict[str, ContentElementOverride] | None:
+    if value is None:
+        return None
+    invalid = [key for key in value if not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,119}", key)]
+    if invalid:
+        raise ValueError("Invalid element override key")
+    return value
 
 
 class ContentBlockInput(StrictModel):
@@ -138,6 +173,7 @@ class ContentPageCreate(StrictModel):
     hero_heading: str = Field(default="", max_length=200)
     hero_description: str = Field(default="", max_length=2000)
     buttons: list[ContentButton] = Field(default_factory=list, max_length=8)
+    element_overrides: dict[str, "ContentElementOverride"] = Field(default_factory=dict, max_length=500)
     seo: SeoFields = Field(default_factory=SeoFields)
 
     @field_validator("slug")
@@ -149,6 +185,9 @@ class ContentPageCreate(StrictModel):
     _safe_heading = field_validator("hero_heading", "hero_description")(
         classmethod(lambda cls, value: reject_unsafe_markup(value))
     )
+    _safe_element_keys = field_validator("element_overrides")(
+        classmethod(lambda cls, value: validate_element_override_keys(value))
+    )
 
 
 class ContentPageUpdate(StrictModel):
@@ -158,6 +197,7 @@ class ContentPageUpdate(StrictModel):
     hero_heading: str | None = Field(default=None, max_length=200)
     hero_description: str | None = Field(default=None, max_length=2000)
     buttons: list[ContentButton] | None = Field(default=None, max_length=8)
+    element_overrides: dict[str, "ContentElementOverride"] | None = Field(default=None, max_length=500)
     seo: SeoFields | None = None
 
     @field_validator("slug")
@@ -169,6 +209,10 @@ class ContentPageUpdate(StrictModel):
     @classmethod
     def safe_text(cls, value: str | None) -> str | None:
         return reject_unsafe_markup(value) if value is not None else None
+
+    _safe_element_keys = field_validator("element_overrides")(
+        classmethod(lambda cls, value: validate_element_override_keys(value))
+    )
 
 
 class PublishRequest(StrictModel):

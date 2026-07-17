@@ -329,6 +329,7 @@ def page_snapshot(page: ContentPage) -> dict[str, Any]:
         "hero_heading": page.hero_heading,
         "hero_description": page.hero_description,
         "buttons": deepcopy(page.buttons or []),
+        "element_overrides": deepcopy(page.element_overrides or {}),
         "seo": deepcopy(page.seo or {}),
         "blocks": [
             {

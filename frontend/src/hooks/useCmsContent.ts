@@ -16,9 +16,10 @@ function writeCache<T>(key: string, value: T) {
   try { localStorage.setItem(`auto-ai-published-content:${key}`, JSON.stringify(value)); } catch { /* Storage may be unavailable. */ }
 }
 
-function usePublishedResource<T>(key: string, path: string, initial: T | null = null) {
+function usePublishedResource<T>(key: string, path: string, initial: T | null = null, enabled = true) {
   const [value, setValue] = useState<T | null>(() => readCache<T>(key) ?? initial);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     const separator = path.includes("?") ? "&" : "?";
     const freshPath = `${path}${separator}_=${Date.now()}`;
@@ -32,12 +33,12 @@ function usePublishedResource<T>(key: string, path: string, initial: T | null = 
         // Cached or source-code fallback remains visible when CMS is unavailable.
       });
     return () => { active = false; };
-  }, [key, path]);
+  }, [enabled, key, path]);
   return value;
 }
 
-export function usePublishedPage(slug: string) {
-  return usePublishedResource<CmsPage>(`page:${slug}`, `/content/public/pages/${slug}`);
+export function usePublishedPage(slug: string, enabled = true) {
+  return usePublishedResource<CmsPage>(`page:${slug}`, `/content/public/pages/${slug}`, null, enabled);
 }
 
 export function usePublishedGlobals() {

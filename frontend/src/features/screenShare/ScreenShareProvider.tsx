@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import type { PublicCallUser } from "../calls/types";
 import { screenShareApi, ScreenShareSignaling } from "./screenShareApi";
@@ -120,6 +121,8 @@ function storeGuestAccessToken(token: string, expiresIn: number) {
 
 export function ScreenShareProvider({ children }: { children: ReactNode }) {
   const { token, user } = useAuth();
+  const { pathname } = useLocation();
+  const isLiveEditorRoute = pathname.startsWith("/admin/live-pages/");
   const [uiState, setUiState] = useState<ScreenShareUiState>("idle");
   const [role, setRole] = useState<ScreenShareRole | null>(null);
   const [session, setSession] = useState<ScreenShareSession | null>(null);
@@ -409,7 +412,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
   eventHandlerRef.current = handleSignalEvent;
 
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !user || isLiveEditorRoute) return;
     accessTokenRef.current = token;
     void signaling.connect(token);
     return () => {
@@ -417,7 +420,7 @@ export function ScreenShareProvider({ children }: { children: ReactNode }) {
       if (accessTokenRef.current === token) accessTokenRef.current = null;
       reset("idle");
     };
-  }, [reset, signaling, token, user]);
+  }, [isLiveEditorRoute, reset, signaling, token, user]);
 
   useEffect(() => () => signaling.close(), [signaling]);
 

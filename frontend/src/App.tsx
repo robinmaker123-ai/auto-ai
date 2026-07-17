@@ -139,15 +139,15 @@ export default function App() {
         <AppSettingsProvider>
           <AuthProvider>
             <ShellProvider>
-              <ScreenShareProvider>
-                <BrowserRouter>
+              <BrowserRouter>
+                <ScreenShareProvider>
                   <SeoManager />
                   <AnnouncementBanner />
                   <StartupRecoveryMarker />
                   <AppRoutes />
                   <ScreenShareOverlay />
-                </BrowserRouter>
-              </ScreenShareProvider>
+                </ScreenShareProvider>
+              </BrowserRouter>
             </ShellProvider>
           </AuthProvider>
         </AppSettingsProvider>

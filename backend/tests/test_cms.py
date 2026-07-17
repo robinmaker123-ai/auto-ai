@@ -10,6 +10,7 @@ from starlette.datastructures import Headers, UploadFile
 
 from app.api.deps import get_current_cms_publisher
 from app.api.routes.cms import (
+    cms_ai_assist,
     preview_page,
     public_page,
     publish_page_endpoint,
@@ -23,8 +24,9 @@ from app.db.base import Base
 from app.models.cms import ContentPage, ContentRevision, GlobalContent, MediaAsset, UiTextEntry
 from app.models.user import User
 from app.main import app
-from app.schemas.cms import ContentBlockInput, ContentPageUpdate, PublishRequest, RestoreRevisionRequest
+from app.schemas.cms import CmsAiAssistRequest, ContentBlockInput, ContentPageUpdate, PublishRequest, RestoreRevisionRequest
 from app.services.cms_service import ensure_cms_defaults, publish_due
+from app.services.groq_service import groq_service
 
 
 @pytest.fixture()
@@ -74,11 +76,16 @@ def test_draft_preview_publish_and_cached_public_fallback(db: Session) -> None:
     original = page.hero_heading
     updated = update_page(
         page.id,
-        ContentPageUpdate(expected_version=page.version, hero_heading="Published CMS Hero"),
+        ContentPageUpdate(
+            expected_version=page.version,
+            hero_heading="Published CMS Hero",
+            element_overrides={"footer.description": {"text": "Editable footer", "hidden": False}},
+        ),
         admin,
         db,
     )
     assert preview_page(page.id, admin, db)["preview"]["hero_heading"] == "Published CMS Hero"
+    assert preview_page(page.id, admin, db)["preview"]["element_overrides"]["footer.description"]["text"] == "Editable footer"
     with pytest.raises(HTTPException):
         public_page("home", db)
 
@@ -89,6 +96,7 @@ def test_draft_preview_publish_and_cached_public_fallback(db: Session) -> None:
         db,
     )
     assert public_page("home", db)["hero_heading"] == "Published CMS Hero"
+    assert public_page("home", db)["element_overrides"]["footer.description"]["text"] == "Editable footer"
     draft = update_page(
         page.id,
         ContentPageUpdate(expected_version=published["version"], hero_heading="Unpublished Draft Hero"),
@@ -119,11 +127,23 @@ def test_content_editor_cannot_publish_and_unsafe_content_is_rejected(db: Sessio
         ContentBlockInput(block_type="rich_text", content={"text": '<script>alert("x")</script>'})
     with pytest.raises(ValueError):
         ContentBlockInput(block_type="button", content={"url": "javascript:alert(1)"})
+    with pytest.raises(ValueError):
+        ContentPageUpdate(expected_version=1, element_overrides={"footer.brand": {"href": "javascript:alert(1)"}})
 
 
 def test_unauthenticated_admin_cms_request_returns_401() -> None:
     response = TestClient(app).get("/api/v1/admin/cms/pages")
     assert response.status_code == 401
+
+
+def test_cms_ai_assist_returns_suggestion_without_mutating_draft(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_cms_defaults(db)
+    admin = user(db, "ai-content-admin", "content_admin")
+    before = home(db).hero_heading
+    monkeypatch.setattr(groq_service, "complete", lambda *args, **kwargs: ("A clearer hero heading", {"total_tokens": 8}, "test-model"))
+    result = cms_ai_assist(CmsAiAssistRequest(action="rewrite", text=before), admin, db)
+    assert result == {"suggestion": "A clearer hero heading", "model": "test-model"}
+    assert home(db).hero_heading == before
 
 
 def test_revision_restore_creates_new_history_entry(db: Session) -> None:

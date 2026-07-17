@@ -1,5 +1,5 @@
 import { apiFetch } from "../../../api/client";
-import type { CmsAnnouncement, CmsAudit, CmsBlockType, CmsFaq, CmsMedia, CmsPage, CmsPageResult, CmsRevision, CmsTextEntry } from "./types";
+import type { CmsAiAction, CmsAiSuggestion, CmsAnnouncement, CmsAudit, CmsBlockType, CmsFaq, CmsMedia, CmsPage, CmsPageResult, CmsRevision, CmsTextEntry } from "./types";
 import { defaultBlockContent } from "./cmsBlockLibrary";
 
 const root = "/admin/cms";
@@ -11,6 +11,9 @@ function pageKeyFromSlug(slug: string) {
 
 export const cmsApi = {
   summary: (token: string) => apiFetch<Record<string, number>>(`${root}/summary`, { token, operation: "cms.summary" }),
+  aiAssist: (token: string, action: CmsAiAction, text: string) => apiFetch<CmsAiSuggestion>(`${root}/ai-assist`, {
+    method: "POST", token, operation: "cms.ai-assist", body: JSON.stringify({ action, text })
+  }),
   pages: (token: string, search = "", status = "") => apiFetch<CmsPageResult<CmsPage>>(`${root}/pages?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`, { token, operation: "cms.pages" }),
   createPage: (token: string, title: string, slug: string) => apiFetch<CmsPage>(`${root}/pages`, {
     method: "POST", token, operation: "cms.page.create",
@@ -39,7 +42,7 @@ export const cmsApi = {
     body: JSON.stringify({
       expected_version: page.version, title: page.title, slug: page.slug,
       hero_heading: page.hero_heading, hero_description: page.hero_description,
-      buttons: page.buttons, seo: page.seo
+      buttons: page.buttons, element_overrides: page.element_overrides, seo: page.seo
     })
   }),
   addBlock: (token: string, page: CmsPage, blockType: CmsBlockType) => apiFetch<CmsPage>(`${root}/pages/${page.id}/blocks?expected_version=${page.version}`, {

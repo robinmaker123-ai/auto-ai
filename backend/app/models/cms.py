@@ -23,6 +23,7 @@ class ContentPage(Base):
     hero_heading: Mapped[str] = mapped_column(String(200), default="", nullable=False)
     hero_description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     buttons: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    element_overrides: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     seo: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     published_snapshot: Mapped[dict] = mapped_column(JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

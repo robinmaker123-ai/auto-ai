@@ -54,7 +54,7 @@ const sections: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
   { id: "mobile", label: "Mobile App", icon: <Smartphone size={15} /> },
   { id: "payments", label: "Payments", icon: <Wallet size={15} /> },
   { id: "website-builder", label: "Website Builder", icon: <BookOpen size={15} /> },
-  { id: "live-pages", label: "Edit Live Pages", icon: <BookOpen size={15} /> },
+  { id: "live-pages", label: "Edit Live Website", icon: <BookOpen size={15} /> },
   { id: "settings", label: "Settings", icon: <Settings size={15} /> }
 ];
 
@@ -261,9 +261,10 @@ export function AdminDashboard() {
   const isFullAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isAdmin = isFullAdmin || user?.role === "content_admin" || user?.role === "content_editor" || user?.role === "content_viewer";
   const isSuperAdmin = user?.role === "super_admin";
+  const isLiveEditorRoute = location.pathname.startsWith("/admin/live-pages");
 
   const loadAdminData = useCallback(async () => {
-    if (!token || !isFullAdmin) {
+    if (!token || !isFullAdmin || isLiveEditorRoute) {
       setLoading(false);
       return;
     }
@@ -298,7 +299,7 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [isFullAdmin, token]);
+  }, [isFullAdmin, isLiveEditorRoute, token]);
 
   useEffect(() => {
     void loadAdminData();
@@ -875,6 +876,10 @@ export function AdminDashboard() {
 
   if (!isAdmin) {
     return <div className="admin-dashboard-page min-h-0 flex-1 overflow-y-auto p-6 text-sm text-slate-300">Admin access required.</div>;
+  }
+
+  if (location.pathname.startsWith("/admin/live-pages")) {
+    return <ContentManager />;
   }
 
   return (

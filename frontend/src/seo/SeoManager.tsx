@@ -137,6 +137,7 @@ export function SeoManager() {
 
     applyStructuredData();
 
+    if (location.pathname.startsWith("/admin") || location.pathname.startsWith("/chat") || location.pathname.startsWith("/settings")) return;
     const cmsSlug = location.pathname === "/" ? "home" : location.pathname.replace(/^\/+|\/+$/g, "");
     if (!cmsSlug) return;
     let active = true;

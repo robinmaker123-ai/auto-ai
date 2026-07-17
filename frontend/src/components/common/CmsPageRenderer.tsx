@@ -1,5 +1,5 @@
 import { Download, ExternalLink } from "lucide-react";
-import type { FocusEvent, FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { resolveApiAssetUrl } from "../../api/client";
 import { labelCms, lines, namedLines, textValue, type CmsDevice } from "../admin/cms/cmsBlockLibrary";
@@ -20,71 +20,84 @@ type RendererProps = {
 
 function editableProps(props: RendererProps, block: CmsBlock, key: string) {
   if (!props.editMode) return {};
-  const commit = (target: HTMLElement) => {
-    const value = target.textContent ?? "";
-    if (block.id === "hero-heading") props.onPageFieldChange?.("hero_heading", value);
-    else if (block.id === "hero-description") props.onPageFieldChange?.("hero_description", value);
-    else props.onInlineChange?.(block.id, key, value);
-  };
   return {
-    contentEditable: true,
-    suppressContentEditableWarning: true,
     "data-cms-editable": "text",
-    onInput: (event: FormEvent<HTMLElement>) => commit(event.currentTarget),
-    onBlur: (event: FocusEvent<HTMLElement>) => commit(event.currentTarget),
-    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
-      if (event.key === "Escape") event.currentTarget.blur();
-      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) event.currentTarget.blur();
-    }
+    "data-cms-block-id": block.id,
+    "data-cms-block-type": block.block_type,
+    "data-cms-field": key,
+    "data-cms-global": "false",
+    "data-cms-locked": String(Boolean(block.content.editor_locked)),
+    "data-cms-label": key.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
   };
 }
 
 function Shell({ block, props, children }: { block: CmsBlock; props: RendererProps; children: ReactNode }) {
-  if (!block.is_visible && !props.editMode) return null;
+  const breakpointVisible = block.content[`${props.device ?? "desktop"}_visible`] !== false;
+  if ((!block.is_visible || !breakpointVisible) && !props.editMode) return null;
+  const locked = Boolean(block.content.editor_locked);
+  const protectedBlock = ["form", "submit_button"].includes(block.block_type);
+  const width = [25, 33, 50, 67, 75, 100].includes(Number(block.content.width)) ? Number(block.content.width) : 100;
+  const style = width < 100 ? { width: `${width}%` } as CSSProperties : undefined;
+  const tokenValues: Record<string, string[]> = {
+    text_color: ["default", "muted", "primary", "accent"], background: ["default", "muted", "accent"],
+    radius: ["none", "small", "medium", "large"], shadow: ["none", "soft", "elevated"],
+    padding: ["compact", "normal", "large"], margin: ["none", "small", "normal", "large"], gap: ["small", "normal", "large"]
+  };
+  const styleClasses = Object.entries(tokenValues).flatMap(([key, allowed]) => {
+    const value = String(block.content[key] ?? "");
+    return allowed.includes(value) ? [`cms-style-${key.replace("_", "-")}-${value}`] : [];
+  });
+  const variant = String(block.content.variant ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const editorMetadata = props.editMode ? {
+    "data-cms-block-id": block.id,
+    "data-cms-block-type": block.block_type,
+    "data-cms-field": "",
+    "data-cms-editable": "container",
+    "data-cms-global": String(false),
+    "data-cms-locked": String(locked || protectedBlock),
+    "data-cms-protected": String(protectedBlock),
+    "data-cms-label": labelCms(block.block_type),
+    draggable: !locked && !protectedBlock
+  } : {};
   return (
     <div
       className={[
         "cms-render-block",
+        ...styleClasses,
+        variant ? `cms-variant-${variant}` : "",
         props.editMode ? "cms-render-editable" : "",
         props.selectedBlockId === block.id ? "cms-render-selected" : "",
-        !block.is_visible ? "cms-render-hidden" : ""
+        !block.is_visible || !breakpointVisible ? "cms-render-hidden" : ""
       ].filter(Boolean).join(" ")}
-      data-cms-block-id={block.id}
-      data-cms-block-type={block.block_type}
-      data-block-id={block.id}
-      data-block-type={block.block_type}
-      onClick={(event) => {
-        if (!props.editMode) return;
-        event.preventDefault();
-        event.stopPropagation();
-        props.onSelect?.(block.id);
-      }}
+      style={style}
+      {...editorMetadata}
     >
       {children}
     </div>
   );
 }
 
-function SafeLink({ block, className, children, props }: { block: CmsBlock; className: string; children: ReactNode; props: RendererProps }) {
+function SafeLink({ block, className, children, props, textField = "label" }: { block: CmsBlock; className: string; children: ReactNode; props: RendererProps; textField?: string }) {
   const url = textValue(block, "url", "href", "target_url");
-  if (!url) return <span className={className}>{children}</span>;
-  if (props.editMode && !props.previewMode) return <button className={className} type="button">{children}</button>;
-  if (url.startsWith("/") || url.startsWith("#")) return <Link className={className} to={url}>{children}</Link>;
-  return <a className={className} href={url} rel="noreferrer" target={String(block.content.target) === "new" ? "_blank" : undefined}>{children}</a>;
+  const metadata = editableProps(props, block, textField);
+  if (!url) return <span className={className} {...metadata}>{children}</span>;
+  if (props.editMode && !props.previewMode) return <button className={className} {...metadata} type="button">{children}</button>;
+  if (url.startsWith("/") || url.startsWith("#")) return <Link className={className} {...metadata} to={url}>{children}</Link>;
+  return <a className={className} {...metadata} href={url} rel="noreferrer" target={String(block.content.target) === "new" ? "_blank" : undefined}>{children}</a>;
 }
 
 export function CmsPageRenderer(props: RendererProps) {
   const visible = props.blocks ?? [];
   if (props.page && !props.block) {
     return (
-      <article className={`cms-render-page cms-render-${props.device ?? "desktop"}`} onClick={() => props.editMode && props.onSelect?.(null)}>
+      <article className={`cms-render-page cms-render-${props.device ?? "desktop"}`}>
         <section className="cms-render-hero">
-          <h1 {...editableProps(props, { id: "hero-heading", block_type: "heading", content: {}, position: -2, is_visible: true }, "hero_heading")}>{props.page.hero_heading}</h1>
-          <p {...editableProps(props, { id: "hero-description", block_type: "paragraph", content: {}, position: -1, is_visible: true }, "hero_description")}>{props.page.hero_description}</p>
+          <h1 {...editableProps(props, { id: "hero_heading", block_type: "heading", content: {}, position: -2, is_visible: true }, "hero_heading")}>{props.page.hero_heading}</h1>
+          <p {...editableProps(props, { id: "hero_description", block_type: "paragraph", content: {}, position: -1, is_visible: true }, "hero_description")}>{props.page.hero_description}</p>
           <div className="cms-render-actions">
             {props.page.buttons.map((button, index) => (
               props.editMode && !props.previewMode ? (
-                <button className={button.style === "secondary" ? "btn-secondary" : "btn-primary"} key={`${button.label}-${index}`} type="button">{button.label}</button>
+                <button className={button.style === "secondary" ? "btn-secondary" : "btn-primary"} key={`${button.label}-${index}`} type="button" {...editableProps(props, { id: `page-button-${index}`, block_type: "button", content: {}, position: -1, is_visible: true }, `buttons.${index}.label`)}>{button.label}</button>
               ) : (
                 <Link className={button.style === "secondary" ? "btn-secondary" : "btn-primary"} key={`${button.label}-${index}`} to={button.url}>{button.label}</Link>
               )
@@ -108,7 +121,7 @@ export function CmsPageRenderer(props: RendererProps) {
   let content: ReactNode;
   switch (block.block_type) {
     case "hero_section":
-      content = <section className="cms-render-section cms-render-hero-block"><h2 {...editableProps(props, block, "heading")}>{textValue(block, "heading")}</h2><p {...editableProps(props, block, "description")}>{textValue(block, "description")}</p><SafeLink block={block} className="btn-primary w-fit" props={props}>{textValue(block, "button_text", "label") || "Open"}</SafeLink></section>;
+      content = <section className="cms-render-section cms-render-hero-block"><h2 {...editableProps(props, block, "heading")}>{textValue(block, "heading")}</h2><p {...editableProps(props, block, "description")}>{textValue(block, "description")}</p><SafeLink block={block} className="btn-primary w-fit" props={props} textField="button_text">{textValue(block, "button_text", "label") || "Open"}</SafeLink></section>;
       break;
     case "page_section":
     case "container":
@@ -123,7 +136,7 @@ export function CmsPageRenderer(props: RendererProps) {
       break;
     case "button":
     case "download_button":
-      content = <SafeLink block={block} className={String(block.content.style) === "secondary" ? "btn-secondary w-fit" : "btn-primary w-fit"} props={props}>{block.block_type === "download_button" && <Download size={15} />} {title || "Open"}</SafeLink>;
+      content = <SafeLink block={block} className={String(block.content.style) === "secondary" || String(block.content.variant) === "Outlined" ? "btn-secondary w-fit" : "btn-primary w-fit"} props={props}>{block.block_type === "download_button" && <Download size={15} />} {title || "Open"}</SafeLink>;
       break;
     case "link":
     case "video_link":
@@ -169,7 +182,7 @@ export function CmsPageRenderer(props: RendererProps) {
     case "app_download":
     case "contact_section":
     case "announcement_banner":
-      content = <section className="cms-render-section cms-render-cta"><h2 {...editableProps(props, block, "heading")}>{title}</h2><p {...editableProps(props, block, "description")}>{body || textValue(block, "email")}</p><SafeLink block={block} className="btn-primary w-fit" props={props}>{textValue(block, "button_text", "action_text") || "Open"}</SafeLink></section>;
+      content = <section className="cms-render-section cms-render-cta"><h2 {...editableProps(props, block, "heading")}>{title}</h2><p {...editableProps(props, block, "description")}>{body || textValue(block, "email")}</p><SafeLink block={block} className="btn-primary w-fit" props={props} textField="button_text">{textValue(block, "button_text", "action_text") || "Open"}</SafeLink></section>;
       break;
     case "two_columns":
       content = <div className="cms-render-columns cms-render-columns-2"><p {...editableProps(props, block, "left")}>{textValue(block, "left")}</p><p {...editableProps(props, block, "right")}>{textValue(block, "right")}</p></div>;
