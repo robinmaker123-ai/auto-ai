@@ -18,6 +18,7 @@ class FakeElement {
   rectBottom = 100;
   scrollHeight = 100;
   clientHeight = 100;
+  overflowY = "visible";
   offsetWidthReads = 0;
 
   get offsetWidth() { this.offsetWidthReads += 1; return 100; }
@@ -69,7 +70,7 @@ class FakeMutationObserver {
   disconnect() { this.disconnected = true; }
 }
 
-function installBrowserGlobals({ reducedMotion = false, editorDisabled = false } = {}) {
+function installBrowserGlobals({ reducedMotion = false, editorDisabled = false, width = 1280 } = {}) {
   const windowListeners = new Map<string, EventListener>();
   const mediaListeners = new Set<(event: MediaQueryListEvent) => void>();
   const mediaQuery = {
@@ -80,9 +81,10 @@ function installBrowserGlobals({ reducedMotion = false, editorDisabled = false }
   const browserWindow = {
     IntersectionObserver: FakeIntersectionObserver,
     MutationObserver: FakeMutationObserver,
-    innerWidth: 1280,
+    innerWidth: width,
+    innerHeight: 800,
     matchMedia: () => mediaQuery,
-    getComputedStyle: (element: FakeElement) => ({ overflowY: element.scrollHeight > element.clientHeight ? "auto" : "visible" }),
+    getComputedStyle: (element: FakeElement) => ({ overflowY: element.overflowY }),
     setTimeout: globalThis.setTimeout,
     clearTimeout: globalThis.clearTimeout,
     addEventListener: (type: string, listener: EventListener) => windowListeners.set(type, listener),
@@ -107,6 +109,7 @@ function createScope() {
   const scrollContainer = new FakeElement();
   scrollContainer.scrollHeight = 2000;
   scrollContainer.clientHeight = 800;
+  scrollContainer.overflowY = "auto";
   const root = new FakeElement();
   root.parentElement = scrollContainer;
   const target = new FakeElement();
@@ -147,6 +150,74 @@ describe("setupKineticReveal", () => {
     expect(observer.unobserveCount).toBe(0);
     expect(observer.observed.size).toBe(1);
     cleanup?.();
+  });
+
+  it("uses mobile-compatible observer settings without disabling reveal", () => {
+    installBrowserGlobals({ width: 390 });
+    const { root, scrollContainer } = createScope();
+    const cleanup = setupKineticReveal(root as unknown as HTMLElement);
+    const observer = FakeIntersectionObserver.instances[0];
+
+    expect(root.classList.contains("kinetic-motion-ready")).toBe(true);
+    expect(root.classList.contains("kinetic-motion-simple")).toBe(true);
+    expect(observer.options).toMatchObject({ threshold: 0.07, rootMargin: "0px 0px -4% 0px" });
+    expect(observer.options?.root).toBe(scrollContainer);
+    cleanup?.();
+  });
+
+  it("uses the document observer root when an ancestor only clips overflow", () => {
+    installBrowserGlobals();
+    const { root } = createScope();
+    const clippedAncestor = new FakeElement();
+    clippedAncestor.scrollHeight = 2000;
+    clippedAncestor.clientHeight = 800;
+    clippedAncestor.overflowY = "hidden";
+    root.parentElement = clippedAncestor;
+
+    const cleanup = setupKineticReveal(root as unknown as HTMLElement);
+
+    expect(FakeIntersectionObserver.instances[0].options?.root).toBeNull();
+    cleanup?.();
+  });
+
+  it("reveals visible targets when a nested scroll source changes after observer setup", () => {
+    vi.useFakeTimers();
+    installBrowserGlobals();
+    const { root, target } = createScope();
+    const nestedScroller = new FakeElement();
+    nestedScroller.overflowY = "hidden";
+    root.parentElement = nestedScroller;
+    target.rectTop = 900;
+    target.rectBottom = 980;
+
+    const cleanup = setupKineticReveal(root as unknown as HTMLElement);
+    target.rectTop = 20;
+    target.rectBottom = 70;
+    expect(nestedScroller.listeners.get("scroll")?.size).toBe(1);
+    nestedScroller.dispatch("scroll");
+    vi.advanceTimersByTime(50);
+
+    expect(target.classList.contains("is-revealed")).toBe(true);
+    cleanup?.();
+    vi.useRealTimers();
+  });
+
+  it("rechecks after scroll settles so late layout shifts cannot leave text hidden", () => {
+    vi.useFakeTimers();
+    installBrowserGlobals();
+    const { root, target, scrollContainer } = createScope();
+    target.rectTop = 900;
+    target.rectBottom = 980;
+
+    const cleanup = setupKineticReveal(root as unknown as HTMLElement);
+    scrollContainer.dispatch("scroll");
+    target.rectTop = 20;
+    target.rectBottom = 70;
+    vi.advanceTimersByTime(900);
+
+    expect(target.classList.contains("is-revealed")).toBe(true);
+    cleanup?.();
+    vi.useRealTimers();
   });
 
   it("reveals skipped targets at scrollend after a fast scroll", () => {

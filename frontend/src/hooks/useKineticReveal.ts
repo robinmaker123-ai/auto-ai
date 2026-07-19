@@ -29,10 +29,9 @@ function findScrollContainer(root: HTMLElement): HTMLElement | Document {
   try {
     let candidate = root.parentElement;
     while (candidate) {
-      if (candidate.id === "root") return candidate;
       const overflowY = window.getComputedStyle(candidate).overflowY;
-      const scrollableOverflow = overflowY === "auto" || overflowY === "scroll" || overflowY === "hidden";
-      if (scrollableOverflow && candidate.scrollHeight > candidate.clientHeight) return candidate;
+      const scrollableOverflow = overflowY === "auto" || overflowY === "scroll";
+      if (scrollableOverflow && candidate.scrollHeight > candidate.clientHeight + 1) return candidate;
       candidate = candidate.parentElement;
     }
   } catch {
@@ -47,11 +46,19 @@ function scrollBounds(target: HTMLElement | Document) {
   return { top: bounds.top, bottom: bounds.bottom };
 }
 
+function scrollEventTargets(root: HTMLElement, primary: HTMLElement | Document) {
+  const targets = new Set<EventTarget>([primary, document, window]);
+  let candidate = root.parentElement;
+  while (candidate) {
+    targets.add(candidate);
+    candidate = candidate.parentElement;
+  }
+  return [...targets];
+}
+
 export function setupKineticReveal(root: HTMLElement, { disabled = false }: { disabled?: boolean } = {}) {
   const motionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  const localMotionPreview = import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(window.location?.hostname ?? "");
-  if (localMotionPreview) document.documentElement?.setAttribute("data-auto-ai-force-motion", "true");
-  const reducedMotion = (motionQuery?.matches ?? false) && !localMotionPreview;
+  const reducedMotion = motionQuery?.matches ?? false;
   const supported = "IntersectionObserver" in window && "MutationObserver" in window;
   if (disabled || reducedMotion || !supported || isBackForwardRestore()) {
     root.classList.remove("kinetic-motion-ready", "kinetic-motion-simple");
@@ -63,6 +70,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   const visibleTargets = new Set<HTMLElement>();
   const completionTimers = new Map<HTMLElement, number>();
   const scrollContainer = findScrollContainer(root);
+  const scrollTargets = scrollEventTargets(root, scrollContainer);
   const prismPortal = (() => {
     if (typeof document.createElement !== "function") return null;
     const portal = document.createElement("div");
@@ -80,6 +88,9 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   let mutationObserver: MutationObserver | null = null;
   let observer: IntersectionObserver | null = null;
   let scrollFallbackTimer: number | undefined;
+  let scrollSettleTimer: number | undefined;
+  const observerThreshold = window.innerWidth <= 640 ? 0.07 : 0.12;
+  const observerRootMargin = window.innerWidth <= 640 ? "0px 0px -4% 0px" : "0px 0px -2% 0px";
 
   const clearCompletionTimer = (element: HTMLElement) => {
     const timer = completionTimers.get(element);
@@ -158,11 +169,18 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   };
 
   const handleScroll = () => {
+    revealVisibleTargets();
     if (scrollFallbackTimer !== undefined) return;
     scrollFallbackTimer = window.setTimeout(() => {
       scrollFallbackTimer = undefined;
       revealVisibleTargets();
     }, 48);
+    if (scrollSettleTimer !== undefined) window.clearTimeout(scrollSettleTimer);
+    scrollSettleTimer = window.setTimeout(() => {
+      scrollSettleTimer = undefined;
+      revealVisibleTargets();
+      revealPassedTargets();
+    }, 900);
   };
 
   try {
@@ -183,8 +201,8 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
         finishReveal(element, true, true);
       });
     }, {
-      threshold: 0.12,
-      rootMargin: "0px 0px -2% 0px",
+      threshold: observerThreshold,
+      rootMargin: observerRootMargin,
       root: scrollContainer instanceof HTMLElement ? scrollContainer : null
     });
 
@@ -233,23 +251,48 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   const handleMotionChange = (event: MediaQueryListEvent) => {
     if (event.matches) failOpen();
   };
+  const handleViewportChange = () => {
+    if (disposed) return;
+    try {
+      observer?.disconnect();
+      observed.forEach((element) => observer?.observe(element));
+      revealPassedTargets();
+      revealVisibleTargets();
+    } catch {
+      failOpen();
+    }
+  };
+  const handleScrollEnd = () => {
+    revealVisibleTargets();
+    revealPassedTargets();
+  };
 
   window.addEventListener("pageshow", handlePageShow);
-  scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
-  scrollContainer.addEventListener("scrollend", revealPassedTargets);
+  window.addEventListener("resize", handleViewportChange, { passive: true });
+  window.addEventListener("orientationchange", handleViewportChange);
+  scrollTargets.forEach((target) => target.addEventListener("scroll", handleScroll, { passive: true }));
+  scrollTargets.forEach((target) => target.addEventListener("scrollend", handleScrollEnd));
   motionQuery?.addEventListener?.("change", handleMotionChange);
+  document.fonts?.ready.then(() => {
+    if (!disposed) handleScrollEnd();
+  }).catch(() => {
+    // Font readiness is an enhancement only; the scroll fallback remains active.
+  });
   handleScroll();
 
   return () => {
     disposed = true;
     window.removeEventListener("pageshow", handlePageShow);
-    scrollContainer.removeEventListener("scroll", handleScroll);
-    scrollContainer.removeEventListener("scrollend", revealPassedTargets);
+    window.removeEventListener("resize", handleViewportChange);
+    window.removeEventListener("orientationchange", handleViewportChange);
+    scrollTargets.forEach((target) => target.removeEventListener("scroll", handleScroll));
+    scrollTargets.forEach((target) => target.removeEventListener("scrollend", handleScrollEnd));
     motionQuery?.removeEventListener?.("change", handleMotionChange);
     observer?.disconnect();
     mutationObserver?.disconnect();
     completionTimers.forEach((timer) => window.clearTimeout(timer));
     if (scrollFallbackTimer !== undefined) window.clearTimeout(scrollFallbackTimer);
+    if (scrollSettleTimer !== undefined) window.clearTimeout(scrollSettleTimer);
     completionTimers.clear();
     visibleTargets.clear();
     prismPortal?.remove();

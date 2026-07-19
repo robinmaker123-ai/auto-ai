@@ -48,9 +48,7 @@ export function useLuxuryCinematic(
     const root = rootRef.current;
     if (!root) return;
 
-    const localMotionPreview = import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(window.location?.hostname ?? "");
-    if (localMotionPreview) document.documentElement.setAttribute("data-auto-ai-force-motion", "true");
-    const reducedMotion = (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false) && !localMotionPreview;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (shouldDisableLuxuryMotion(disabled, reducedMotion)) {
       revealImmediately(root);
       return;
