@@ -131,7 +131,7 @@ def test_demo_chat_releases_quota_when_all_providers_fail(monkeypatch) -> None:
     response = client.post("/api/v1/demo/chat", json=payload())
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "The AI demo could not answer right now. Please try again."
+    assert response.json()["detail"].startswith("The public demo could not answer right now. Please try again. Request ID: ")
     assert db.get(DemoChatSession, "demo-session-0001").messages_used == 0
     db.close()
 

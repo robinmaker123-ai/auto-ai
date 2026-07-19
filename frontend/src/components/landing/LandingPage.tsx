@@ -94,46 +94,22 @@ const previewModes: ReadonlyArray<{ id: PreviewMode; label: string }> = [
   { id: "vision", label: "Vision" }
 ];
 
-const previewContent: Record<PreviewMode, { prompt: string; answer: string }> = {
-  chat: {
-    prompt: "Turn these project notes into a clear launch plan.",
-    answer: "I mapped the decisions, grouped the risks, and prepared a focused sequence your team can start today."
-  },
-  research: {
-    prompt: "Compare the strongest evidence across current sources.",
-    answer: "I checked the claims against multiple sources and separated verified findings from open questions."
-  },
-  vision: {
-    prompt: "Review this interface and identify usability issues.",
-    answer: "The main actions are clear. I found two mobile spacing issues and one low-contrast state to correct."
-  }
-};
-
 function createInitialDemoThreads(): DemoThreads {
   return {
-    chat: [
-      { id: "chat-user-initial", role: "user", text: previewContent.chat.prompt },
-      { id: "chat-ai-initial", role: "assistant", text: previewContent.chat.answer }
-    ],
-    research: [
-      { id: "research-user-initial", role: "user", text: previewContent.research.prompt },
-      { id: "research-ai-initial", role: "assistant", text: previewContent.research.answer }
-    ],
-    vision: [
-      { id: "vision-user-initial", role: "user", text: previewContent.vision.prompt },
-      { id: "vision-ai-initial", role: "assistant", text: previewContent.vision.answer }
-    ]
+    chat: [],
+    research: [],
+    vision: []
   };
 }
 
 function readOrCreateDemoSessionId() {
   try {
-    const stored = localStorage.getItem(DEMO_SESSION_STORAGE_KEY);
+    const stored = sessionStorage.getItem(DEMO_SESSION_STORAGE_KEY);
     if (stored && /^[A-Za-z0-9_-]{16,80}$/.test(stored)) return stored;
     const next = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem(DEMO_SESSION_STORAGE_KEY, next);
+    sessionStorage.setItem(DEMO_SESSION_STORAGE_KEY, next);
     return next;
   } catch {
     return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
@@ -538,8 +514,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
       const result = await api.demoChat({
         session_id: demoSessionId,
         message,
-        mode,
-        history: currentDemoMessages.slice(-10).map((item) => ({ role: item.role, content: item.text }))
+        mode
       });
       const assistantMessage: DemoMessage = {
         id: `${mode}-assistant-${Date.now()}`,
@@ -552,12 +527,8 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
       setDemoProvider(result.provider);
       setDemoModel(result.model);
     } catch (error) {
-      setDemoThreads((current) => ({
-        ...current,
-        [mode]: current[mode].filter((item) => item.id !== userMessage.id)
-      }));
       setDemoDraft(message);
-      setDemoError(error instanceof Error ? error.message : "Bedrock could not answer. Please try again.");
+      setDemoError(error instanceof Error ? error.message : "The public demo could not answer. Please retry.");
     } finally {
       setPendingDemoMode(null);
     }

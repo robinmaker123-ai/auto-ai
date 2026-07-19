@@ -648,11 +648,16 @@ export const api = {
     timeoutMs: 5000
   }),
   demoChatConfig: () => apiFetch<DemoChatConfig>("/demo/chat/config", { operation: "demo.chat.config" }),
-  demoChat: (payload: { session_id: string; message: string; mode: "chat" | "research" | "vision"; history: DemoChatMessage[] }) =>
+  demoChat: (
+    payload: { session_id: string; message: string; mode: "chat" | "research" | "vision" },
+    signal?: AbortSignal
+  ) =>
     apiFetch<DemoChatResult>("/demo/chat", {
       method: "POST",
       operation: "demo.chat",
       timeoutMs: 45000,
+      credentials: "omit",
+      signal,
       body: JSON.stringify(payload)
     }),
   register: (payload: { email: string; name: string; password: string; mobile?: string | null }) =>

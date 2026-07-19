@@ -90,6 +90,11 @@ def ensure_runtime_schema() -> None:
         if "published_snapshot" not in announcement_columns:
             add_column("announcements", "published_snapshot", "json")
 
+    if "demo_chat_sessions" in table_names:
+        demo_columns = {column["name"] for column in inspector.get_columns("demo_chat_sessions")}
+        if "history" not in demo_columns:
+            add_column("demo_chat_sessions", "history", "json")
+
     if "users" in table_names:
         user_columns = {column["name"] for column in inspector.get_columns("users")}
         user_indexes = {index["name"] for index in inspector.get_indexes("users")}
