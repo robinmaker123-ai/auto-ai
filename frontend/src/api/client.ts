@@ -94,7 +94,7 @@ export type DemoChatMessage = {
 
 export type DemoChatResult = {
   content: string;
-  provider: "bedrock";
+  provider: "bedrock" | "groq" | "openai";
   model: string;
   messages_used: number;
   remaining: number;
@@ -102,9 +102,14 @@ export type DemoChatResult = {
 
 export type DemoChatConfig = {
   enabled: boolean;
-  provider: "bedrock";
+  provider: "bedrock" | "groq" | "openai";
   model: string;
   limit: number;
+};
+
+export type ApiHealth = {
+  status: "ok";
+  service: string;
 };
 
 type RequestMeta = {
@@ -638,6 +643,10 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
 }
 
 export const api = {
+  health: () => apiFetch<ApiHealth>("/health", {
+    operation: "system.health",
+    timeoutMs: 5000
+  }),
   demoChatConfig: () => apiFetch<DemoChatConfig>("/demo/chat/config", { operation: "demo.chat.config" }),
   demoChat: (payload: { session_id: string; message: string; mode: "chat" | "research" | "vision"; history: DemoChatMessage[] }) =>
     apiFetch<DemoChatResult>("/demo/chat", {

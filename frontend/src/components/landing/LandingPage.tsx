@@ -242,17 +242,41 @@ function formatDate(value?: string | null) {
 }
 
 function useOnlineStatus() {
-  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [online, setOnline] = useState(true);
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
+    let active = true;
+    let checking = false;
+    const update = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        await api.health();
+        if (active) setOnline(true);
+      } catch {
+        if (active) setOnline(false);
+      } finally {
+        checking = false;
+      }
+    };
+    void update();
+    const intervalId = window.setInterval(() => void update(), 30_000);
+    const retry = () => void update();
+    window.addEventListener("online", retry);
+    window.addEventListener("offline", retry);
     return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", retry);
+      window.removeEventListener("offline", retry);
     };
   }, []);
   return online;
+}
+
+function demoProviderLabel(provider: "bedrock" | "groq" | "openai") {
+  if (provider === "groq") return "Groq";
+  if (provider === "openai") return "OpenAI";
+  return "Bedrock";
 }
 
 export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
@@ -276,6 +300,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
   const [demoTurns, setDemoTurns] = useState(0);
   const [demoLimit, setDemoLimit] = useState(DEMO_CHAT_LIMIT);
   const [demoEnabled, setDemoEnabled] = useState(true);
+  const [demoProvider, setDemoProvider] = useState<"bedrock" | "groq" | "openai">("bedrock");
   const [demoModel, setDemoModel] = useState("Amazon Bedrock");
   const [demoError, setDemoError] = useState<string | null>(null);
   const [demoSessionId] = useState(readOrCreateDemoSessionId);
@@ -416,10 +441,11 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
         if (!active) return;
         setDemoEnabled(config.enabled);
         setDemoLimit(config.limit);
+        setDemoProvider(config.provider);
         setDemoModel(config.model);
       })
       .catch(() => {
-        if (active) setDemoError("Bedrock demo configuration is unavailable.");
+        if (active) setDemoError("AI demo configuration is unavailable.");
       });
     return () => { active = false; };
   }, []);
@@ -523,6 +549,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
       setDemoThreads((current) => ({ ...current, [mode]: [...current[mode], assistantMessage] }));
       setDemoTurns(result.messages_used);
       setDemoLimit(result.messages_used + result.remaining);
+      setDemoProvider(result.provider);
       setDemoModel(result.model);
     } catch (error) {
       setDemoThreads((current) => ({
@@ -563,7 +590,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
             tone={online ? "success" : "offline"}
             icon={online ? <Wifi size={13} /> : <WifiOff size={13} />}
           >
-            <span style={elementStyle("header.status")} {...editableElementProps("header.status", "text", "Connection Status", elementText("header.status", online ? "Online" : "Offline"))}>{elementText("header.status", online ? "Online" : "Offline")}</span>
+            <span style={elementStyle("header.status")}>{online ? "Online" : "Offline"}</span>
           </PrismStatusChip>
           <PrismTooltip label="Quick navigation">
             <PrismIconButton type="button" style={elementStyle("header.quick-navigation")} onClick={() => setCommandOpen(true)} aria-label="Open quick navigation" {...editableElementProps("header.quick-navigation", "button", "Quick Navigation")}>
@@ -651,7 +678,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
               <div className="prism-preview-statuses">
                 <PrismStatusChip tone="active"><span style={elementStyle("preview.remaining")} {...editableElementProps("preview.remaining", "text", "Demo Limit", elementText("preview.remaining", `${demoRemaining} demo chats left`))}>{elementText("preview.remaining", `${demoRemaining} demo chats left`)}</span></PrismStatusChip>
                 <PrismStatusChip className="prism-bedrock-chip" tone="success" icon={<span className="prism-live-dot" />}>
-                  <span style={elementStyle("preview.provider")} {...editableElementProps("preview.provider", "text", "Demo Provider", elementText("preview.provider", "Bedrock"))}>{elementText("preview.provider", "Bedrock")}</span> <span style={elementStyle("preview.model")} {...editableElementProps("preview.model", "text", "Demo Model", elementText("preview.model", demoModel))}>{elementText("preview.model", demoModel)}</span>
+                  <span style={elementStyle("preview.provider")}>{demoProviderLabel(demoProvider)}</span> <span style={elementStyle("preview.model")}>{demoModel}</span>
                 </PrismStatusChip>
               </div>
             </div>
@@ -685,7 +712,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
                     value={demoDraft}
                     maxLength={300}
                     disabled={!demoEnabled || demoRemaining <= 0 || Boolean(pendingDemoMode)}
-                    placeholder={!demoEnabled ? "Bedrock demo unavailable" : demoRemaining > 0 ? "Message the Bedrock demo" : "Demo limit reached"}
+                    placeholder={!demoEnabled ? "AI demo unavailable" : demoRemaining > 0 ? "Message the AI demo" : "Demo limit reached"}
                     onChange={(event) => setDemoDraft(event.target.value)}
                   />
                   <button type="submit" disabled={!demoDraft.trim() || !demoEnabled || demoRemaining <= 0 || Boolean(pendingDemoMode)} aria-label="Send demo message">
@@ -698,8 +725,8 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
                   <span className="facet-one" />
                   <span className="facet-two" />
                 </div>
-                <span style={elementStyle("preview.model-label")} {...editableElementProps("preview.model-label", "text", "Model Label", elementText("preview.model-label", "Bedrock model"))}>{elementText("preview.model-label", "Bedrock model")}</span>
-                <small style={elementStyle("preview.model-name")} {...editableElementProps("preview.model-name", "text", "Model Name", elementText("preview.model-name", demoModel))}>{elementText("preview.model-name", demoModel)}</small>
+                <span style={elementStyle("preview.model-label")}>{demoProviderLabel(demoProvider)} model</span>
+                <small style={elementStyle("preview.model-name")}>{demoModel}</small>
               </div>
             </div>
           </PrismSurface>
@@ -903,7 +930,7 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
         <Link className="prism-brand" to={elementHref("footer.brand", "/")}><span className="prism-brand-icon"><LogoIcon /></span><span style={elementStyle("footer.brand")} {...editableElementProps("footer.brand", "link", "Footer Brand", elementText("footer.brand", "Auto-AI"), elementHref("footer.brand", "/"))}>{elementText("footer.brand", "Auto-AI")}</span></Link>
         <p data-kinetic-reveal={LANDING_KINETIC_MAP.footerText} style={elementStyle("footer.description")} {...editableElementProps("footer.description", "paragraph", "Footer Description", elementText("footer.description", globalContent?.["footer.description"] || "A connected AI workspace for thoughtful, secure, human-feeling work."))}>{elementText("footer.description", globalContent?.["footer.description"] || "A connected AI workspace for thoughtful, secure, human-feeling work.")}</p>
         <PrismStatusChip tone={online ? "success" : "offline"} icon={online ? <Wifi size={13} /> : <WifiOff size={13} />}>
-          <span style={elementStyle("footer.status")} {...editableElementProps("footer.status", "text", "Footer Status", elementText("footer.status", online ? "Connected" : "Offline"))}>{elementText("footer.status", online ? "Connected" : "Offline")}</span>
+          <span style={elementStyle("footer.status")}>{online ? "Connected" : "Offline"}</span>
         </PrismStatusChip>
       </footer>
 

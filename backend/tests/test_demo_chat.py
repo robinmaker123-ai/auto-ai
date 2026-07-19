@@ -40,13 +40,13 @@ def payload(session_id: str = "demo-session-0001", message: str = "Hello") -> di
     }
 
 
-def test_demo_chat_uses_bedrock_without_fallback_and_stores_no_chat(monkeypatch) -> None:
+def test_demo_chat_prefers_bedrock_with_fallback_and_stores_no_chat(monkeypatch) -> None:
     client, db = demo_client()
     calls: list[tuple[list[dict], dict]] = []
 
     def fake_complete(messages, **kwargs):
         calls.append((messages, kwargs))
-        return "Real Bedrock demo answer", {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}, "amazon.nova-lite-v1:0"
+        return "Real Bedrock demo answer", {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}, settings.bedrock_model
 
     monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_ENABLED", True)
     monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_LIMIT", 20)
@@ -58,18 +58,43 @@ def test_demo_chat_uses_bedrock_without_fallback_and_stores_no_chat(monkeypatch)
     assert response.json() == {
         "content": "Real Bedrock demo answer",
         "provider": "bedrock",
-        "model": "amazon.nova-lite-v1:0",
+        "model": settings.bedrock_model,
         "messages_used": 1,
         "remaining": 19,
     }
     assert calls[0][1]["provider"] == "bedrock"
-    assert calls[0][1]["allow_bedrock_fallback"] is False
+    assert calls[0][1]["allow_bedrock_fallback"] is True
     assert calls[0][0][-1] == {"role": "user", "content": "Hello"}
     assert (db.scalar(select(func.count()).select_from(Chat)) or 0) == 0
     usage = db.scalar(select(APIUsage))
     assert usage is not None
     assert usage.provider == "bedrock"
     assert usage.endpoint == "public_demo_chat"
+    db.close()
+
+
+def test_demo_chat_reports_groq_when_bedrock_falls_back(monkeypatch) -> None:
+    client, db = demo_client()
+    monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_ENABLED", True)
+    monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_LIMIT", 20)
+    monkeypatch.setattr(
+        demo_chat.groq_service,
+        "complete",
+        lambda messages, **kwargs: (
+            "Fallback answer",
+            {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+            "openai/gpt-oss-120b",
+        ),
+    )
+
+    response = client.post("/api/v1/demo/chat", json=payload())
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "groq"
+    assert response.json()["model"] == "openai/gpt-oss-120b"
+    usage = db.scalar(select(APIUsage))
+    assert usage is not None
+    assert usage.provider == "groq"
     db.close()
 
 
@@ -94,7 +119,7 @@ def test_demo_chat_enforces_server_side_limit(monkeypatch) -> None:
     db.close()
 
 
-def test_demo_chat_releases_quota_when_bedrock_fails(monkeypatch) -> None:
+def test_demo_chat_releases_quota_when_all_providers_fail(monkeypatch) -> None:
     client, db = demo_client()
     monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_ENABLED", True)
     monkeypatch.setattr(settings, "PUBLIC_DEMO_CHAT_LIMIT", 20)
@@ -106,7 +131,7 @@ def test_demo_chat_releases_quota_when_bedrock_fails(monkeypatch) -> None:
     response = client.post("/api/v1/demo/chat", json=payload())
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "The Bedrock demo could not answer right now. Please try again."
+    assert response.json()["detail"] == "The AI demo could not answer right now. Please try again."
     assert db.get(DemoChatSession, "demo-session-0001").messages_used == 0
     db.close()
 

@@ -586,6 +586,7 @@ class GroqService:
                 detail="Bedrock request failed before fallback.",
             )
 
+        fallback_errors: list[HTTPException] = []
         try:
             return self._complete_groq(
                 messages,
@@ -594,13 +595,27 @@ class GroqService:
                 max_tokens=max_tokens,
                 request_timeout=request_timeout,
             )
-        except HTTPException as groq_error:
-            if last_error:
-                raise HTTPException(
-                    status_code=last_error.status_code,
-                    detail=f"{last_error.detail} Groq fallback also failed: {groq_error.detail}",
-                ) from groq_error
-            raise
+        except HTTPException as exc:
+            fallback_errors.append(exc)
+
+        if settings.OPENAI_API_KEY:
+            try:
+                return self._complete_openai(
+                    messages,
+                    model=settings.OPENAI_MODEL,
+                    max_tokens=max_tokens,
+                    request_timeout=request_timeout,
+                )
+            except HTTPException as exc:
+                fallback_errors.append(exc)
+
+        if last_error:
+            fallback_detail = "; ".join(str(error.detail) for error in fallback_errors)
+            raise HTTPException(
+                status_code=last_error.status_code,
+                detail=f"{last_error.detail} Provider fallback also failed: {fallback_detail}",
+            ) from fallback_errors[-1]
+        raise fallback_errors[-1]
 
     def _stream_openai(
         self,

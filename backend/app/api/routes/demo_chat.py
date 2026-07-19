@@ -18,7 +18,7 @@ router = APIRouter(prefix="/demo", tags=["public-demo"])
 logger = logging.getLogger("auto_ai.public_demo")
 
 
-DEMO_SYSTEM_PROMPT = """You are Auto-AI in a public, text-only website demo powered by Amazon Bedrock.
+DEMO_SYSTEM_PROMPT = """You are Auto-AI in a public, text-only website demo.
 Auto-AI is an AI workspace for contextual chat, voice, vision, files, memory, deep research, multi-model
 routing, secure screen sharing, and audio/video calls. It is not an AutoML model-building product.
 Answer in the user's language and keep the answer useful, direct, and under 100 words. Use standard spaces
@@ -89,6 +89,14 @@ def release_demo_message(db: Session, session_id: str) -> None:
     db.commit()
 
 
+def demo_provider_for_model(model: str) -> str:
+    if model == settings.bedrock_model:
+        return "bedrock"
+    if model == settings.OPENAI_MODEL:
+        return "openai"
+    return "groq"
+
+
 @router.get("/chat/config", response_model=DemoChatConfig)
 def demo_chat_config() -> DemoChatConfig:
     return DemoChatConfig(
@@ -124,14 +132,14 @@ def demo_chat(payload: DemoChatRequest, request: Request, db: Session = Depends(
             temperature=0.45,
             max_tokens=240,
             request_timeout=35,
-            allow_bedrock_fallback=False,
+            allow_bedrock_fallback=True,
         )
     except Exception as exc:
         release_demo_message(db, payload.session_id)
-        logger.warning("Bedrock public demo request failed: %s", type(exc).__name__)
+        logger.warning("Public AI demo request failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The Bedrock demo could not answer right now. Please try again.",
+            detail="The AI demo could not answer right now. Please try again.",
         ) from exc
 
     normalized_content = content.strip()
@@ -139,12 +147,12 @@ def demo_chat(payload: DemoChatRequest, request: Request, db: Session = Depends(
         release_demo_message(db, payload.session_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The Bedrock demo returned an empty answer. Please try again.",
+            detail="The AI demo returned an empty answer. Please try again.",
         )
 
     db.add(APIUsage(
         user_id=None,
-        provider="bedrock",
+        provider=demo_provider_for_model(selected_model),
         model=selected_model,
         endpoint="public_demo_chat",
         input_tokens=int(usage.get("prompt_tokens", 0) or 0),
@@ -156,6 +164,7 @@ def demo_chat(payload: DemoChatRequest, request: Request, db: Session = Depends(
     db.commit()
     return DemoChatResponse(
         content=normalized_content,
+        provider=demo_provider_for_model(selected_model),
         model=selected_model,
         messages_used=record.messages_used,
         remaining=remaining,
