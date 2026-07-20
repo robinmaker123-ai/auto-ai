@@ -186,7 +186,7 @@ describe("setupKineticReveal", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses a one-shot pending to animating to revealed lifecycle", () => {
+  it("replays only after a completed target fully exits the viewport", () => {
     installBrowserGlobals({ visibility: "visible" });
     const { root, target, scrollContainer } = createScope();
     target.rectTop = 900;
@@ -211,11 +211,25 @@ describe("setupKineticReveal", () => {
     target.dispatch("animationend", { animationName: "kinetic-fly-settle" });
     expect(target.getAttribute("data-reveal-state")).toBe("revealed");
     expect(target.classList.contains("is-kinetic-complete")).toBe(true);
-    expect(observer.unobserveCount).toBe(1);
-    expect(observer.observed.size).toBe(0);
+    expect(observer.unobserveCount).toBe(0);
+    expect(observer.observed.size).toBe(1);
 
+    target.rectTop = -20;
+    target.rectBottom = 10;
     observer.trigger(target, false);
     observer.trigger(target, true);
+    expect(target.getAttribute("data-reveal-state")).toBe("revealed");
+
+    target.rectTop = -200;
+    target.rectBottom = -100;
+    observer.trigger(target, false);
+    expect(target.getAttribute("data-reveal-state")).toBe("pending");
+
+    target.rectTop = 20;
+    target.rectBottom = 70;
+    observer.trigger(target, true);
+    expect(target.getAttribute("data-reveal-state")).toBe("animating");
+    target.dispatch("animationend", { animationName: "kinetic-fly-settle" });
     expect(target.getAttribute("data-reveal-state")).toBe("revealed");
     expect(target.offsetWidthReads).toBe(0);
     cleanup?.();
@@ -321,29 +335,36 @@ describe("setupKineticReveal", () => {
     cleanup?.();
   });
 
-  it("reveals skipped targets after a fast scroll", () => {
+  it("rearms skipped targets after a fast scroll and reveals them on return", () => {
     installBrowserGlobals();
     const { root, target, scrollContainer } = createScope();
     target.rectTop = 900;
     target.rectBottom = 980;
     const cleanup = setupKineticReveal(root as unknown as HTMLElement);
-    target.rectTop = -100;
-    target.rectBottom = -20;
+    target.rectTop = -200;
+    target.rectBottom = -100;
 
     scrollContainer.dispatch("scrollend");
 
+    expect(target.getAttribute("data-reveal-state")).toBe("pending");
+    expect(FakeIntersectionObserver.instances[0].observed.size).toBe(1);
+
+    target.rectTop = 20;
+    target.rectBottom = 70;
+    scrollContainer.dispatch("scroll");
     expect(target.getAttribute("data-reveal-state")).toBe("revealed");
-    expect(FakeIntersectionObserver.instances[0].observed.size).toBe(0);
     cleanup?.();
   });
 
-  it("reobserves only unfinished targets after orientation changes", () => {
+  it("reobserves every registered target after orientation changes", () => {
     const browser = installBrowserGlobals();
     const { root, target } = createScope();
     target.rectTop = 900;
     target.rectBottom = 980;
     const cleanup = setupKineticReveal(root as unknown as HTMLElement);
     const observer = FakeIntersectionObserver.instances[0];
+    observer.trigger(target);
+    expect(target.getAttribute("data-reveal-state")).toBe("revealed");
 
     browser.dispatchWindow("orientationchange");
 

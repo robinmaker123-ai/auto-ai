@@ -89,6 +89,11 @@ function scrollEventTargets(root: HTMLElement, primary: HTMLElement | Document) 
   return [...targets];
 }
 
+function isOutsideReplayZone(rect: DOMRect, bounds: { top: number; bottom: number }) {
+  const buffer = Math.max(48, (bounds.bottom - bounds.top) * 0.12);
+  return rect.bottom < bounds.top - buffer || rect.top > bounds.bottom + buffer;
+}
+
 function describeScrollRoot(target: HTMLElement | Document) {
   if (!(target instanceof HTMLElement)) return "document";
   if (target.id) return `#${target.id}`;
@@ -174,7 +179,6 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
 
   const registeredTargets = new Set<HTMLElement>();
   const activeTargets = new Set<HTMLElement>();
-  const intersectedTargets = new Set<HTMLElement>();
   const completionTimers = new Map<HTMLElement, number>();
   const completionHandlers = new Map<HTMLElement, EventListener>();
   const scrollContainer = findScrollContainer(root);
@@ -185,6 +189,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   let failedOpen = false;
   let mutationObserver: MutationObserver | null = null;
   let observer: IntersectionObserver | null = null;
+  let intersectionCount = 0;
   let scrollFallbackTimer: number | undefined;
   let scrollSettleTimer: number | undefined;
 
@@ -193,7 +198,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   const syncDebugCounts = (label: string, patch: Partial<AutoAiMotionDebugState> = {}) => {
     updateDebug(label, {
       observedCount: registeredTargets.size,
-      intersectedCount: intersectedTargets.size,
+      intersectedCount: intersectionCount,
       animatingCount: [...registeredTargets].filter((element) => element.getAttribute(REVEAL_STATE_ATTRIBUTE) === "animating").length,
       revealedCount: [...registeredTargets].filter((element) => element.getAttribute(REVEAL_STATE_ATTRIBUTE) === "revealed").length,
       ...patch
@@ -227,8 +232,15 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     clearCompletion(element);
     activeTargets.delete(element);
     setRevealState(element, "revealed");
-    observer?.unobserve(element);
     syncDebugCounts(error ? "reveal-fallback" : "revealed", error ? { lastError: error } : {});
+  };
+
+  const rearmReveal = (element: HTMLElement, label = "rearmed") => {
+    if (!registeredTargets.has(element) || element.getAttribute(REVEAL_STATE_ATTRIBUTE) !== "revealed") return;
+    clearCompletion(element);
+    activeTargets.add(element);
+    setRevealState(element, "pending");
+    syncDebugCounts(label);
   };
 
   const startReveal = (element: HTMLElement, animate = true) => {
@@ -255,7 +267,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     completionTimers.set(element, window.setTimeout(() => {
       completeReveal(element, splitAssembly ? undefined : `Animation safety timeout for ${variant}`);
     }, splitAssembly ? 1_250 : KINETIC_REVEAL_COMPLETE_MS));
-    syncDebugCounts("animating");
+    syncDebugCounts("animating", { lastError: null });
   };
 
   const failOpen = (error: string) => {
@@ -281,11 +293,28 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     if (failedOpen) return;
     try {
       const bounds = scrollBounds(scrollContainer);
-      activeTargets.forEach((element) => {
-        if (element.getBoundingClientRect().bottom <= bounds.top + 1) completeReveal(element);
+      [...activeTargets].forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.bottom <= bounds.top + 1) {
+          completeReveal(element);
+          if (isOutsideReplayZone(rect, bounds)) rearmReveal(element, "passed-rearmed");
+        }
       });
     } catch (error) {
       failOpen(`Passed-target check failed: ${String(error)}`);
+    }
+  };
+
+  const rearmExitedTargets = () => {
+    if (failedOpen) return;
+    try {
+      const bounds = scrollBounds(scrollContainer);
+      registeredTargets.forEach((element) => {
+        if (element.getAttribute(REVEAL_STATE_ATTRIBUTE) !== "revealed") return;
+        if (isOutsideReplayZone(element.getBoundingClientRect(), bounds)) rearmReveal(element);
+      });
+    } catch (error) {
+      failOpen(`Replay rearm failed: ${String(error)}`);
     }
   };
 
@@ -305,6 +334,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
   };
 
   const handleScroll = () => {
+    rearmExitedTargets();
     revealVisibleTargets();
     if (scrollFallbackTimer === undefined) {
       scrollFallbackTimer = window.setTimeout(() => {
@@ -315,6 +345,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     if (scrollSettleTimer !== undefined) window.clearTimeout(scrollSettleTimer);
     scrollSettleTimer = window.setTimeout(() => {
       scrollSettleTimer = undefined;
+      rearmExitedTargets();
       revealVisibleTargets();
       revealPassedTargets();
     }, 900);
@@ -341,7 +372,6 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     observer?.unobserve(element);
     registeredTargets.delete(element);
     activeTargets.delete(element);
-    intersectedTargets.delete(element);
   };
 
   const unregisterTargets = (node: Node) => {
@@ -368,17 +398,27 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     observer = new IntersectionObserver((entries) => {
       if (disposed || failedOpen) return;
       const boundary = scrollBounds(scrollContainer).top + 1;
+      const bounds = scrollBounds(scrollContainer);
       entries.forEach((entry) => {
         const element = entry.target as HTMLElement;
+        const state = element.getAttribute(REVEAL_STATE_ATTRIBUTE);
+        if (state === "revealed") {
+          if (!entry.isIntersecting && isOutsideReplayZone(entry.boundingClientRect, bounds)) rearmReveal(element);
+          return;
+        }
         if (!activeTargets.has(element)) return;
         if (entry.isIntersecting) {
-          const before = intersectedTargets.size;
-          intersectedTargets.add(element);
-          if (intersectedTargets.size !== before) syncDebugCounts("intersection");
+          if (state === "pending") {
+            intersectionCount += 1;
+            syncDebugCounts("intersection");
+          }
           startReveal(element);
           return;
         }
-        if (entry.boundingClientRect.bottom <= boundary) completeReveal(element);
+        if (entry.boundingClientRect.bottom <= boundary) {
+          completeReveal(element);
+          if (isOutsideReplayZone(entry.boundingClientRect, bounds)) rearmReveal(element, "passed-rearmed");
+        }
       });
     }, {
       threshold: observerThreshold,
@@ -459,7 +499,8 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     if (disposed || failedOpen) return;
     try {
       observer?.disconnect();
-      activeTargets.forEach((element) => observer?.observe(element));
+      registeredTargets.forEach((element) => observer?.observe(element));
+      rearmExitedTargets();
       revealPassedTargets();
       revealVisibleTargets();
     } catch (error) {
@@ -467,6 +508,7 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     }
   };
   const handleScrollEnd = () => {
+    rearmExitedTargets();
     revealVisibleTargets();
     revealPassedTargets();
   };
@@ -500,7 +542,6 @@ export function setupKineticReveal(root: HTMLElement, { disabled = false }: { di
     revealAll(root);
     registeredTargets.clear();
     activeTargets.clear();
-    intersectedTargets.clear();
     prismPortal?.remove();
     root.classList.remove("kinetic-motion-ready", "kinetic-motion-simple");
     updateDebug("unmounted", { mounted: false, readyClass: false, animatingCount: 0 });

@@ -78,7 +78,9 @@ describe("kinetic reveal configuration", () => {
 
   it("loads the kinetic stylesheet exactly once from the landing page", () => {
     const landingPage = readFileSync(new URL("../components/landing/LandingPage.tsx", import.meta.url), "utf8");
+    const globalCss = readFileSync(new URL("../styles/index.css", import.meta.url), "utf8");
     expect(landingPage.match(/styles\/kineticReveal\.css/g)).toHaveLength(1);
+    expect(globalCss).toContain('html[data-auto-ai-motion="reduced"]:not([data-auto-ai-force-motion="true"]) *');
     expect(landingPage).toContain('document.addEventListener("pointerdown", onPointerDown)');
     expect(landingPage).toContain('if (event.key === "Escape") setMobileMenuOpen(false)');
     expect(landingPage).toContain("[location.hash, location.pathname, location.search]");

@@ -6759,7 +6759,7 @@ a.btn-secondary:active {
 
 }
 
-html[data-auto-ai-motion="reduced"] *,
+html[data-auto-ai-motion="reduced"]:not([data-auto-ai-force-motion="true"]) *,
 html[data-auto-ai-visible="false"] * {
   animation-play-state: paused !important;
 }
