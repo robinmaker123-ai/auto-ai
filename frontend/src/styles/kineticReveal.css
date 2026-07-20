@@ -1,4 +1,5 @@
 :where([data-kinetic-reveal]) {
+  --auto-ai-kinetic-css: 1;
   --fly-x: 0px;
   --fly-y: 0px;
   --fly-rotate-x: 0deg;
@@ -25,37 +26,34 @@
 }
 
 [data-kinetic-reveal="sky-drop"] {
-  --fly-y: -170px;
-  --fly-rotate-x: -38deg;
-  --fly-scale: 0.88;
-  --fly-duration: 1100ms;
-  --fly-over-y: 14px;
-  --fly-return-y: -4px;
-  --fly-skew: -4deg;
+  --fly-y: -110px;
+  --fly-rotate-x: -4deg;
+  --fly-scale: 0.96;
+  --fly-duration: 650ms;
+  --fly-over-y: 6px;
+  --fly-return-y: -2px;
   --fly-clip: polygon(0 0, 100% 0, 82% 0, 18% 0);
 }
 
 [data-kinetic-reveal="left-flight"] {
-  --fly-x: -220px;
-  --fly-rotate-y: 28deg;
-  --fly-rotate-z: -4deg;
-  --fly-scale: 0.88;
-  --fly-duration: 1020ms;
-  --fly-over-x: 14px;
-  --fly-return-x: -3px;
-  --fly-skew: -7deg;
+  --fly-x: -110px;
+  --fly-rotate-y: 4deg;
+  --fly-rotate-z: -2deg;
+  --fly-scale: 0.97;
+  --fly-duration: 620ms;
+  --fly-over-x: 6px;
+  --fly-return-x: -2px;
   --fly-clip: polygon(0 0, 0 0, 12% 100%, 0 100%);
 }
 
 [data-kinetic-reveal="right-flight"] {
-  --fly-x: 220px;
-  --fly-rotate-y: -28deg;
-  --fly-rotate-z: 4deg;
-  --fly-scale: 0.88;
-  --fly-duration: 1020ms;
-  --fly-over-x: -14px;
-  --fly-return-x: 3px;
-  --fly-skew: 7deg;
+  --fly-x: 110px;
+  --fly-rotate-y: -4deg;
+  --fly-rotate-z: 2deg;
+  --fly-scale: 0.97;
+  --fly-duration: 620ms;
+  --fly-over-x: -6px;
+  --fly-return-x: 2px;
   --fly-clip: polygon(100% 0, 100% 0, 100% 100%, 88% 100%);
 }
 
@@ -110,13 +108,13 @@
   --fly-skew: -3deg;
 }
 
-.kinetic-motion-ready [data-kinetic-reveal]:not(.is-revealed, [data-kinetic-reveal="split-assembly"]) {
+.kinetic-motion-ready [data-kinetic-reveal][data-reveal-state="pending"]:not([data-kinetic-reveal="split-assembly"]) {
   opacity: 0;
   clip-path: var(--fly-clip);
   transform: perspective(1050px) translate3d(var(--fly-x), var(--fly-y), -140px) rotateX(var(--fly-rotate-x)) rotateY(var(--fly-rotate-y)) rotateZ(var(--fly-rotate-z)) skewX(var(--fly-skew)) scale(var(--fly-scale));
 }
 
-.kinetic-motion-ready [data-kinetic-reveal]:not(.is-kinetic-complete) {
+.kinetic-motion-ready [data-kinetic-reveal]:is([data-reveal-state="pending"], [data-reveal-state="animating"]) {
   will-change: opacity, transform;
 }
 
@@ -129,13 +127,13 @@
   [data-kinetic-reveal="depth-landing"],
   [data-kinetic-reveal="bottom-lift"],
   [data-kinetic-reveal="container-drop"]
-).is-revealed:not(.is-kinetic-complete) {
+)[data-reveal-state="animating"] {
   animation:
     kinetic-fly-settle var(--fly-duration) var(--fly-delay) cubic-bezier(0.16, 0.78, 0.18, 1) both,
     kinetic-text-focus var(--fly-duration) var(--fly-delay) ease-out both;
 }
 
-.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-reveal].is-revealed:not(.is-kinetic-complete) {
+.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-reveal][data-reveal-state="animating"] {
   animation:
     kinetic-fly-settle var(--fly-duration) var(--fly-delay) cubic-bezier(0.16, 0.78, 0.18, 1) both,
     kinetic-text-focus var(--fly-duration) var(--fly-delay) ease-out both,
@@ -159,13 +157,13 @@
   white-space: normal;
 }
 
-.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-echo].is-revealed:not(.is-kinetic-complete)::before {
+.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-echo][data-reveal-state="animating"]::before {
   color: rgba(54, 228, 247, 0.72);
   text-shadow: -8px 0 28px rgba(54, 228, 247, 0.72);
   animation: kinetic-prism-echo-cyan 920ms cubic-bezier(0.16, 0.78, 0.18, 1) both;
 }
 
-.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-echo].is-revealed:not(.is-kinetic-complete)::after {
+.kinetic-motion-ready :is(h1, h2, h3)[data-kinetic-echo][data-reveal-state="animating"]::after {
   color: rgba(255, 78, 184, 0.58);
   text-shadow: 9px 0 30px rgba(139, 124, 255, 0.72);
   animation: kinetic-prism-echo-pink 980ms 35ms cubic-bezier(0.16, 0.78, 0.18, 1) both;
@@ -224,14 +222,14 @@
 .kinetic-motion-ready :is(
   [data-kinetic-reveal="depth-landing"],
   [data-kinetic-reveal="bottom-lift"]
-):not(.is-kinetic-complete) {
+):is([data-reveal-state="pending"], [data-reveal-state="animating"]) {
   transition:
     opacity var(--fly-duration) var(--fly-delay) cubic-bezier(0.2, 0.72, 0.2, 1),
     transform var(--fly-duration) var(--fly-delay) cubic-bezier(0.2, 0.72, 0.2, 1),
     filter var(--fly-duration) var(--fly-delay) cubic-bezier(0.2, 0.72, 0.2, 1);
 }
 
-.kinetic-motion-ready [data-kinetic-reveal="depth-landing"]:not(.is-revealed) {
+.kinetic-motion-ready [data-kinetic-reveal="depth-landing"][data-reveal-state="pending"] {
   filter: blur(1.6px);
 }
 
@@ -244,27 +242,27 @@
   --kinetic-split-x: 46px;
 }
 
-.kinetic-motion-ready [data-kinetic-reveal="split-assembly"]:not(.is-revealed) .kinetic-split-word {
+.kinetic-motion-ready [data-kinetic-reveal="split-assembly"][data-reveal-state="pending"] .kinetic-split-word {
   opacity: 0;
   transform: perspective(700px) translate3d(var(--kinetic-split-x), 20px, 0) rotateY(-12deg) scale(0.96);
 }
 
-.kinetic-motion-ready [data-kinetic-reveal="split-assembly"].is-revealed:not(.is-kinetic-complete) .kinetic-split-word {
+.kinetic-motion-ready [data-kinetic-reveal="split-assembly"][data-reveal-state="animating"] .kinetic-split-word {
   animation: kinetic-split-assemble 650ms min(calc(var(--kinetic-word-index) * 65ms), 455ms) cubic-bezier(0.16, 0.78, 0.18, 1) both;
 }
 
-.kinetic-motion-ready [data-kinetic-group]:not(.is-revealed) [data-kinetic-inner] {
+.kinetic-motion-ready [data-kinetic-group][data-reveal-state="pending"] [data-kinetic-inner] {
   opacity: 0;
   transform: translate3d(0, 18px, 0) scale(0.98);
 }
 
-.kinetic-motion-ready [data-kinetic-group].is-revealed:not(.is-kinetic-complete) [data-kinetic-inner] {
+.kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner] {
   animation: kinetic-inner-rise 270ms var(--prism-ease) both;
 }
 
-.kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="heading"] { animation-delay: 400ms; }
-.kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="body"] { animation-delay: 480ms; }
-.kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="meta"] { animation-delay: 550ms; }
+.kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="heading"] { animation-delay: 400ms; }
+.kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="body"] { animation-delay: 480ms; }
+.kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="meta"] { animation-delay: 550ms; }
 
 .kinetic-motion-ready :is(
   [data-kinetic-reveal="diagonal-prism-left"],
@@ -276,7 +274,7 @@
 .kinetic-motion-ready :is(
   [data-kinetic-reveal="diagonal-prism-left"],
   [data-kinetic-reveal="diagonal-prism-right"]
-).is-revealed:not(.is-kinetic-complete)::after {
+)[data-reveal-state="animating"]::after {
   position: absolute;
   z-index: 2;
   inset: 0 auto 0 -22%;
@@ -288,8 +286,8 @@
   animation: kinetic-prism-sweep 620ms 160ms var(--prism-ease) both;
 }
 
-.kinetic-motion-ready [data-kinetic-reveal].is-kinetic-complete,
-.kinetic-motion-ready [data-kinetic-reveal].is-kinetic-complete [data-kinetic-inner] {
+.kinetic-motion-ready [data-kinetic-reveal][data-reveal-state="revealed"],
+.kinetic-motion-ready [data-kinetic-reveal][data-reveal-state="revealed"] [data-kinetic-inner] {
   opacity: 1;
   clip-path: none;
   transform: none;
@@ -407,32 +405,36 @@
   [data-kinetic-reveal="bottom-lift"] { --fly-y: 30px; --fly-duration: 380ms; }
   [data-kinetic-reveal="depth-landing"] { --fly-y: 8px; --fly-scale: 0.95; --fly-rotate-x: 0deg; --fly-duration: 450ms; }
 
-  .kinetic-motion-ready [data-kinetic-reveal="depth-landing"]:not(.is-revealed) { filter: none; }
+  .kinetic-motion-ready [data-kinetic-reveal="depth-landing"][data-reveal-state="pending"] { filter: none; }
   .kinetic-motion-ready [data-kinetic-reveal="split-assembly"] .kinetic-split-word {
     --kinetic-split-x: 0px;
   }
-  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"]:not(.is-revealed) .kinetic-split-word,
-  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"]:not(.is-revealed) .kinetic-split-word:nth-child(even) {
+  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"][data-reveal-state="pending"] .kinetic-split-word,
+  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"][data-reveal-state="pending"] .kinetic-split-word:nth-child(even) {
     transform: translate3d(0, 20px, 0);
   }
-  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"].is-revealed:not(.is-kinetic-complete) .kinetic-split-word {
+  .kinetic-motion-ready [data-kinetic-reveal="split-assembly"][data-reveal-state="animating"] .kinetic-split-word {
     animation-duration: 360ms;
     animation-delay: min(calc(var(--kinetic-word-index) * 40ms), 280ms);
   }
-  .kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="heading"] { animation-delay: 260ms; }
-  .kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="body"] { animation-delay: 310ms; }
-  .kinetic-motion-ready [data-kinetic-group].is-revealed [data-kinetic-inner="meta"] { animation-delay: 360ms; }
+  .kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="heading"] { animation-delay: 260ms; }
+  .kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="body"] { animation-delay: 310ms; }
+  .kinetic-motion-ready [data-kinetic-group][data-reveal-state="animating"] [data-kinetic-inner="meta"] { animation-delay: 360ms; }
+
+  .kinetic-motion-ready [data-kinetic-reveal][data-reveal-state="animating"]:not([data-kinetic-reveal="split-assembly"]) {
+    animation: kinetic-fly-settle var(--fly-duration) var(--fly-delay) cubic-bezier(0.16, 0.78, 0.18, 1) both !important;
+  }
 }
 
-.kinetic-motion-simple [data-kinetic-reveal].is-revealed:not(.is-kinetic-complete) {
+.kinetic-motion-simple [data-kinetic-reveal][data-reveal-state="animating"] {
   animation: kinetic-simple-lift 620ms cubic-bezier(0.16, 0.78, 0.18, 1) both !important;
 }
 
-.kinetic-motion-simple [data-kinetic-reveal]:not(.is-kinetic-complete) {
+.kinetic-motion-simple [data-kinetic-reveal]:is([data-reveal-state="pending"], [data-reveal-state="animating"]) {
   transition: opacity 380ms var(--prism-ease), transform 380ms var(--prism-ease) !important;
 }
 
-.kinetic-motion-simple [data-kinetic-reveal]:not(.is-revealed) {
+.kinetic-motion-simple [data-kinetic-reveal][data-reveal-state="pending"] {
   transform: translate3d(0, 30px, 0) !important;
   filter: none !important;
 }

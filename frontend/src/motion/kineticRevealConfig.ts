@@ -23,9 +23,9 @@ export type KineticMotionPreset = {
 };
 
 export const KINETIC_MOTION_PRESETS: Record<KineticRevealVariant, KineticMotionPreset> = {
-  "sky-drop": { x: 0, y: -112, rotateX: -10, rotateY: 0, rotateZ: 0, scale: 0.94, duration: 900 },
-  "left-flight": { x: -132, y: 0, rotateX: 0, rotateY: 9, rotateZ: -1, scale: 0.96, duration: 820 },
-  "right-flight": { x: 132, y: 0, rotateX: 0, rotateY: -9, rotateZ: 1, scale: 0.96, duration: 820 },
+  "sky-drop": { x: 0, y: -110, rotateX: -4, rotateY: 0, rotateZ: 0, scale: 0.96, duration: 650 },
+  "left-flight": { x: -110, y: 0, rotateX: 0, rotateY: 4, rotateZ: -2, scale: 0.97, duration: 620 },
+  "right-flight": { x: 110, y: 0, rotateX: 0, rotateY: -4, rotateZ: 2, scale: 0.97, duration: 620 },
   "diagonal-prism-left": { x: -108, y: -72, rotateX: 0, rotateY: 6, rotateZ: -4, scale: 0.93, duration: 880 },
   "diagonal-prism-right": { x: 108, y: -72, rotateX: 0, rotateY: -6, rotateZ: 4, scale: 0.93, duration: 880 },
   "depth-landing": { x: 0, y: 20, rotateX: 4, rotateY: 0, rotateZ: 0, scale: 0.9, duration: 820 },
@@ -115,5 +115,5 @@ export function isSimpleKineticDevice(profile: {
   cores?: number;
   saveData?: boolean;
 }) {
-  return profile.width <= 640 || Boolean(profile.saveData) || (profile.memoryGb ?? 4) <= 2;
+  return Boolean(profile.saveData) || (profile.memoryGb ?? 4) <= 2 || (profile.cores ?? 4) <= 2;
 }

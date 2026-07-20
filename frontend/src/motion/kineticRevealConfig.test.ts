@@ -24,9 +24,9 @@ describe("kinetic reveal configuration", () => {
   });
 
   it("uses the required drop, side-flight, diagonal, depth, and timing values", () => {
-    expect(KINETIC_MOTION_PRESETS["sky-drop"]).toMatchObject({ y: -112, rotateX: -10, duration: 900 });
-    expect(KINETIC_MOTION_PRESETS["left-flight"].x).toBeLessThanOrEqual(-90);
-    expect(KINETIC_MOTION_PRESETS["right-flight"].x).toBeGreaterThanOrEqual(90);
+    expect(KINETIC_MOTION_PRESETS["sky-drop"]).toMatchObject({ y: -110, rotateX: -4, duration: 650 });
+    expect(KINETIC_MOTION_PRESETS["left-flight"]).toMatchObject({ x: -110, rotateY: 4, rotateZ: -2, duration: 620 });
+    expect(KINETIC_MOTION_PRESETS["right-flight"]).toMatchObject({ x: 110, rotateY: -4, rotateZ: 2, duration: 620 });
     expect(KINETIC_MOTION_PRESETS["diagonal-prism-left"]).toMatchObject({ x: -108, y: -72, rotateZ: -4 });
     expect(KINETIC_MOTION_PRESETS["diagonal-prism-right"]).toMatchObject({ x: 108, y: -72, rotateZ: 4 });
     expect(KINETIC_MOTION_PRESETS["depth-landing"].scale).toBeGreaterThanOrEqual(0.9);
@@ -57,8 +57,8 @@ describe("kinetic reveal configuration", () => {
     expect(isCmsKineticRevealEnabled(true, true)).toBe(true);
   });
 
-  it("simplifies mobile and low-end profiles", () => {
-    expect(isSimpleKineticDevice({ width: 390, memoryGb: 8, cores: 8 })).toBe(true);
+  it("preserves directional mobile motion and simplifies only constrained devices", () => {
+    expect(isSimpleKineticDevice({ width: 390, memoryGb: 8, cores: 8 })).toBe(false);
     expect(isSimpleKineticDevice({ width: 1440, memoryGb: 2, cores: 8 })).toBe(true);
     expect(isSimpleKineticDevice({ width: 1440, memoryGb: 16, cores: 12 })).toBe(false);
   });
@@ -67,8 +67,20 @@ describe("kinetic reveal configuration", () => {
     const hook = readFileSync(new URL("../hooks/useKineticReveal.ts", import.meta.url), "utf8");
     const css = readFileSync(new URL("../styles/kineticReveal.css", import.meta.url), "utf8");
     expect(`${hook}\n${css}`).not.toMatch(/requestAnimationFrame|<canvas|WebGL|ocean|fish/i);
-    expect(hook).toContain('addEventListener("scroll", handleScroll, { passive: true })');
+    expect(hook).toContain('target.addEventListener("scroll", handleScroll, { passive: true })');
+    expect(hook).toContain('setRevealState(element, "pending")');
+    expect(hook).toContain('setRevealState(element, "animating")');
+    expect(hook).toContain('setRevealState(element, "revealed")');
     expect(css).toContain("transform: none");
+    expect(css).toContain("@keyframes kinetic-fly-settle");
     expect(css).toContain("prefers-reduced-motion: reduce");
+  });
+
+  it("loads the kinetic stylesheet exactly once from the landing page", () => {
+    const landingPage = readFileSync(new URL("../components/landing/LandingPage.tsx", import.meta.url), "utf8");
+    expect(landingPage.match(/styles\/kineticReveal\.css/g)).toHaveLength(1);
+    expect(landingPage).toContain('document.addEventListener("pointerdown", onPointerDown)');
+    expect(landingPage).toContain('if (event.key === "Escape") setMobileMenuOpen(false)');
+    expect(landingPage).toContain("[location.hash, location.pathname, location.search]");
   });
 });

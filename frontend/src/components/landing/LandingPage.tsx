@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   ArrowRight,
   AudioLines,
@@ -257,6 +257,7 @@ function demoProviderLabel(provider: "bedrock" | "groq" | "openai") {
 
 export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
   const { user } = useAuth();
+  const location = useLocation();
   const screenShare = useScreenShare();
   const online = useOnlineStatus();
   const publishedCmsPage = usePublishedPage("home", !editor);
@@ -404,6 +405,21 @@ export function LandingPage({ editor }: { editor?: LandingPageEditorSession }) {
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.hash, location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".prism-mobile-menu, .prism-mobile-menu-button")) return;
+      setMobileMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     const container = demoMessagesRef.current;
